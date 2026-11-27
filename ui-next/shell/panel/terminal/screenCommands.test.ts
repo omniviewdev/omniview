@@ -397,3 +397,81 @@ describe('the output items for a command that printed nothing', () => {
     expect(r.screen.commands.state().output).toBe(false);
   });
 });
+
+describe('a restart: the screen goes on with the next feed (#695 step 5)', () => {
+  it('keeps the commands of the ended terminal, and a command it was running is not running any more: the new terminal can be asked to run a command again', async () => {
+    const { feed, frame, screen } = await rig();
+    feed.push('$ make\r\n', [placed(0, A()), placed(2, B()), placed(7, C('make'))]);
+    frame();
+    expect(screen.commands.state().rerun, 'the old command runs').toBeDefined();
+    feed.set({ state: 'ended', exit: { signal: 'SIGKILL' } });
+    const next = fakeTerminalFeed({ state: 'starting', takeReplay: true });
+    screen.continueWith(next);
+    expect(screen.commands.state().count).toBe(1);
+    expect(screen.commands.state().rerun).toBeUndefined();
+  });
+});
+
+describe('a restart while the old feed\'s marks are still queued (#695 step 5)', () => {
+  it('keeps a mark in an old write that the emulator has not parsed at the restart with the old terminal: its command ends as incomplete, and does not run in the new one', async () => {
+    const { feed, frame, engine, screen } = await rig({ auto: false });
+    feed.push('$ make\r\n', [placed(0, A()), placed(2, B()), placed(7, C('make'))]);
+    frame();
+    expect(screen.commands.state().count, 'the old marks are still queued').toBe(0);
+    feed.set({ state: 'ended', exit: { signal: 'SIGKILL' } });
+    screen.continueWith(fakeTerminalFeed({ state: 'starting', takeReplay: true }));
+    engine().complete();
+    engine().complete();
+    engine().complete();
+    expect(screen.commands.state().count).toBe(1);
+    expect(screen.commands.state().rerun, 'nothing runs in the new terminal').toBeUndefined();
+  });
+});
+
+describe('what a restart must not lose of the gutter (#695 step 5)', () => {
+  it('keeps a command whose marks the ended feed still held when the screen was told to flush and continue: the loop does not stop at the bytes when only marks are left', async () => {
+    const { feed, screen } = await rig();
+    feed.push('$ make\r\n', [placed(0, A()), placed(2, B()), placed(7, C('make')), placed(8, D(0))]);
+    feed.set({ state: 'ended', exit: { code: 0 } });
+    screen.flush();
+    screen.continueWith(fakeTerminalFeed({ state: 'starting', takeReplay: true }));
+    expect(screen.commands.state().count).toBe(1);
+  });
+
+  it('keeps a command whose marks alone are held (their bytes were drawn): the marks are placed all the same', async () => {
+    const { feed, frame, screen } = await rig();
+    feed.push('$ make\r\n');
+    frame();
+    feed.push(new Uint8Array(0), [placed(0, C('make'))]);
+    feed.set({ state: 'ended', exit: { code: 0 } });
+    screen.flush();
+    expect(screen.commands.state().count).toBe(1);
+  });
+
+  it('runs again a command of the terminal before the restart WITHOUT Enter, and says where the line came from', async () => {
+    const { feed, frame, screen, engine, events } = await rig();
+    feed.push('$ make\r\nout\r\n', [placed(0, A()), placed(2, B()), placed(7, C('make')), placed(13, D(0))]);
+    frame();
+    feed.set({ state: 'ended', exit: { code: 0 } });
+    const next = fakeTerminalFeed({ state: 'running', takeReplay: true });
+    screen.continueWith(next);
+    screen.commands.rerun();
+    expect(engine().pastes).toEqual(['make']);
+    expect(next.typed(), 'no Enter: the old shell\'s proof does not hold for the new one').toEqual([]);
+    expect(events.at(-1)).toEqual({ kind: 'said', words: 'The command line is typed from the terminal before the restart; press Enter to run it' });
+  });
+});
+
+describe('review of #791: nothing with a line break reaches the new shell from an old command (#695 step 5)', () => {
+  it('types nothing of an earlier terminal\'s multi-line command (on the fake emulator; the real one, with bracketed paste off, is in xtermEngine.test.ts)', async () => {
+    const { feed, frame, screen, engine } = await rig();
+    feed.push('$ a\r\n', [placed(0, A()), placed(2, B()), placed(5, C('touch /tmp/x\necho b')), placed(5, D(0))]);
+    frame();
+    feed.set({ state: 'ended', exit: { code: 0 } });
+    const next = fakeTerminalFeed({ state: 'running', takeReplay: true });
+    screen.continueWith(next);
+    screen.commands.rerun();
+    expect(engine().pastes).toEqual([]);
+    expect(next.typed().join('')).not.toMatch(/[\r\n]/);
+  });
+});

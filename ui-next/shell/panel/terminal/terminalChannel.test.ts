@@ -882,6 +882,14 @@ describe('creating a terminal', () => {
     expect(launch).toEqual({ channel: true, cols: 80, rows: 24, cwd: '/work', env: { A: '1' } });
   });
 
+  it('attaches to the terminal what it was given as params, which the host lists back with it, and nothing when it was given none', async () => {
+    const r = rig();
+    await r.channels.create('t1', { cols: 80, rows: 24, params: { tab: 'tab-1', launch: '{"env":{"A":"1"}}' } });
+    expect(r.calls[0]?.[1]).toMatchObject({ id: 't1', params: { tab: 'tab-1', launch: '{"env":{"A":"1"}}' } });
+    await r.channels.create('t2', { cols: 80, rows: 24 });
+    expect(r.calls[1]?.[1]).toMatchObject({ id: 't2', params: {} });
+  });
+
   it('says nothing of the lease when it was not given', async () => {
     const r = rig();
     await r.channels.create('t1', { cols: 80, rows: 24 });

@@ -1,5 +1,5 @@
 import { CHANNEL_VERSION, MAX_INPUT_BYTES, MAX_KEPT_INPUT_BYTES, MAX_MARKS, type ChannelLaunch, type ChannelLink, type TerminalChannels } from './channel';
-import type { TerminalBusy, TerminalClosedBy, TerminalDirectory, TerminalExit, TerminalFeedCause, TerminalFeedHandle, TerminalFeedSnapshot, TerminalFeedStage, PlacedMark, TerminalMark, TerminalModes, TerminalOutput, TerminalReplay } from './feed';
+import type { TerminalBusy, TerminalClosedBy, TerminalDirectory, TerminalExit, TerminalFeedCause, TerminalFeedHandle, TerminalFeedSnapshot, TerminalFeedStage, PlacedMark, TerminalMark, TerminalModes, TerminalOutput, TerminalReplay, TerminalRestart } from './feed';
 import { marksOf } from './marks';
 import { titleOf } from './title';
 import { createHeldOutput } from './heldOutput';
@@ -34,6 +34,12 @@ export type ExecAttach = {
   readonly program?: string | undefined;
   /** The host listed how the terminal ended: it is kept, with its output, until a page dismisses it. */
   readonly ended?: boolean | undefined;
+  /** The absolute path of the shell the host listed for the terminal: what a restart runs when the host cannot say more (it does not know the terminal any more). */
+  readonly shell?: string | undefined;
+  /** The host listed another shell than the one asked for as the one that runs (`shell.requested`): the arguments asked for belong to the shell that was not there. */
+  readonly replaced?: boolean | undefined;
+  /** What the terminal was asked to start with, as the host listed it back (`params`): the shell and its arguments, and the environment. A restart runs the same. */
+  readonly launch?: { readonly command?: readonly string[] | undefined; readonly env?: Readonly<Record<string, string>> | undefined } | undefined;
 };
 
 export type ExecFeedOptions = {
@@ -52,6 +58,8 @@ export type ExecFeedOptions = {
   readonly homeIfMissing?: boolean | undefined;
   /** The terminal starts in the home directory because the directory it was to start in was not known: the status says so until the first thing is typed (`startNote`). Absent: it was asked for nowhere in particular, or for a directory. */
   readonly startNote?: TerminalFeedSnapshot['startNote'] | undefined;
+  /** The tab (the panel session's id) the terminal belongs to, attached to it so that a page that reloads finds the tab again: it differs from the terminal's id for a terminal that stands in for an ended one. Absent: the terminal's own id is the tab's. */
+  readonly tab?: string | undefined;
   /** The shell, directory and environment the terminal is made with (`ChannelLaunch`). Absent: the host's own choices. */
   readonly launch?: Pick<ChannelLaunch, 'command' | 'cwd' | 'env'> | undefined;
   /** How long the feed waits before it connects again after each stream that dropped; the feed fails when they are used up. Default: `RECONNECT_DELAYS_MS`. */
@@ -150,6 +158,26 @@ function programOf(answer: unknown): string | undefined {
 
   const shell: unknown = Reflect.get(answer, 'shell');
   return typeof shell === 'object' && shell !== null ? worded(Reflect.get(shell, 'name')) : undefined;
+}
+
+/** The absolute path of the shell the host started, as it says it in a `terminal.Session` (`shell.path`); nothing when it does not say. */
+function shellPathOf(session: unknown): string | undefined {
+  if (typeof session !== 'object' || session === null) {
+    return undefined;
+  }
+
+  const shell: unknown = Reflect.get(session, 'shell');
+  return typeof shell === 'object' && shell !== null ? worded(Reflect.get(shell, 'path')) : undefined;
+}
+
+/** The shell the caller asked for when the host started another in its place (`shell.requested`): nothing when the shell that started is the one asked for. */
+function replacedOf(session: unknown): boolean {
+  if (typeof session !== 'object' || session === null) {
+    return false;
+  }
+
+  const shell: unknown = Reflect.get(session, 'shell');
+  return typeof shell === 'object' && shell !== null && worded(Reflect.get(shell, 'requested')) !== undefined;
 }
 
 /** The directory the host started a shell in, as it says it in a `terminal.Session` (`cwd`, an absolute path); nothing when it does not say. */
@@ -390,6 +418,10 @@ type Ready = {
   readonly program: string | undefined;
   /** The directory the host says the terminal started in (`session.cwd`). */
   readonly startedIn: string | undefined;
+  /** The path of the shell the host says started (`session.shell.path`). */
+  readonly shellPath: string | undefined;
+  /** The host started another shell in place of the one asked for (`session.shell.requested`). */
+  readonly replaced: boolean;
   /** How the terminal ended, when the host's `ready` says it had: its `ended` frame follows the replay. */
   readonly ended: unknown;
 };
@@ -430,6 +462,8 @@ function readyOf(value: unknown): Ready | undefined {
     startModes: modesOf(Reflect.get(value, 'start_modes')),
     program: programOf(Reflect.get(value, 'session')),
     startedIn: startOf(Reflect.get(value, 'session')),
+    shellPath: shellPathOf(Reflect.get(value, 'session')),
+    replaced: replacedOf(Reflect.get(value, 'session')),
     ended: typeof ended === 'object' && ended !== null ? ended : undefined,
   };
 }
@@ -462,6 +496,29 @@ type Gathering = {
 /** What the host did with the terminal this feed shows, which decides what a close does with it: it is this page's to end (`ours`), it ended by itself and the host keeps its end until a page forgets it (`dismiss`), or it is not this page's (taken by another, gone, left for the page that comes back). */
 type Fate = 'ours' | 'dismiss' | 'not-ours';
 
+/**
+ * What the feed attaches to the terminal when it makes it, which the host lists back with it (`params`): the tab the terminal belongs to, and the shell, arguments and environment it was asked for. A page that reloads finds the tab again
+ * and can restart the terminal with the same environment, which no other call tells it. Nothing when there is nothing to say: no empty launch is attached, and the directory is not (the host says where the terminal started).
+ */
+function paramsOf(options: ExecFeedOptions): Record<string, string> | undefined {
+  const params: Record<string, string> = {};
+  if (options.tab !== undefined) {
+    params.tab = options.tab;
+  }
+
+  const command = options.launch?.command;
+  const env = options.launch?.env;
+  const asked = {
+    ...(command === undefined || command.length === 0 ? {} : { command: [...command] }),
+    ...(env === undefined || Object.keys(env).length === 0 ? {} : { env }),
+  };
+  if (Object.keys(asked).length > 0) {
+    params.launch = JSON.stringify(asked);
+  }
+
+  return Object.keys(params).length === 0 ? undefined : params;
+}
+
 export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   const { channels } = options;
   const attachTo = options.attach;
@@ -482,6 +539,12 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   let createdProgram: string | undefined;
   /** The directory the host says the terminal started in (the answer to the call that made it, or the `session` of a `ready`): where "New terminal here" opens once the shell is not there to ask. */
   let startedIn: string | undefined;
+  /** The path of the shell the host says started, from the answer to the call that made the terminal or the `session` of a `ready`: what a restart runs. */
+  let startedShell: string | undefined = attachTo?.shell;
+  /** The host started another shell than the one asked for: the arguments asked for belong to the shell that was not there. */
+  let shellReplaced = attachTo?.replaced === true;
+  /** The process is over for good, which only the host's word says: it ended (`ended`, whatever the reason, a failed pty included) or it does not know the terminal. What `restart` waits for. */
+  let processOver = false;
   let fate: Fate = attachTo?.ended === true ? 'dismiss' : 'ours';
   let closing: Promise<void> | undefined;
   let woken = false;
@@ -951,6 +1014,8 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     }
 
     startedIn = ready.startedIn ?? startedIn;
+    startedShell = ready.shellPath ?? startedShell;
+    shellReplaced = shellReplaced || ready.replaced;
     if (status.state === 'starting') {
       const program = ready.program ?? createdProgram ?? status.program;
       const { startNote } = status;
@@ -1055,6 +1120,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   };
 
   const onEnded = (end: unknown) => {
+    processOver = true;
     if (watching) {
       // The terminal ended while another stream held it: this page learns how, and the end is not its to dismiss.
       unlink(false);
@@ -1206,6 +1272,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   };
 
   const onNotFound = () => {
+    processOver = true;
     unlink(false);
     fate = 'not-ours';
     over({ state: 'failed', cause: { stage: 'session', message: TERMINAL_GONE } });
@@ -1244,6 +1311,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     // A terminal that had ended ends the feed only with its whole replay: a stream that dropped before that (before `ready`, or part of the way) is connected again, from nothing.
     const hint = complete ? (readyEnded ?? (attachTo?.ended === true ? {} : undefined)) : undefined;
     if (hint !== undefined) {
+      processOver = true;
       fate = 'dismiss';
       over(withProgram(endOf(hint), status.program));
       return;
@@ -1318,11 +1386,21 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   const start = (first: Size) => {
     started = true;
     delivered = first;
-    const made = async (launch: ExecFeedOptions['launch']) => channels.create(id, { cols: first.cols, rows: first.rows, ...(options.leaseMs === undefined ? {} : { leaseMs: options.leaseMs }), ...launch });
+    const params = paramsOf(options);
+    const made = async (launch: ExecFeedOptions['launch']) => channels.create(id, { cols: first.cols, rows: first.rows, ...(options.leaseMs === undefined ? {} : { leaseMs: options.leaseMs }), ...launch, ...(params === undefined ? {} : { params }) });
     const answered = (answer: unknown) => {
       created = true;
       createdProgram = programOf(answer);
+      startedShell = shellPathOf(answer) ?? startedShell;
       startedIn = startOf(answer);
+      // The host started another shell in place of the one asked for: the status says so, until the first thing is typed (the note of the directory, when there is one, is what the person is told first).
+      if (replacedOf(answer)) {
+        shellReplaced = true;
+        if (status.startNote === undefined) {
+          status = { ...status, startNote: 'shell-replaced' };
+        }
+      }
+
       if (!closed() && !left && status.state === 'starting') {
         connect(next);
       }
@@ -1343,7 +1421,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       }
 
       const { cwd: _removed, ...rest } = options.launch ?? { command: [] };
-      status = { ...status, startNote: 'home-for-unknown-directory' };
+      status = { ...status, startNote: 'home-for-removed-directory' };
       await made(rest).then(answered, failed);
     });
   };
@@ -1550,6 +1628,27 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
         // A terminal the host says is gone ended since the page last heard; a question that failed is a question not answered.
         return channels.isGone(error) ? start : { state: 'unknown', reason: 'unanswered' };
       }
+    },
+
+    launch: () => {
+      const asked = options.launch ?? attachTo?.launch;
+      // The arguments asked for a shell that was not there are not carried on: the shell that ran, alone.
+      const command = shellReplaced ? (startedShell === undefined ? undefined : [startedShell]) : asked?.command === undefined || asked.command.length === 0 ? undefined : [...asked.command];
+      const env = asked?.env === undefined || Object.keys(asked.env).length === 0 ? undefined : asked.env;
+      return command === undefined && env === undefined ? undefined : { ...(command === undefined ? {} : { command }), ...(env === undefined ? {} : { env }) };
+    },
+
+    restart: (): TerminalRestart | undefined => {
+      if (!processOver) {
+        return undefined;
+      }
+
+      // What the terminal was asked to start with: its own launch, or what the listing said it was asked for (a page after a reload). The shell is the one the host says it started, with the arguments that were asked for.
+      const asked = options.launch ?? attachTo?.launch;
+      const path = startedShell;
+      const command = path === undefined ? (asked?.command === undefined || asked.command.length === 0 ? undefined : [...asked.command]) : [path, ...(shellReplaced ? [] : (asked?.command?.slice(1) ?? []))];
+      const env = asked?.env === undefined || Object.keys(asked.env).length === 0 ? undefined : asked.env;
+      return { id, ...(command === undefined ? {} : { command }), ...(startedIn === undefined ? {} : { cwd: startedIn }), ...(env === undefined ? {} : { env }) };
     },
 
     write: (text, writeOptions) => {

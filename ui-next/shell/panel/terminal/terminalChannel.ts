@@ -266,7 +266,7 @@ function createCore(deps: ChannelDeps): Core {
     create: async (id: string, launch: ChannelLaunch) => {
       const session = await Promise.resolve(
         client.CreateTerminal(
-          { id, tty: true, command: launch.command === undefined ? [] : [...launch.command], labels: {}, params: {}, resource_plugin: '', resource_key: '' },
+          { id, tty: true, command: launch.command === undefined ? [] : [...launch.command], labels: {}, params: launch.params === undefined ? {} : { ...launch.params }, resource_plugin: '', resource_key: '' },
           {
             channel: true,
             cols: launch.cols,

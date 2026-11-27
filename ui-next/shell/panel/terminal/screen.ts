@@ -4,7 +4,7 @@ import type { PlacedMark, TerminalFeedHandle, TerminalFeedSnapshot, TerminalRepl
 import { keyOf, sequenceOf } from './keys';
 import type { ScreenReaderSource } from './screenReader';
 import { createCommandGutter, type CommandGutter, type GutterEvent } from './gutter/commandGutter';
-import { COPIED_OUTPUT, COULD_NOT_COPY, INPUT_OFF, NO_COMMANDS, NO_LINE, NO_OUTPUT, RERUN_RUNNING, RERUN_SENT, RERUN_TYPED } from './gutter/words';
+import { COPIED_OUTPUT, COULD_NOT_COPY, INPUT_OFF, NO_COMMANDS, NO_LINE, NO_OUTPUT, RERUN_EARLIER, RERUN_RUNNING, RERUN_SENT, RERUN_TYPED } from './gutter/words';
 import { drainLine, exitLine, failureLines } from './state';
 
 // The screen of a terminal session: the one object between a feed and an emulator (docs/ui-next/status/T1.md, "The screen"). It is framework-free and knows no xterm: it is written against `Engine`, and the body
@@ -108,6 +108,11 @@ export type ScreenDeps = {
    * shell, and the window's region keys, which move the focus to the page for an Escape, do not see it. When it did not, or there is no handler, Escape is the shell's, as it is (programs need it).
    */
   readonly onFindClose?: (() => boolean) | undefined;
+  /**
+   * Enter was pressed in the terminal, plain, while the session takes no input (it ended or failed): says whether the session restarts. When it does the screen stops the key (nothing is sent and the emulator does not take it); when it does
+   * not, or there is no handler, Enter is what it was. Never asked while the session takes input: Enter is the shell's.
+   */
+  readonly onRestart?: (() => boolean) | undefined;
 };
 
 /**
@@ -161,12 +166,22 @@ export type TerminalScreen = {
   readonly setLinks: (handler: LinkHandler | undefined) => void;
   /** Selects the whole buffer, the screen and the scrollback (nothing before the emulator is made): the key does it too. */
   readonly selectAll: () => void;
+  /**
+   * The session was given another feed in place of the ended one that this screen shows (a restart): the screen goes on with it, with the emulator it has, so that the transcript stays above the new process, after a separator. The ended feed is let
+   * go of, and the new one is told the size of the screen at once. Nothing before the emulator is made, and nothing once the screen is disposed.
+   */
+  readonly continueWith: (next: TerminalFeedHandle) => void;
+  /** Draws what the feed still holds and how it ended, now: what a restart does before it lets the ended feed go. */
+  readonly flush: () => void;
   /** The commands of the shell's marks: nothing before the emulator is made. */
   readonly commands: ScreenCommands;
 };
 
 /** Text in the muted colour of the transcript's own lines, on a line of its own (the escape sequences are the emulator's: reset, bright black, reset). The palette's bright black is the theme's muted text; the emulator's dim style would be half the opacity of any colour, which no contrast rule can pass. */
 const muted = (text: string): string => `\u001b[0m\r\n\u001b[90m${text}\u001b[0m\r\n`;
+
+/** What the transcript gets between an ended process and its restart, before the muted line: the soft terminal reset (`DECSTR`) after the modes a program may have left on are switched off by name (mouse tracking and its encodings, focus events, bracketed paste, application cursor keys: DECSTR resets none of the mouse), and the way out of the alternate screen that keeps the normal screen's cursor (`?47l`: `?1049l` would restore a saved cursor that DECSTR has reset, to the top). */
+const SEPARATOR = '\u001b[?47l\u001b[?1000l\u001b[?1002l\u001b[?1003l\u001b[?1004l\u001b[?1005l\u001b[?1006l\u001b[?1015l\u001b[?2004l\u001b[?1l\u001b[!p';
 
 const takesInput = (status: TerminalFeedSnapshot): boolean => status.state === 'starting' || status.state === 'running';
 
@@ -189,7 +204,8 @@ export function clearScreenIn(target: EventTarget | null): boolean {
 }
 
 export function createScreen(deps: ScreenDeps): TerminalScreen {
-  const { feed } = deps;
+  /** The feed the screen reads: the session's feed, and the next one when the session is restarted (`continueWith`). */
+  let feed = deps.feed;
   const warn = deps.warn ?? ((message: string, error?: unknown) => {
     console.warn(message, error);
   });
@@ -222,6 +238,10 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
   /** What a screen reader says for the emulator's input: the tab's title, which the shell may rename. */
   let label = deps.label;
   let pending = 0;
+  /** A restart came while bytes of the ended feed's replay were still queued in the emulator: what it answers to them is not for the new shell. */
+  let draining = false;
+  /** The restarts so far: the barrier of a restart ends the muting only when no newer restart came after it (the middle feed's queued bytes are still being parsed then). */
+  let restarts = 0;
   let blocked = false;
   /** A replay the feed gave while the emulator was still parsing what came before it: applied once it has, so that what the emulator says of those bytes is the shell's and what it says of the replay is not. */
   let replayHeld: TerminalReplay | undefined;
@@ -247,6 +267,27 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
   let linkHandler: LinkHandler | undefined;
   /** The command gutter of the emulator: made with it. */
   let gutter: CommandGutter | undefined;
+  /**
+   * The commands of the ended terminal are sealed where the emulator stands once it has parsed everything queued before the restart, in order with those writes: the marks the old feed's writes still carry are the old terminal's, and what
+   * comes after is the new one's. Like a mark's write, it is no byte and holds a replay back until it has run.
+   */
+  function sealAfterQueued(emulator: Engine): void {
+    markWrites += 1;
+    restarts += 1;
+    const mine = restarts;
+    // Set BEFORE the barrier is queued: an emulator may run its callback at once (an empty queue), and the muting must end there and not be set again after it.
+    draining = true;
+    emulator.write(NOTHING, () => {
+      markWrites -= 1;
+      // Everything queued before the restart is parsed: what the emulator answers from here on is for the new shell.
+      draining = restarts !== mine;
+      gutter?.seal();
+      if (markWrites === 0 && replayHeld !== undefined && pending === 0) {
+        schedule();
+      }
+    });
+  }
+
   /** The writes that make markers that the emulator has not run yet: a replay is not begun while one waits (it would let go of the gutter under it). */
   let markWrites = 0;
   const commandListeners = new Set<(event: GutterEvent) => void>();
@@ -292,11 +333,11 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
   };
 
   /** The emulator parsed `bytes` it had accepted: a frame that stopped at the bound goes on once half of it is parsed, a replay that waited for the emulator to be idle comes once it is, and the feed is told what was live, which is what the host paces the shell by. */
-  function parsed(bytes: number, live: boolean): void {
+  function parsed(bytes: number, owner: TerminalFeedHandle | undefined): void {
     pending -= bytes;
-    if (live) {
-      feed.ack(bytes);
-    }
+
+    // What the emulator parsed is credited to the feed it came from: a restart may have given the screen another feed since.
+    owner?.ack(bytes);
 
     if ((blocked && pending < FLOW.high / 2) || (replayHeld !== undefined && pending === 0 && markWrites === 0)) {
       blocked = false;
@@ -333,6 +374,7 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
   /** Writes what is held in slices the emulator parses without a long task, counts what it has accepted and not parsed, and tells the feed what it parsed: the host paces the shell by that. The slices end where a mark stands. */
   function send(emulator: Engine, chunks: readonly Uint8Array[], marks: readonly PlacedMark[] = []): void {
     holds = true;
+    const owner = feed;
     let piece: Uint8Array | undefined = new Uint8Array(FLOW.slice);
     let filled = 0;
     // The bytes handed over so far, and the next mark that has not been placed.
@@ -349,7 +391,7 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
       const scratch = piece ?? new Uint8Array(0);
       const out = bytes === FLOW.slice ? scratch : scratch.slice(0, bytes);
       emulator.write(out, () => {
-        parsed(bytes, true);
+        parsed(bytes, owner);
       });
       if (bytes === FLOW.slice) {
         piece = undefined;
@@ -398,7 +440,7 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
     const bytes = typeof piece === 'string' ? 0 : piece.length;
     pending += bytes;
     emulator.write(piece, () => {
-      parsed(bytes, false);
+      parsed(bytes, undefined);
       if (last && replaying !== undefined) {
         replaying.bytesDone = true;
         finishReplayWhenPlaced();
@@ -531,6 +573,34 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
     schedule();
   }
 
+  /**
+   * How the process ended is the last line of its output, and what the host said of a program that kept the terminal open after the shell exited. A terminal this page lost while its shell runs on says so, and says how it ended when it
+   * ends later. A start that failed says why, where the shell's prompt would have been. Each is written once for a feed.
+   */
+  function tellEnd(emulator: Engine): void {
+    const status = feed.getSnapshot();
+    if (status.state === 'ended') {
+      const line = exitLine(status);
+      if (line !== endLine) {
+        endLine = line;
+        emulator.write(muted(line));
+      }
+
+      const drain = drainLine(status);
+      if (drain !== '' && !drainWritten) {
+        drainWritten = true;
+        emulator.write(muted(drain));
+      }
+    }
+
+    if (status.state === 'failed' && !failureWritten) {
+      failureWritten = true;
+      for (const line of failureLines(status)) {
+        emulator.write(muted(line));
+      }
+    }
+  }
+
   function pump(): void {
     if (engine === undefined) {
       return;
@@ -590,29 +660,7 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
       taken += out.bytes;
     }
 
-    // How the process ended is the last line of its output, and what the host said of a program that kept the terminal open after it. A terminal this page lost while its shell runs on says so, and says how it ended when it
-    // ends later. A start that failed says why, where the shell's prompt would have been.
-    const status = feed.getSnapshot();
-    if (status.state === 'ended') {
-      const line = exitLine(status);
-      if (line !== endLine) {
-        endLine = line;
-        engine.write(muted(line));
-      }
-
-      const drain = drainLine(status);
-      if (drain !== '' && !drainWritten) {
-        drainWritten = true;
-        engine.write(muted(drain));
-      }
-    }
-
-    if (status.state === 'failed' && !failureWritten) {
-      failureWritten = true;
-      for (const line of failureLines(status)) {
-        engine.write(muted(line));
-      }
-    }
+    tellEnd(engine);
   }
 
   /** The feed told us something: a new status is applied, and whatever it is the output it holds is drawn in the next frame. */
@@ -668,6 +716,12 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
     // buttons out of the Tab order, and Option Tab is how it reaches them (nothing is sent to a session that takes no input, so nothing is lost). A Tab with Control or Command is not this one, and no other key is: they answer
     // as they did. While the session takes input Tab is the shell's, with Option or without, and F6 is the way out of the screen.
     if (event.key === 'Tab' && !event.ctrlKey && !event.metaKey && !takesInput(feed.getSnapshot())) {
+      return false;
+    }
+
+    // Enter restarts a session that is over, when the session can be restarted (the one who answers knows): it is the key of the lane's Restart. While the session takes input Enter is the shell's.
+    if (event.type === 'keydown' && event.key === 'Enter' && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey && !event.isComposing && !event.repeat && event.keyCode !== 229 && !takesInput(feed.getSnapshot()) && deps.onRestart?.() === true) {
+      event.preventDefault();
       return false;
     }
 
@@ -836,7 +890,7 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
         // What the person types in that window is theirs: it is kept, and sent once the replay is applied.
         if (user) {
           typed(data);
-        } else if (replaying === undefined) {
+        } else if (replaying === undefined && !draining) {
           feed.write(data, { reply: true });
         }
       }),
@@ -963,7 +1017,7 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
         typed('\r');
       }
 
-      sayCommands(plan.enter ? RERUN_SENT : RERUN_TYPED);
+      sayCommands(plan.earlier === true ? RERUN_EARLIER : plan.enter ? RERUN_SENT : RERUN_TYPED);
     },
     onEvent: (listener) => {
       commandListeners.add(listener);
@@ -1028,6 +1082,62 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
 
     selectAll: () => {
       engine?.selectAll();
+    },
+
+    flush: () => {
+      if (disposed || engine === undefined) {
+        return;
+      }
+
+      // Everything the feed holds, whatever a frame's share: what is not drawn now is lost when the feed is let go of.
+      for (;;) {
+        const out = feed.read();
+        if (out.chunks.length === 0 && out.marks === undefined) {
+          break;
+        }
+
+        send(engine, out.chunks, out.marks);
+      }
+
+      tellEnd(engine);
+    },
+
+    continueWith: (next) => {
+      if (disposed) {
+        return;
+      }
+
+      stopFeed?.();
+      stopFeed = undefined;
+      feed = next;
+      const emulator = engine;
+      if (emulator === undefined) {
+        // Nothing was drawn yet: there is no transcript to keep, and the emulator that comes reads this feed.
+        return;
+      }
+
+      // The ended process's end, what it left on, and its failure are told again for the next one; nothing of the earlier feed is held or owed any more.
+      replayHeld = undefined;
+      // A replay of the ended feed that is still being written is dropped: its remaining slices are never written, what the queued ones make the emulator answer is muted until they are parsed, and what was typed meanwhile was for the ended terminal.
+      replaying = undefined;
+      // The commands of the ended terminal stay with its transcript, none of them runs any more, and the new terminal's are its own.
+      sealAfterQueued(emulator);
+      held = [];
+      heldLength = 0;
+      heldFull = false;
+      endLine = '';
+      drainWritten = false;
+      failureWritten = false;
+      settling = undefined;
+      told = undefined;
+      // A program that was killed may have left modes on (the mouse, bracketed paste, the alternate screen): the new shell starts from the terminal's own.
+      emulator.write(`${SEPARATOR}${muted('[Restarted]')}`);
+      lastStatus = next.getSnapshot();
+      emulator.setInput(takesInput(lastStatus));
+      stopFeed = next.subscribe(heard);
+      // The size starts the new terminal: it is told at once when the screen is on show, and when it is shown otherwise.
+      fit();
+      schedule();
     },
 
     find: async () => (engine === undefined ? undefined : engine.find()),

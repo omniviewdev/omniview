@@ -28,6 +28,7 @@ type RigOptions = {
   readonly launch?: { readonly command: readonly string[]; readonly cwd?: string; readonly env?: Readonly<Record<string, string>> };
   readonly startNote?: 'home-for-unknown-directory';
   readonly homeIfMissing?: boolean;
+  readonly tab?: string;
   readonly delays?: readonly number[];
 };
 
@@ -53,6 +54,7 @@ function rig(options: RigOptions = {}): Rig {
     ...(options.launch === undefined ? {} : { launch: options.launch }),
     ...(options.startNote === undefined ? {} : { startNote: options.startNote }),
     ...(options.homeIfMissing === true ? { homeIfMissing: true } : {}),
+    ...(options.tab === undefined ? {} : { tab: options.tab }),
     ...(options.delays === undefined ? {} : { reconnectDelaysMs: options.delays }),
   });
   let wakes = 0;
@@ -148,7 +150,7 @@ describe('making a terminal', () => {
     const r = rig({ launch: { command: ['/usr/bin/zsh'], cwd: '/work', env: { A: '1' } } });
     r.feed.resize(100, 30);
     await turns();
-    expect(r.channels.of('create')).toEqual([{ kind: 'create', id: 'term-1', cols: 100, rows: 30, leaseMs: undefined, command: ['/usr/bin/zsh'], cwd: '/work', env: { A: '1' } }]);
+    expect(r.channels.of('create')).toEqual([{ kind: 'create', id: 'term-1', cols: 100, rows: 30, leaseMs: undefined, command: ['/usr/bin/zsh'], cwd: '/work', env: { A: '1' }, params: { launch: JSON.stringify({ command: ['/usr/bin/zsh'], env: { A: '1' } }) } }]);
     const plain = rig();
     plain.feed.resize(100, 30);
     await turns();
@@ -2603,9 +2605,9 @@ describe('a terminal that started in the home directory because the directory it
 
 describe('a terminal opened in the directory an ended terminal started in, which was removed since (`homeIfMissing`)', () => {
   const refused = () => Object.assign(new Error('cwd must be a directory that exists'), { code: 'INVALID_REQUEST' });
-  const note = 'home-for-unknown-directory';
+  const note = 'home-for-removed-directory';
 
-  it('is made again with no directory when the host refuses the directory, with the note, and fails nothing', async () => {
+  it('is made again with no directory when the host refuses the directory, with the note that says it was removed, and fails nothing', async () => {
     let calls = 0;
     const r = await connecting({
       homeIfMissing: true,
@@ -3134,5 +3136,245 @@ describe('the title a program sets: when the feed takes it', () => {
     expect(r.feed.getSnapshot().title, 'the non-joiner a Persian word is spelled with stays').toBe('\u0641\u0627\u0631\u0633\u06cc\u200c\u0646\u0648\u06cc\u0633');
     r.stream().title('\u{1F468}\u200d\u{1F469}', true);
     expect(r.feed.getSnapshot().title, 'the joiner an emoji sequence is made of stays').toBe('\u{1F468}\u200d\u{1F469}');
+  });
+});
+
+// Step 5 of #695: restart an ended terminal. The producer states what a restart is made from, and only once the process is over for good; the page chooses the new id and never reuses the old one.
+
+describe('what a restart of the terminal is made from (`restart`)', () => {
+  const session = (id: string) => ({ id, shell: { path: '/usr/bin/zsh', name: 'zsh' }, cwd: '/work' });
+  const exited = { reason: 'exited', exit_code: 0 };
+
+  /** A terminal the feed made with this launch, that the host answered with its own shell path and directory, and that ended as told. */
+  async function endedAfter(end: unknown, launch?: RigOptions['launch']): Promise<Rig> {
+    const r = await running({ shellPath: '/usr/bin/zsh', startedIn: '/work' }, { ...(launch === undefined ? {} : { launch }), channels: { create: session } });
+    r.stream().ended(end);
+    return r;
+  }
+
+  it('says nothing while the terminal is starting or runs: there is nothing to restart', async () => {
+    const r = rig({ channels: { create: session } });
+    expect(r.feed.restart?.()).toBeUndefined();
+    r.feed.resize(80, 24);
+    await turns();
+    expect(r.feed.restart?.()).toBeUndefined();
+    r.stream().ready({ shellPath: '/usr/bin/zsh' });
+    expect(r.feed.restart?.()).toBeUndefined();
+  });
+
+  it('is the id the terminal had, the shell the host resolved with the arguments it was asked for, the directory the host says it started in and the environment it was asked for', async () => {
+    const r = await endedAfter(exited, { command: ['zsh', '-l'], cwd: '/elsewhere', env: { A: '1' } });
+    expect(r.feed.restart?.()).toEqual({ id: 'term-1', command: ['/usr/bin/zsh', '-l'], cwd: '/work', env: { A: '1' } });
+  });
+
+  it('is the shell\'s path alone for the default shell, and says no environment when none was asked for', async () => {
+    const r = await endedAfter(exited);
+    expect(r.feed.restart?.()).toEqual({ id: 'term-1', command: ['/usr/bin/zsh'], cwd: '/work' });
+  });
+
+  it('takes the directory from the host\'s word of where the shell started, and not from the one that was asked for: a directory that fell back to home is home', async () => {
+    const r = await running({ shellPath: '/usr/bin/zsh', startedIn: '/home/u' }, { launch: { command: [], cwd: '/gone' }, homeIfMissing: true, channels: { create: (id) => ({ id, shell: { path: '/usr/bin/zsh', name: 'zsh' }, cwd: '/home/u' }) } });
+    r.stream().ended(exited);
+    expect(r.feed.restart?.()?.cwd).toBe('/home/u');
+  });
+
+  it.each([
+    ['a shell that exited with a code', { reason: 'exited', exit_code: 3 }],
+    ['a shell a signal killed', { reason: 'signaled', signal: 'SIGKILL', signal_number: 9 }],
+    ['a close that was asked for', { reason: 'closed', closed_by: 'request' }],
+    ['its window going away', { reason: 'closed', closed_by: 'window' }],
+    ['the host quitting', { reason: 'closed', closed_by: 'shutdown' }],
+    ['the lease of a terminal no tab took back running out', { reason: 'closed', closed_by: 'detach-timeout' }],
+    ['a pty that failed', { reason: 'failed', failure: { stage: 'read', message: 'input/output error' } }],
+    ['an end the page cannot read', { reason: 'vanished' }],
+  ])('is offered after %s: the process is over for good', async (_what, end) => {
+    const r = await endedAfter(end);
+    expect(r.feed.restart?.()).toMatchObject({ id: 'term-1', command: ['/usr/bin/zsh'] });
+  });
+
+  it('is offered for a terminal the host does not know any more: its shell is gone', async () => {
+    const r = attaching({ program: 'zsh', shell: '/usr/bin/zsh', launch: { command: ['/usr/bin/zsh', '-l'], env: { A: '1' } } });
+    r.stream().notFound();
+    expect(r.feed.getSnapshot().state).toBe('failed');
+    expect(r.feed.restart?.()).toEqual({ id: 'term-1', command: ['/usr/bin/zsh', '-l'], env: { A: '1' } });
+  });
+
+  it('is offered for a terminal that ended while no page held it, from what the host says of it and what the listing said it was asked for', async () => {
+    const r = attaching({ ended: true, program: 'zsh', launch: { command: ['zsh', '-l'], env: { A: '1' } } });
+    r.stream().ready({ start: 0, end: 3, shellPath: '/opt/bin/zsh', startedIn: '/work', ended: { reason: 'exited', exit_code: 2 } });
+    r.stream().output(0, 'bye');
+    r.stream().ended({ reason: 'exited', exit_code: 2 });
+    expect(r.feed.restart?.()).toEqual({ id: 'term-1', command: ['/opt/bin/zsh', '-l'], cwd: '/work', env: { A: '1' } });
+  });
+
+  it('is not offered when the connection to the terminal was lost: the shell may still run, and a restart would start a second one', async () => {
+    const r = await running();
+    r.stream().drop();
+    for (const ms of [250, 1_000, 4_000]) {
+      reconnect(r, ms).drop();
+    }
+
+    vi.advanceTimersByTime(60_000);
+    expect(r.feed.getSnapshot()).toMatchObject({ state: 'failed', cause: { message: 'The connection to the terminal was lost.' } });
+    expect(r.feed.restart?.()).toBeUndefined();
+  });
+
+  it('is not offered when the terminal could not be started: the same request would be refused the same way', async () => {
+    const r = await connecting({
+      channels: {
+        create: () => {
+          throw Object.assign(new Error('no shell'), { code: 'SHELL_UNAVAILABLE' });
+        },
+      },
+    });
+    expect(r.feed.getSnapshot().state).toBe('failed');
+    expect(r.feed.restart?.()).toBeUndefined();
+  });
+
+  it('is not offered when the host speaks another version of the channel', async () => {
+    const r = await connecting();
+    r.stream().unsupported(3);
+    expect(r.feed.getSnapshot().state).toBe('failed');
+    expect(r.feed.restart?.()).toBeUndefined();
+  });
+
+  it('is not offered for a terminal another tab took, which runs on, nor when the taker let it go: it is for the take-back', async () => {
+    const r = await running();
+    r.stream().takenOver();
+    expect(r.feed.restart?.()).toBeUndefined();
+    r.stream().released();
+    expect(r.feed.getSnapshot().detached?.free).toBe(true);
+    expect(r.feed.restart?.()).toBeUndefined();
+  });
+
+  it('is offered once the terminal another tab took has ended, which the watcher is told', async () => {
+    const r = await running();
+    r.stream().takenOver();
+    r.stream().ended({ reason: 'exited', exit_code: 0 });
+    expect(r.feed.restart?.()).toMatchObject({ id: 'term-1' });
+  });
+
+  it('is pure: it asks the host nothing, makes no call and starts no timer', async () => {
+    const r = await endedAfter(exited);
+    const calls = r.channels.calls().length;
+    const timers = vi.getTimerCount();
+    r.feed.restart?.();
+    r.feed.restart?.();
+    expect(r.channels.calls()).toHaveLength(calls);
+    expect(vi.getTimerCount()).toBe(timers);
+  });
+});
+
+describe('what the host is given to list back with the terminal (`params`), so that a page that reloads can restart it', () => {
+  const launch = { command: ['/usr/bin/zsh', '-f'], env: { A: '1' } } as const;
+
+  it('is the tab the terminal belongs to and what it was started with: the shell and arguments, and the environment', async () => {
+    const r = await connecting({ launch, tab: 'tab-9' });
+    expect(r.channels.of('create')[0]?.params).toEqual({ tab: 'tab-9', launch: JSON.stringify({ command: ['/usr/bin/zsh', '-f'], env: { A: '1' } }) });
+  });
+
+  it('is only the tab for a terminal started with none of it, and only what it was started with for a terminal of no tab', async () => {
+    expect((await connecting({ tab: 'tab-9' })).channels.of('create')[0]?.params).toEqual({ tab: 'tab-9' });
+    expect((await connecting({ launch })).channels.of('create')[0]?.params).toEqual({ launch: JSON.stringify({ command: ['/usr/bin/zsh', '-f'], env: { A: '1' } }) });
+  });
+
+  it('is nothing for a terminal that asked for the host\'s own choices: no empty launch is attached, and a directory is not attached (the host says where it started)', async () => {
+    expect((await connecting()).channels.of('create')[0]).not.toHaveProperty('params');
+    expect((await connecting({ launch: { command: [], cwd: '/work' } })).channels.of('create')[0]).not.toHaveProperty('params');
+  });
+});
+
+describe('a terminal that started another shell than the one it asked for (`startNote`)', () => {
+  const replaced = (id: string) => ({ id, shell: { path: '/bin/bash', name: 'bash', requested: '/opt/gone/zsh' }, cwd: '/home/u' });
+
+  it('says so until the first thing is typed, when the host says it started another shell in place of the one asked for', async () => {
+    const r = await connecting({ launch: { command: ['/opt/gone/zsh'] }, channels: { create: replaced } });
+    r.stream().ready({ shell: 'bash' });
+    expect(r.feed.getSnapshot()).toEqual({ state: 'running', program: 'bash', startNote: 'shell-replaced' });
+    r.feed.write('', { reply: true });
+    expect(r.feed.getSnapshot().startNote).toBe('shell-replaced');
+    r.feed.write('ls');
+    expect(r.feed.getSnapshot().startNote).toBeUndefined();
+  });
+
+  it('says nothing when the shell that started is the one asked for', async () => {
+    const r = await connecting({ launch: { command: ['/bin/zsh'] } });
+    r.stream().ready();
+    expect(r.feed.getSnapshot().startNote).toBeUndefined();
+  });
+
+  it('keeps the note of the directory when both happened: the directory is what the person is told first', async () => {
+    let calls = 0;
+    const r = await connecting({
+      homeIfMissing: true,
+      launch: { command: ['/opt/gone/zsh'], cwd: '/gone' },
+      channels: {
+        create: (id) => {
+          calls += 1;
+          if (calls === 1) {
+            throw Object.assign(new Error('cwd must be a directory that exists'), { code: 'INVALID_REQUEST' });
+          }
+
+          return replaced(id);
+        },
+      },
+    });
+    r.stream().ready({ shell: 'bash' });
+    expect(r.feed.getSnapshot().startNote).toBe('home-for-removed-directory');
+  });
+});
+
+describe('review of #695 step 5: a restart runs the shell that ran, and what it was asked for is told on', () => {
+  it('runs the shell that actually ran with none of the arguments asked for the shell that was not there: a fallback shell is not given a foreign option', async () => {
+    const replaced = (id: string) => ({ id, shell: { path: '/bin/bash', name: 'bash', requested: '/opt/gone/zsh' }, cwd: '/home/u' });
+    const r = await running({ shell: 'bash', shellPath: '/bin/bash' }, { launch: { command: ['/opt/gone/zsh', '-f'] }, channels: { create: replaced } });
+    r.stream().ended({ reason: 'exited', exit_code: 0 });
+    expect(r.feed.restart?.()?.command).toEqual(['/bin/bash']);
+  });
+
+  it('keeps the arguments when the shell that ran is the one that was asked for', async () => {
+    const r = await running({ shellPath: '/bin/zsh' }, { launch: { command: ['/bin/zsh', '-f'] } });
+    r.stream().ended({ reason: 'exited', exit_code: 0 });
+    expect(r.feed.restart?.()?.command).toEqual(['/bin/zsh', '-f']);
+  });
+
+  it('says what it was asked to start with, for a terminal it made and for one it attached to, and nothing when it was asked for nothing', async () => {
+    const made = rig({ launch: { command: ['/bin/zsh', '-f'], env: { A: '1' }, cwd: '/work' } });
+    expect(made.feed.launch?.()).toEqual({ command: ['/bin/zsh', '-f'], env: { A: '1' } });
+    const attached = attaching({ launch: { command: ['/bin/zsh'], env: { B: '2' } } });
+    expect(attached.feed.launch?.()).toEqual({ command: ['/bin/zsh'], env: { B: '2' } });
+    expect(rig().feed.launch?.()).toBeUndefined();
+  });
+
+  it('is offered for a terminal the listing said had ended, when the stream drops after its whole replay and before its end (the hint of the ready)', async () => {
+    const r = attaching({ ended: true, program: 'zsh', shell: '/usr/bin/zsh' });
+    r.stream().ready({ start: 0, end: 0, shellPath: '/usr/bin/zsh', ended: { reason: 'exited', exit_code: 2 } });
+    r.stream().drop();
+    expect(r.feed.getSnapshot()).toMatchObject({ state: 'ended', exit: { code: 2 } });
+    expect(r.feed.restart?.()).toMatchObject({ id: 'term-1', command: ['/usr/bin/zsh'] });
+  });
+});
+
+describe('review of #695 step 5, round 2: a feed that attaches learns from the ready that another shell ran', () => {
+  it('restarts as the shell that ran, with none of the arguments asked for the shell that was not there (a reattach after a reload, or a take-back)', async () => {
+    const r = attaching({ program: 'bash', launch: { command: ['/opt/gone/zsh', '-f'], env: { A: '1' } } });
+    r.stream().ready({ shell: 'bash', shellPath: '/bin/bash', shellRequested: '/opt/gone/zsh' });
+    r.stream().ended({ reason: 'exited', exit_code: 0 });
+    expect(r.feed.restart?.()).toMatchObject({ command: ['/bin/bash'], env: { A: '1' } });
+  });
+});
+
+describe('review of #791: the replacement of the shell is known before the ready', () => {
+  it('restarts as the shell that ran with no arguments when the listing said it was replaced and the host does not know the terminal any more', async () => {
+    const r = attaching({ program: 'bash', shell: '/bin/bash', replaced: true, launch: { command: ['/opt/gone/zsh', '--no-rcs'] } });
+    r.stream().notFound();
+    expect(r.feed.restart?.()?.command).toEqual(['/bin/bash']);
+  });
+
+  it('tells a take-back the shell that ran and no arguments when it was replaced, and the asked arguments when it was not', async () => {
+    const replaced = await running({ shell: 'bash', shellPath: '/bin/bash', shellRequested: '/opt/gone/zsh' }, { launch: { command: ['/opt/gone/zsh', '--no-rcs'], env: { A: '1' } } });
+    expect(replaced.feed.launch?.()).toEqual({ command: ['/bin/bash'], env: { A: '1' } });
+    const plain = await running({ shellPath: '/bin/zsh' }, { launch: { command: ['/bin/zsh', '-f'] } });
+    expect(plain.feed.launch?.()).toEqual({ command: ['/bin/zsh', '-f'] });
   });
 });

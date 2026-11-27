@@ -38,6 +38,11 @@ export type GutterEngine = Pick<Engine, 'mark' | 'decorate' | 'cursor' | 'viewpo
 export type CommandGutter = {
   /** Takes the marks that stand at the place the parse is at: call it in the callback of the write that ends there. */
   readonly ingest: (marks: readonly TerminalMark[]) => void;
+  /**
+   * A new terminal takes the place of the one that ended (a restart): the commands of the old one stay, with the transcript they mark, and the one that was running is `incomplete`; the prompt that was waiting is let go. The new terminal's
+   * commands are its own: they never meet the old ones by id (its shell counts from `c1` again).
+   */
+  readonly seal: () => void;
   /** The screen the markers were on is gone (a replay brings it afresh): every marker and decoration is let go. */
   readonly reset: () => void;
   /** The commands the screen still shows or holds, oldest first. */
@@ -53,7 +58,7 @@ export type CommandGutter = {
   /** Whether there is output to read, from the marks alone: no text is read. */
   readonly hasOutput: (command?: GutterCommand) => boolean;
   /** What typing a command again takes: its line, and whether the shell proved it (then Enter is pressed; a line read from the screen is left for the person to run). `undefined` while a command runs, on the alternate screen, and for a line that is gone. */
-  readonly rerun: (command?: GutterCommand) => { readonly text: string; readonly enter: boolean } | undefined;
+  readonly rerun: (command?: GutterCommand) => { readonly text: string; readonly enter: boolean; readonly earlier?: true } | undefined;
   /** A command runs now (the shell's own word). */
   readonly busy: () => boolean;
   readonly onEvent: (listener: (event: GutterEvent) => void) => () => void;
@@ -64,6 +69,8 @@ type Anchor = { readonly marker: EngineMarker; readonly column: number };
 
 type Entry = {
   readonly id: string;
+  /** The terminal it belongs to (`seal` starts another): a command of an earlier one is never run by a press of Enter in the new shell. */
+  readonly epoch: number;
   prompt: Anchor | undefined;
   input: Anchor | undefined;
   readonly start: Anchor;
@@ -86,6 +93,8 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
   let running: Entry | undefined;
   let cwd: string | undefined;
   let counter = 0;
+  /** The terminals this gutter has seen before the one now: a new terminal's ids are its own, so they are told apart from the old ones' by it. */
+  let epoch = 0;
   let focused: { readonly entry: Entry; readonly top: number } | undefined;
   let hovered: Entry | undefined;
   let hoverAt = { x: 0, y: 0 };
@@ -183,6 +192,8 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
     }
   };
 
+  const idOf = (id: string | undefined): string | undefined => (id === undefined || epoch === 0 ? id : `${String(epoch)}:${id}`);
+
   const onPrompt = (mark: TerminalMark) => {
     // A prompt back while a command runs: the shell is back and nobody printed the end (a shell that was replaced, an ssh that ended).
     if (running !== undefined && mark.redraw !== true) {
@@ -216,7 +227,8 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
 
     counter += 1;
     const entry: Entry = {
-      id: mark.id ?? `command-${String(counter)}`,
+      id: idOf(mark.id) ?? `command-${String(counter)}`,
+      epoch,
       prompt: pending.prompt,
       input: pending.input,
       start,
@@ -252,7 +264,7 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
   };
 
   const onEnd = (mark: TerminalMark) => {
-    const target = running !== undefined && (mark.id === undefined || mark.id === running.id) ? running : undefined;
+    const target = running !== undefined && (mark.id === undefined || idOf(mark.id) === running.id) ? running : undefined;
     if (target === undefined) {
       // An end that closes no command that runs: Ctrl-C at an empty prompt, or the end of a command this screen never saw.
       return;
@@ -370,14 +382,20 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
     return range === undefined ? undefined : engine.lines(range[0], range[1], range[2] === undefined ? undefined : { to: range[2] });
   };
 
-  const rerun = (command?: GutterCommand): { readonly text: string; readonly enter: boolean } | undefined => {
+  const rerun = (command?: GutterCommand): { readonly text: string; readonly enter: boolean; readonly earlier?: true } | undefined => {
     const entry = entryOf(command);
     if (entry === undefined || running !== undefined || engine.alternate()) {
       return undefined;
     }
 
     if (entry.command !== undefined && entry.command !== '') {
-      return { text: entry.command.replace(unsafe, ''), enter: true };
+      const earlier = entry.epoch !== epoch;
+      // A line of an earlier terminal is typed and not run, and a pasted line feed is a carriage return when bracketed paste is off: with a line break its first line would run. The same rule as for a line nobody proved.
+      if (earlier && /[\r\n]/.test(entry.command)) {
+        return undefined;
+      }
+
+      return { text: entry.command.replace(unsafe, ''), enter: !earlier, ...(earlier ? { earlier: true as const } : {}) };
     }
 
     // The shell did not prove the line: it is what the screen shows from where the input starts to where the output starts, and it is the person's to run.
@@ -395,7 +413,7 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
     }
 
     const text = shown.replace(unsafe, '');
-    return text === '' ? undefined : { text, enter: false };
+    return text === '' ? undefined : { text, enter: false, ...(entry.epoch === epoch ? {} : { earlier: true as const }) };
   };
 
   /** Whether the command the actions are for has output lines to read: the marks and the cursor only, never the text. */
@@ -445,6 +463,19 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
       }
     },
     reset,
+    seal: () => {
+      if (running !== undefined) {
+        closeOutput(running);
+        settle(running, 'incomplete');
+        running = undefined;
+      }
+
+      release(pending.prompt);
+      release(pending.input);
+      pending = {};
+      cwd = undefined;
+      epoch += 1;
+    },
     commands: () => entries.map(viewOf),
     target: () => {
       const entry = targetEntry();

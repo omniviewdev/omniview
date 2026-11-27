@@ -3,7 +3,7 @@ import { cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TerminalsOptions } from '../../shell';
 import type { TerminalChannels } from '../../shell/panel/terminal/channel';
-import { attachLocalTerminal, restoreLocalTerminals } from '../../shell/panel/terminal/localShell';
+import { attachLocalTerminal, localRestartTarget, restoreLocalTerminals } from '../../shell/panel/terminal/localShell';
 import { loadAppTerminalChannels } from '../../shell/panel/terminal/terminalChannel';
 import { PluginHostScreen } from './PluginHostScreen';
 import type { PortForwardNetwork } from './portForward';
@@ -57,7 +57,7 @@ vi.mock('@omniviewdev/runtime/runtime', async (importOriginal) => ({
   Browser: { OpenURL: vi.fn() },
 }));
 
-vi.mock('../../shell/panel/terminal/localShell', async (importOriginal) => ({ ...(await importOriginal<Record<string, unknown>>()), restoreLocalTerminals: vi.fn(), attachLocalTerminal: vi.fn() }));
+vi.mock('../../shell/panel/terminal/localShell', async (importOriginal) => ({ ...(await importOriginal<Record<string, unknown>>()), restoreLocalTerminals: vi.fn(), attachLocalTerminal: vi.fn(), localRestartTarget: vi.fn() }));
 vi.mock('../../shell/panel/terminal/terminalChannel', async (importOriginal) => ({ ...(await importOriginal<Record<string, unknown>>()), loadAppTerminalChannels: vi.fn() }));
 
 vi.mock('./useInstalledPlugins', () => ({ useInstalledPlugins: () => world.inventory }));
@@ -75,6 +75,7 @@ beforeEach(() => {
   vi.spyOn(console, 'warn').mockImplementation(() => undefined);
   vi.mocked(restoreLocalTerminals).mockReset();
   vi.mocked(attachLocalTerminal).mockReset();
+  vi.mocked(localRestartTarget).mockReset();
   vi.mocked(loadAppTerminalChannels).mockReset();
   vi.mocked(loadAppTerminalChannels).mockReturnValue(channels);
   vi.mocked(Browser.OpenURL).mockReset();
@@ -112,12 +113,12 @@ describe('the terminal channels the screen gives the Terminal tool', () => {
     expect(loadAppTerminalChannels).toHaveBeenCalledTimes(1);
   });
 
-  it('come as a way to find the terminals the window left and a way to attach one again, and the way to open a link, and nothing else: no page key, no reconnection signal', async () => {
+  it('come as a way to find the terminals the window left, a way to attach one again, a way to start an ended one again, and the way to open a link, and nothing else: no page key, no reconnection signal', async () => {
     render(<PluginHostScreen />);
     await waitFor(() => {
       expect(world.given.length).toBeGreaterThan(0);
     });
-    expect(Object.keys(drawn()?.terminals ?? {}).sort()).toEqual(['openExternal', 'reattach', 'restore']);
+    expect(Object.keys(drawn()?.terminals ?? {}).sort()).toEqual(['openExternal', 'reattach', 'restart', 'restore']);
   });
 
   it('are what the way to find the terminals the window left asks, when it is asked and not before', async () => {
@@ -144,6 +145,31 @@ describe('the terminal channels the screen gives the Terminal tool', () => {
     expect(drawn()?.terminals?.reattach?.('term-7')).toBe(target);
     expect(attachLocalTerminal).toHaveBeenCalledTimes(1);
     expect(attachLocalTerminal).toHaveBeenCalledWith('term-7', undefined, channels);
+  });
+
+  it('are what the way to start an ended terminal again makes its target through, with the page\'s channels, when it is asked and not before (#695 step 5)', async () => {
+    const target = { plugin: 'host', id: 'local', title: 'Terminal', sessionId: 'tab-3', open: vi.fn() };
+    vi.mocked(localRestartTarget).mockReturnValue(target);
+    render(<PluginHostScreen />);
+    await waitFor(() => {
+      expect(world.given.length).toBeGreaterThan(0);
+    });
+    expect(localRestartTarget).not.toHaveBeenCalled();
+    const made = { id: 'old', command: ['/bin/zsh'] };
+    expect(drawn()?.terminals?.restart?.(made, 'tab-3')).toBe(target);
+    expect(localRestartTarget).toHaveBeenCalledTimes(1);
+    expect(localRestartTarget).toHaveBeenCalledWith(made, 'tab-3', channels);
+  });
+
+  it('carry what the lost terminal was asked to start with into the terminal it attaches again, so that a restart after a take-back keeps the environment and the arguments (#695 step 5)', async () => {
+    vi.mocked(attachLocalTerminal).mockReturnValue({ plugin: 'host', id: 'local', title: 'zsh', sessionId: 'term-7', open: vi.fn() });
+    render(<PluginHostScreen />);
+    await waitFor(() => {
+      expect(world.given.length).toBeGreaterThan(0);
+    });
+    const launch = { command: ['/bin/zsh', '-f'], env: { A: '1' } };
+    drawn()?.terminals?.reattach?.('term-7', { launch: () => launch } as never);
+    expect(attachLocalTerminal).toHaveBeenCalledWith('term-7', undefined, channels, { launch });
   });
 
   it('keep the window\'s slots as they were: the screen writes none for the terminals, which the channels keep themselves', async () => {

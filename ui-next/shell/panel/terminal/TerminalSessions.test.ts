@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { createPanelStore, HOST, PANEL_VERSION, restorePanel, RESTORED_CAUSE, UNLOADED_CAUSE, type PanelState, type PanelStore } from '../../core/panel';
-import type { TerminalDetached, TerminalFeedHandle, TerminalTarget } from './feed';
+import type { TerminalDetached, TerminalFeedHandle, TerminalRestart, TerminalTarget } from './feed';
 import { fakeTerminalFeed, type FakeTerminalFeed, type FakeTerminalFeedOptions } from './testing';
 import { createTerminalSessions, type TerminalSessions } from './TerminalSessions';
 import { TERMINAL_TOOL } from './tool';
@@ -26,6 +26,7 @@ function harness(
     readonly plugins?: readonly string[];
     readonly initial?: PanelState | undefined;
     readonly reattach?: ((id: string) => TerminalTarget) | undefined;
+    readonly restart?: ((restart: TerminalRestart, session: string) => TerminalTarget) | undefined;
     readonly openExternal?: ((url: string) => void | Promise<void>) | undefined;
   } = {},
 ): Harness {
@@ -35,7 +36,7 @@ function harness(
   store.registerTool(TERMINAL_TOOL);
   store.syncPlugins((options.plugins ?? []).map((id) => ({ id, tools: [] })));
   const warn = vi.fn<(message: string, error?: unknown) => void>();
-  const sessions = createTerminalSessions(store, { newId: () => `term-${String(++counter)}`, warn, reattach: options.reattach, openExternal: options.openExternal });
+  const sessions = createTerminalSessions(store, { newId: () => `term-${String(++counter)}`, warn, reattach: options.reattach, restart: options.restart, openExternal: options.openExternal });
   const detach = sessions.attach();
   return {
     store,
@@ -1231,11 +1232,24 @@ describe('a terminal this page lost, and takes back (T2d: its tab says so, and a
       const { r, old, again, open, reattach } = lost();
       await expect(r.sessions.takeBack('term-a')).resolves.toBe(true);
       expect(reattach).toHaveBeenCalledTimes(1);
-      expect(reattach).toHaveBeenCalledWith('term-a');
+      expect(reattach).toHaveBeenCalledWith('term-a', expect.anything());
       expect(open).toHaveBeenCalledTimes(1);
       expect(r.sessions.feedOf('term-a')).toBe(again);
       expect(r.sessions.feedOf('term-a')).not.toBe(old);
       expect(r.sessions.recordOf('term-a')).toMatchObject({ id: 'local', plugin: HOST, snapshot: { state: 'starting' } });
+    });
+
+    it('attaches a terminal by the id the producer says it has when that is not the session\'s: the terminal a restart made for a tab has an id of its own, and the tab\'s is that of the terminal it replaced (#695 step 5)', async () => {
+      const { r, again, reattach } = lost({ old: keyedFeed({ id: 'term-restarted' }) });
+      await expect(r.sessions.takeBack('term-a')).resolves.toBe(true);
+      expect(reattach).toHaveBeenCalledWith('term-restarted', expect.anything());
+      expect(r.sessions.feedOf('term-a')).toBe(again);
+    });
+
+    it('gives the window the feed that was lost with the id, so that what it was asked to start with is carried on to the new feed (#695 step 5)', async () => {
+      const { r, old, reattach } = lost();
+      await r.sessions.takeBack('term-a');
+      expect(reattach).toHaveBeenCalledWith('term-a', old);
     });
 
     it('lets go of the feed it replaces: closed once, and nobody hears it any more; the new feed has the registry for its one listener', async () => {
@@ -2328,5 +2342,226 @@ describe('opening an address outside the app (T3a: what a person follows from a 
     expect(console.warn).toHaveBeenCalledTimes(2);
     expect(console.warn).toHaveBeenNthCalledWith(1, '[terminal] the link could not be opened', broke);
     expect(console.warn).toHaveBeenNthCalledWith(2, '[terminal] the link could not be opened: only http and https addresses are opened');
+  });
+});
+
+// Step 5 of #695: restart an ended terminal. The producer states what a restart is made from (`restart` of the feed, only once the process is over for good); the registry makes the new feed from the target the window makes for it,
+// puts it in the SAME session (the tab keeps its place, its title and its pin), lets the ended feed go, and does it once.
+
+describe('restarting an ended terminal (`restart`)', () => {
+  const spec: TerminalRestart = { id: 'term-old', command: ['/bin/zsh'], cwd: '/work', env: { A: '1' } };
+
+  type Restarting = {
+    readonly h: Harness;
+    readonly old: FakeTerminalFeed;
+    readonly fresh: FakeTerminalFeed;
+    readonly id: string;
+    /** What the window was asked to make a target for, in order. */
+    readonly asked: ReadonlyArray<readonly [TerminalRestart, string]>;
+  };
+
+  function restarting(options: { readonly old?: Parameters<typeof fakeTerminalFeed>[0]; readonly plugin?: string; readonly make?: (feed: FakeTerminalFeed) => TerminalTarget['open']; readonly noWindow?: boolean } = {}): Restarting {
+    const fresh = fakeTerminalFeed({ state: 'starting' });
+    const asked: Array<readonly [TerminalRestart, string]> = [];
+    const h = harness({
+      plugins: options.plugin === undefined ? [] : [options.plugin],
+      ...(options.noWindow === true
+        ? {}
+        : {
+          restart: (made, session) => {
+            asked.push([made, session]);
+            return { plugin: HOST, id: 'local', title: 'Terminal', sessionId: session, open: options.make?.(fresh) ?? (() => fresh) };
+          },
+        }),
+    });
+    const old = fakeTerminalFeed({ state: 'ended', restart: spec, ...options.old });
+    const opened = h.sessions.open({ plugin: options.plugin ?? HOST, id: 'local', title: 'zsh', open: () => old });
+    return { h, old, fresh, id: opened?.id ?? '', asked };
+  }
+
+  it('is offered for an ended terminal the producer says a restart can be made from, and not for one that has no such word', () => {
+    const r = restarting();
+    expect(r.h.sessions.canRestart(r.id)).toBe(true);
+    expect(restarting({ old: { restart: () => undefined } }).h.sessions.canRestart('term-1')).toBe(false);
+    const plain = harness({ restart: () => ({ plugin: HOST, id: 'local', title: 'Terminal', open: () => fakeTerminalFeed() }) });
+    const opened = plain.sessions.open({ plugin: HOST, id: 'local', title: 'Terminal', open: () => fakeTerminalFeed({ state: 'ended' }) });
+    expect(plain.sessions.canRestart(opened?.id ?? '')).toBe(false);
+  });
+
+  it('is not offered for a terminal that runs or starts, even when the producer has a word of what it was made from', () => {
+    for (const state of ['running', 'starting'] as const) {
+      const r = restarting({ old: { state } });
+      expect(r.h.sessions.canRestart(r.id)).toBe(false);
+      expect(r.h.sessions.restart(r.id)).toBe(false);
+      expect(r.asked).toEqual([]);
+      expect(r.old.closed()).toBe(0);
+    }
+  });
+
+  it('is not offered where the window cannot make the target, for a session nobody holds, nor for a plugin\'s terminal', () => {
+    const none = restarting({ noWindow: true });
+    expect(none.h.sessions.canRestart(none.id)).toBe(false);
+    expect(none.h.sessions.restart(none.id)).toBe(false);
+    expect(none.h.sessions.restart('nobody')).toBe(false);
+    const plugin = restarting({ plugin: 'acme' });
+    expect(plugin.h.sessions.canRestart(plugin.id)).toBe(false);
+    expect(plugin.h.sessions.restart(plugin.id)).toBe(false);
+    expect(plugin.asked).toEqual([]);
+  });
+
+  it('makes the new feed from what the producer said and the tab it is for, puts it in the SAME session and lets the ended feed go once', () => {
+    const r = restarting();
+    expect(r.h.sessions.restart(r.id)).toBe(true);
+    expect(r.asked).toEqual([[spec, r.id]]);
+    expect(r.h.sessions.feedOf(r.id)).toBe(r.fresh);
+    expect(r.old.closed()).toBe(1);
+    expect(r.old.listeners()).toBe(0);
+    expect(r.fresh.listeners()).toBe(1);
+    expect(r.fresh.closed()).toBe(0);
+    expect(Object.keys(r.h.store.getSnapshot().sessions)).toEqual([r.id]);
+  });
+
+  it('says which feed the new one continues, so that the screen that shows the ended one keeps its transcript, and nothing of a feed that did not restart', () => {
+    const r = restarting();
+    r.h.sessions.restart(r.id);
+    expect(r.h.sessions.restartedFrom(r.fresh)).toBe(r.old);
+    expect(r.h.sessions.restartedFrom(r.old)).toBeUndefined();
+  });
+
+  it('follows the new feed from then on: the session is starting, then what the feed says', () => {
+    const r = restarting();
+    expect(r.h.store.getSnapshot().sessions[r.id]).toMatchObject({ state: 'ended' });
+    r.h.sessions.restart(r.id);
+    expect(r.h.store.getSnapshot().sessions[r.id]).toMatchObject({ state: 'starting', cause: '' });
+    r.fresh.set({ state: 'running' });
+    expect(r.h.store.getSnapshot().sessions[r.id]).toMatchObject({ state: 'running', cause: '' });
+    r.fresh.set({ state: 'ended', exit: { code: 1 } });
+    expect(r.h.store.getSnapshot().sessions[r.id]).toMatchObject({ state: 'ended' });
+  });
+
+  it('keeps the tab where it was in the strip, under the title it had, and a name the person gave stays theirs', () => {
+    const r = restarting();
+    const before = r.h.sessions.open({ plugin: HOST, id: 'local', title: 'before', open: () => fakeTerminalFeed() });
+    const after = r.h.sessions.open({ plugin: HOST, id: 'local', title: 'after', open: () => fakeTerminalFeed() });
+    const order = () => r.h.store.selectors.sessionIds(r.h.store.getSnapshot(), 'terminal');
+    expect(order()).toEqual([r.id, before?.id, after?.id]);
+    r.h.store.renameSession(r.id, 'build');
+    expect(r.h.sessions.restart(r.id)).toBe(true);
+    expect(order()).toEqual([r.id, before?.id, after?.id]);
+    expect(r.h.store.getSnapshot().sessions[r.id]).toMatchObject({ title: 'build', titlePinned: true });
+    r.fresh.set({ state: 'running', program: 'zsh' });
+    expect(r.h.store.getSnapshot().sessions[r.id]).toMatchObject({ title: 'build', titlePinned: true });
+  });
+
+  it('keeps the title of a tab nobody named, and is told the shell\'s name by the new feed as any terminal of the host is', () => {
+    const r = restarting();
+    expect(r.h.sessions.restart(r.id)).toBe(true);
+    expect(r.h.store.getSnapshot().sessions[r.id]?.title).toBe('zsh');
+    expect(r.h.store.getSnapshot().sessions[r.id]?.titlePinned).toBeUndefined();
+  });
+
+  it('is done once: a second press finds a terminal that starts, and starts nothing, whether it comes after or in the middle of the first', () => {
+    const r = restarting();
+    expect(r.h.sessions.restart(r.id)).toBe(true);
+    expect(r.h.sessions.restart(r.id)).toBe(false);
+    expect(r.asked).toHaveLength(1);
+    const reentrant = restarting({
+      make: () => () => {
+        expect(reentrant.h.sessions.restart(reentrant.id)).toBe(false);
+        return reentrant.fresh;
+      },
+    });
+    expect(reentrant.h.sessions.restart(reentrant.id)).toBe(true);
+    expect(reentrant.asked).toHaveLength(1);
+  });
+
+  it('tells whoever follows the feeds once, when the new feed is the session\'s', () => {
+    const r = restarting();
+    const heard: Array<TerminalFeedHandle | undefined> = [];
+    r.h.sessions.subscribeFeeds(() => heard.push(r.h.sessions.feedOf(r.id)));
+    r.h.sessions.restart(r.id);
+    expect(heard).toEqual([r.fresh]);
+  });
+
+  it('leaves the ended terminal as it was, and can be tried again, when the target cannot open: one warning', () => {
+    const boom = new Error('boom');
+    let attempts = 0;
+    const r = restarting({
+      make: (fresh) => () => {
+        attempts += 1;
+        if (attempts === 1) {
+          throw boom;
+        }
+
+        return fresh;
+      },
+    });
+    expect(r.h.sessions.restart(r.id)).toBe(false);
+    expect(r.h.warn).toHaveBeenCalledWith(expect.stringContaining('could not restart'), boom);
+    expect(r.h.sessions.feedOf(r.id)).toBe(r.old);
+    expect(r.old.closed()).toBe(0);
+    expect(r.h.sessions.canRestart(r.id)).toBe(true);
+    expect(r.h.sessions.restart(r.id)).toBe(true);
+    expect(r.h.sessions.feedOf(r.id)).toBe(r.fresh);
+  });
+
+  it('leaves the ended terminal as it was when what the target opens is not a feed, and closes what it can of it', () => {
+    const close = vi.fn();
+    const r = restarting({ make: () => () => ({ close }) as unknown as FakeTerminalFeed });
+    expect(r.h.sessions.restart(r.id)).toBe(false);
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(r.h.sessions.feedOf(r.id)).toBe(r.old);
+    expect(r.h.warn).toHaveBeenCalled();
+  });
+
+  it('publishes nothing for a tab that was closed while the target opened, and lets the new feed go', () => {
+    const r = restarting({
+      make: (fresh) => () => {
+        r.h.store.closeSession(r.id);
+        return fresh;
+      },
+    });
+    expect(r.h.sessions.restart(r.id)).toBe(false);
+    expect(r.fresh.closed()).toBe(1);
+    expect(r.fresh.listeners()).toBe(0);
+    expect(r.h.sessions.feedOf(r.id)).toBeUndefined();
+  });
+
+  it('is offered after a session was stopped (Stop session): the ended feed is let go of already, and is not closed again', () => {
+    const r = restarting({ old: { state: 'running', restart: () => spec } });
+    r.h.sessions.stopOf(r.id)?.();
+    expect(r.old.closed()).toBe(1);
+    r.old.set({ state: 'ended', exit: { closedBy: 'request' } });
+    expect(r.h.sessions.canRestart(r.id)).toBe(true);
+    expect(r.h.sessions.restart(r.id)).toBe(true);
+    expect(r.h.sessions.feedOf(r.id)).toBe(r.fresh);
+    expect(r.old.closed()).toBe(1);
+  });
+
+  it('is not offered once the page is going away: the feed was left, and the terminal belongs to the page that comes back', () => {
+    const r = restarting({ old: { leave: true } });
+    r.h.sessions.leave();
+    expect(r.h.sessions.canRestart(r.id)).toBe(false);
+    expect(r.h.sessions.restart(r.id)).toBe(false);
+  });
+
+  it('keeps what a failed new feed says: a restart refused at its start is a session that failed, and offers no restart of its own', () => {
+    const r = restarting({ make: () => () => fakeTerminalFeed({ state: 'failed', cause: { stage: 'start', message: 'No shell', code: 'SHELL_UNAVAILABLE' } } as never) });
+    expect(r.h.sessions.restart(r.id)).toBe(true);
+    expect(r.h.store.getSnapshot().sessions[r.id]).toMatchObject({ state: 'failed' });
+    expect(r.h.sessions.canRestart(r.id)).toBe(false);
+  });
+
+  it('is told apart from a take-back: a terminal another tab holds is not restarted, and one that ended is not taken back', async () => {
+    const reattach = vi.fn(() => ({ plugin: HOST, id: 'local', title: 'Terminal', open: () => fakeTerminalFeed() }) satisfies TerminalTarget);
+    const h = harness({ reattach, restart: () => ({ plugin: HOST, id: 'local', title: 'Terminal', open: () => fakeTerminalFeed() }) });
+    const lost = fakeTerminalFeed({ state: 'ended', restart: () => undefined });
+    lost.set({ detached: { by: 'taken-over', free: true } });
+    const opened = h.sessions.open({ plugin: HOST, id: 'local', title: 'Terminal', open: () => lost });
+    expect(h.sessions.canRestart(opened?.id ?? '')).toBe(false);
+    expect(h.sessions.canTakeBack(opened?.id ?? '')).toBe(true);
+    const over = h.sessions.open({ plugin: HOST, id: 'local', title: 'Terminal', open: () => fakeTerminalFeed({ state: 'ended', restart: spec }) });
+    expect(h.sessions.canTakeBack(over?.id ?? '')).toBe(false);
+    expect(h.sessions.canRestart(over?.id ?? '')).toBe(true);
   });
 });

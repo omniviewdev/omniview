@@ -1,0 +1,352 @@
+#!/bin/bash
+# Negative controls for T4-restart, the page half (ui-next/shell/panel/terminal: execFeed.ts, localShell.ts, TerminalSessions.ts, screen.ts, TerminalBody.tsx, state.ts, terminals.ts, terminalChannel.ts).
+# Each fault is put into the real file (a backup is kept and restored on exit, even on Ctrl-C), and the test files of the folder are run with vitest. A control has two halves:
+#   1. with every test, the tests that go red are exactly the ones named for it;
+#   2. with the named tests filtered out (the assertion removed), the same fault passes.
+# Run from the worktree:  bash docs/ui-next/status/T4-restart/page-mutations.sh.txt [control-name]
+WT=$(git rev-parse --show-toplevel) || exit 2
+cd "$WT" || exit 2
+P=ui-next/shell/panel/terminal
+FILES="$P"
+B=$(mktemp -d "${TMPDIR:-/tmp}/t4restart-page.XXXXXX") || exit 2
+current=""
+restore() { if [ -n "$current" ] && [ -f "$B/backup" ]; then cp "$B/backup" "$current"; fi; }
+trap 'restore; rm -rf -- "$B"' EXIT
+only="${1:-}"
+bad=0
+matched=0
+
+# name | file | sed expression | the tests named for it, each as a unique substring of its title, separated by '|'
+run() {
+  name="$1"; file="$2"; expr="$3"; named="$4"
+  [ -n "$only" ] && [ "$only" != "$name" ] && return
+  matched=1
+  cp "$file" "$B/backup"; current="$file"
+  sed -i -E -e "$expr" "$file"
+  if cmp -s "$file" "$B/backup"; then echo "CONTROL $name: FAULT NOT APPLIED"; bad=1; restore; current=""; return; fi
+
+  out=$(pnpm exec vitest run $FILES 2>&1)
+  failed=$(echo "$out" | grep -E '^ FAIL ' | sed -E 's/^ FAIL +[^>]+> //' | sort -u)
+  ok=1
+  if [ -z "$failed" ]; then half1="UNDETECTED (every test passed)"; ok=0
+  else
+    half1="RED in exactly the tests named"
+    # every part names a test that went red, and every test that went red is named by a part
+    while IFS= read -r part; do
+      echo "$failed" | grep -qF -- "$part" || { ok=0; half1="named test did not go red: $part"; }
+    done < <(echo "$named" | tr '|' '\n')
+    while IFS= read -r line; do
+      hit=0
+      while IFS= read -r part; do
+        case "$line" in *"$part"*) hit=1 ;; esac
+      done < <(echo "$named" | tr '|' '\n')
+      [ "$hit" -eq 0 ] && { ok=0; half1="RED outside the named: $line"; }
+    done < <(echo "$failed")
+  fi
+  [ "$ok" -eq 0 ] && bad=1
+
+  # `-t` takes a pattern: every test whose title holds none of the named parts.
+  alternatives=$(echo "$named" | tr '|' '\n' | sed -E 's/[]\[.*^$()+?{|\\]/\\&/g' | paste -sd'|')
+  out2=$(pnpm exec vitest run $FILES -t "^(?!.*($alternatives))" 2>&1)
+  code2=$?
+  if echo "$out2" | grep -qE '^ FAIL '; then half2="without them: STILL RED"; bad=1
+  elif [ "$code2" -ne 0 ]; then half2="without them: the run ended with status $code2 and no FAIL line (not a pass)"; bad=1
+  else half2="without them: PASS (undetected)"; fi
+  restore; current=""
+  echo "CONTROL $name: $half1 | $half2"
+}
+
+# ---- the feed: what a restart is made from, and when ----
+
+run restart-offered-while-running "$P/execFeed.ts" \
+  's/^  let processOver = false;/  let processOver = true;/' \
+  'says nothing while the terminal is starting or runs|is not offered when the connection to the terminal was lost|is not offered when the terminal could not be started|is not offered when the host speaks another version|is not offered for a terminal another tab took'
+
+run restart-not-offered-after-an-end "$P/execFeed.ts" \
+  '/const onEnded = /,/^  };/ s/processOver = true;/processOver = false;/' \
+  'is offered after|is offered once the terminal another tab took has ended|is the id the terminal had|is the shell'"'"'s path alone|takes the directory from the host'"'"'s word|ended while no page held it|runs the shell that actually ran with none of the arguments|restarts as the shell that ran, with none of the arguments asked for the shell that was not there|keeps the arguments when the shell that ran is the one'
+
+run restart-not-offered-for-a-forgotten-terminal "$P/execFeed.ts" \
+  '/const onNotFound = /,/^  };/ s/processOver = true;/processOver = false;/' \
+  'is offered for a terminal the host does not know any more|restarts as the shell that ran with no arguments when the listing said it was replaced'
+
+run restart-directory-from-the-launch "$P/execFeed.ts" \
+  's/\.\.\.\(startedIn === undefined \? \{\} : \{ cwd: startedIn \}\)/...(options.launch?.cwd === undefined ? {} : { cwd: options.launch.cwd })/' \
+  'is the id the terminal had|is the shell'"'"'s path alone|takes the directory from the host'"'"'s word|ended while no page held it'
+
+run restart-drops-the-arguments "$P/execFeed.ts" \
+  's/\[path, \.\.\.\(shellReplaced \? \[\] : \(asked\?\.command\?\.slice\(1\) \?\? \[\]\)\)\]/[path]/' \
+  'is the id the terminal had|ended while no page held it|is offered for a terminal the host does not know any more|keeps the arguments when the shell that ran is the one'
+
+run restart-drops-the-environment "$P/execFeed.ts" \
+  's/, \.\.\.\(env === undefined \? \{\} : \{ env \}\) \};$/ };/' \
+  'is the id the terminal had|ended while no page held it|is offered for a terminal the host does not know any more|says what it was asked to start with|restarts as the shell that ran, with none of the arguments asked for the shell that was not there|tells a take-back the shell that ran'
+
+run restart-ignores-the-resolved-shell "$P/execFeed.ts" \
+  's/const path = startedShell;/const path = undefined as string | undefined;/' \
+  'is the id the terminal had|is the shell'"'"'s path alone|ended while no page held it|is offered after|when the stream drops after its whole replay|runs the shell that actually ran with none of the arguments|restarts as the shell that ran, with none of the arguments asked for the shell that was not there|restarts as the shell that ran with no arguments when the listing said it was replaced'
+
+run params-without-the-tab "$P/execFeed.ts" \
+  "s/params\.tab = options\.tab;/params.tab = '';/" \
+  'is the tab the terminal belongs to and what it was started with|is only the tab for a terminal started with none of it'
+
+run params-without-the-launch "$P/execFeed.ts" \
+  's/params\.launch = JSON\.stringify\(asked\);/void asked;/' \
+  'is the tab the terminal belongs to and what it was started with|is only the tab for a terminal started with none of it|asks for the shell, directory and environment of its launch'
+
+run params-carry-the-directory "$P/execFeed.ts" \
+  's/^    \.\.\.\(command === undefined \|\| command\.length === 0 \? \{\} : \{ command: \[\.\.\.command\] \}\),/    ...(options.launch?.cwd === undefined ? {} : { cwd: options.launch.cwd }), ...(command === undefined || command.length === 0 ? {} : { command: [...command] }),/' \
+  'is nothing for a terminal that asked for the host'"'"'s own choices|asks for the shell, directory and environment of its launch'
+
+run shell-replaced-never-said "$P/execFeed.ts" \
+  's/if \(replacedOf\(answer\)\) \{/if (false) {/' \
+  'says so until the first thing is typed, when the host says it started another shell|runs the shell that actually ran with none of the arguments'
+
+run home-note-is-the-old-one "$P/execFeed.ts" \
+  "s/startNote: 'home-for-removed-directory' \};/startNote: 'home-for-unknown-directory' };/" \
+  'is made again with no directory when the host refuses the directory|keeps the note of the directory when both happened'
+
+# ---- the target, the listing and the channel ----
+
+run restart-reuses-the-ended-id "$P/localShell.ts" \
+  's/if \(!taken\.includes\(id\)\) \{/if (true) {/' \
+  'never makes the id of the ended terminal again|is not opened by an id source that answers|never answers the id of the tab either'
+
+run restart-home-fallback-dropped "$P/localShell.ts" \
+  's/, \.\.\.\(cwd === undefined \? \{\} : \{ homeIfMissing: true \}\) \}\);/ });/' \
+  'asks the host for the ended terminal'"'"'s shell, arguments, directory and environment'
+
+run restart-target-not-the-tab "$P/localShell.ts" \
+  's/^    sessionId: tab,$/    sessionId: restart.id,/' \
+  'is the tab of the ended terminal'"'"'s session'
+
+run restart-target-forgets-the-tab "$P/localShell.ts" \
+  's/createExecFeed\(\{ channels, newId: \(\) => fresh, tab, launch/createExecFeed({ channels, newId: () => fresh, launch/' \
+  'attaches the tab to the new terminal'
+
+run restore-ignores-the-tab "$P/localShell.ts" \
+  's/sessionId: kept\.tab \?\? id,/sessionId: id,/' \
+  'belong to the tab the host lists for them|make one target for a tab two terminals say they belong to, the one that runs'
+
+run restore-keeps-the-ended-one "$P/localShell.ts" \
+  's/return !next\.ended;/return next.ended;/' \
+  'make one target for a tab two terminals say they belong to, the one that runs'
+
+run restore-keeps-the-older-one "$P/localShell.ts" \
+  's/return instantOf\(next\.madeAt\) >= instantOf\(held\.madeAt\);/return instantOf(next.madeAt) <= instantOf(held.madeAt);/' \
+  'make one target for a tab two terminals that ended say they belong to, the one made last|keeps the one made last whichever is listed first'
+
+run restore-believes-any-command "$P/localShell.ts" \
+  's/Array\.isArray\(command\) && command\.every\(\(word\) => typeof word === .string.\)/true/' \
+  'read nothing of a command that is not a list of words|read nothing of a command with a word that is not text'
+
+run restore-believes-any-environment "$P/localShell.ts" \
+  's/\.filter\(\(entry\): entry is \[string, string\] => typeof entry\[1\] === .string.\)/.map((entry) => [entry[0], String(entry[1])] as [string, string])/' \
+  'keep the entries of an environment that are text and drop the others'
+
+run channel-drops-the-params "$P/terminalChannel.ts" \
+  's/params: launch\.params === undefined \? \{\} : \{ \.\.\.launch\.params \}/params: {}/' \
+  'attaches to the terminal what it was given as params'
+
+# ---- the registry ----
+
+run registry-restarts-twice "$P/TerminalSessions.ts" \
+  's/entry\.left \|\| entry\.restarting \|\| entry\.plugin/entry.left || entry.plugin/' \
+  'is done once: a second press'
+
+run registry-restarts-a-running-terminal "$P/TerminalSessions.ts" \
+  "s/spec !== undefined && \(state === 'ended' \|\| state === 'failed'\)/spec !== undefined/" \
+  'is not offered for a terminal that runs or starts'
+
+run registry-restarts-a-plugin-terminal "$P/TerminalSessions.ts" \
+  's/entry\.restarting \|\| entry\.plugin !== HOST \|\| options\.restart/entry.restarting || options.restart/' \
+  'is not offered where the window cannot make the target, for a session nobody holds, nor for a plugin'
+
+run registry-restarts-a-left-terminal "$P/TerminalSessions.ts" \
+  's/if \(entry === undefined \|\| entry\.left \|\| entry\.restarting/if (entry === undefined || entry.restarting/' \
+  'is not offered once the page is going away'
+
+run registry-forgets-the-continuation "$P/TerminalSessions.ts" \
+  's/continuations\.set\(feed, old\.feed\);/void feed;/' \
+  'says which feed the new one continues|draws what the ended terminal still held|puts a new feed in the same session when pressed|puts the keyboard in the screen when the new shell runs|says why a restart that the host refused'
+
+run registry-keeps-the-ended-feed "$P/TerminalSessions.ts" \
+  "s/^    end\(old\);\$/    if (what !== 'restart the terminal') { end(old); }/" \
+  'makes the new feed from what the producer said|leaves the ended feed and listens to the new one alone'
+
+run takeback-attaches-the-tab-id "$P/TerminalSessions.ts" \
+  's/reattach\(old\.feed\.id \?\? session, old\.feed\)/reattach(session, old.feed)/' \
+  'attaches a terminal by the id the producer says it has'
+
+run terminals-drop-the-restart "$P/terminals.ts" \
+  's/createTerminalSessions\(store, \{ reattach, restart, openExternal \}\)/createTerminalSessions(store, { reattach, openExternal })/' \
+  'hands the window'"'"'s way to make the restart'"'"'s target to the registry'
+
+# ---- the screen ----
+
+run screen-acks-the-wrong-feed "$P/screen.ts" \
+  's/owner\?\.ack\(bytes\);/if (owner !== undefined) { feed.ack(bytes); }/' \
+  'credits what the emulator parsed of the ended feed'"'"'s output to that feed'
+
+run screen-forgets-the-size "$P/screen.ts" \
+  's/^      told = undefined;$/      told = told;/' \
+  'tells the new feed the size of the screen at once|tells the new feed the size when the screen is shown again|leaves the ended feed and listens to the new one alone'
+
+run screen-keeps-the-end-line "$P/screen.ts" \
+  "s/^      endLine = '';$/      endLine = endLine;/" \
+  'draws what the new feed holds after the separator'
+
+run screen-enter-with-shift "$P/screen.ts" \
+  's/event\.key === .Enter. && !event\.shiftKey && /event.key === "Enter" \&\& /' \
+  'is only a plain Enter pressed down'
+
+run screen-enter-while-typing "$P/screen.ts" \
+  's/ && !takesInput\(feed\.getSnapshot\(\)\) && deps\.onRestart/ \&\& deps.onRestart/' \
+  'is the shell'"'"'s while the session takes input'
+
+run screen-no-separator "$P/screen.ts" \
+  "s/^const SEPARATOR = .*/const SEPARATOR = '';/" \
+  'keeps the emulator, and with it the transcript|draws what the new feed holds after the separator|draws what the ended feed still holds|puts a new feed in the same session when pressed|draws what the ended terminal still held|draws what the ended feed still holds, and how it ended|when Enter restarts it as when the button does|the separator of a restart, on the real emulator'
+
+run screen-flush-reads-nothing "$P/screen.ts" \
+  '/    flush: \(\) => \{/,/^    },/ s/send\(engine, out\.chunks, out\.marks\);/void out;/' \
+  'draws what the ended feed still holds|draws what the ended terminal still held|keeps a command whose marks the ended feed still held|keeps a command whose marks alone are held'
+
+run screen-continue-keeps-the-old-feed "$P/screen.ts" \
+  's/^      stopFeed = next\.subscribe\(heard\);$/      stopFeed = () => undefined;/' \
+  'listens to the new feed and lets go of the ended one|draws what the new feed holds after the separator|two restarts before the middle feed'"'"'s bytes are parsed, on the real emulator'
+
+# ---- the body and the words ----
+
+run body-new-screen-for-a-restart "$P/TerminalBody.tsx" \
+  's/key = keyOfFeed\(earlier, sessions\);/feedCount += 1; key = feedCount;/' \
+  'puts a new feed in the same session when pressed|draws what the ended terminal still held|puts the keyboard in the screen when the new shell runs|says why a restart that the host refused'
+
+run body-offers-restart-without-the-registry "$P/TerminalBody.tsx" \
+  "s/\(status\.state === 'ended' \|\| status\.state === 'failed'\) && sessions\.canRestart\(id\)/status.state === 'ended' || status.state === 'failed'/" \
+  'is not drawn for an ended terminal the producer says nothing of a restart for|says why a restart that the host refused|is the only lane: one status|says in the lane that the tab that took the terminal has closed'
+
+run body-restart-asks-no-keyboard "$P/TerminalBody.tsx" \
+  's/^    keyboard\.current = true;\n    const done/XX/; /const restart = \(\): boolean => \{/,/^  \};/ s/keyboard\.current = true;/keyboard.current = false;/' \
+  'puts the keyboard in the screen when the new shell runs'
+
+run words-for-another-shell "$P/state.ts" \
+  "s/words: 'Started another shell'/words: 'Started'/" \
+  'says that the terminal started in the home directory because the one it started in was removed'
+
+run words-for-a-removed-directory "$P/state.ts" \
+  "s/note: 'The directory it started in is gone\.'/note: 'The directory is not known.'/" \
+  'says that the terminal started in the home directory because the one it started in was removed'
+
+# ---- review of step 5: the survivors, and what was added ----
+
+run screen-enter-repeat "$P/screen.ts" \
+  's/ && !event\.repeat//' \
+  'does not restart for an Enter that is held'
+
+run body-enter-restart-no-flush "$P/TerminalBody.tsx" \
+  's/^        made\.flush\(\);$/        void made;/' \
+  'when Enter restarts it as when the button does'
+
+run body-button-restart-no-flush "$P/TerminalBody.tsx" \
+  's/^    screen\.flush\(\);$/    void screen;/' \
+  'the last lines of the transcript are not lost to the restart'
+
+run screen-keeps-a-held-replay "$P/screen.ts" \
+  's/^      replayHeld = undefined;$/      replayHeld = replayHeld;/' \
+  'drops a replay the ended feed gave'
+
+run restart-hint-end-not-over "$P/execFeed.ts" \
+  '/if \(hint !== undefined\) \{/,/over\(/ s/processOver = true;/processOver = false;/' \
+  'when the stream drops after its whole replay'
+
+run restart-keeps-args-of-a-missing-shell "$P/execFeed.ts" \
+  's/\.\.\.\(shellReplaced \? \[\] : /...(false ? [] : /' \
+  'runs the shell that actually ran with none of the arguments|restarts as the shell that ran, with none of the arguments asked for the shell that was not there|restarts as the shell that ran with no arguments when the listing said it was replaced'
+
+run feed-says-no-launch "$P/execFeed.ts" \
+  's/^    launch: \(\) => \{$/    launch: () => { return undefined;/' \
+  'says what it was asked to start with|tells a take-back the shell that ran'
+
+run takeback-drops-the-lost-feed "$P/TerminalSessions.ts" \
+  's/reattach\(old\.feed\.id \?\? session, old\.feed\)/reattach(old.feed.id ?? session)/' \
+  'attaches a terminal by the id the producer says it has|attaches the terminal again for the session of its id|gives the window the feed that was lost with the id|is taken back through the way the window was given to attach it again'
+
+run restart-ignores-the-ready-replaced-shell "$P/execFeed.ts" \
+  's/shellReplaced = shellReplaced \|\| ready\.replaced;/void ready;/' \
+  'a feed that attaches learns from the ready that another shell ran|restarts as the shell that ran, with none of the arguments|tells a take-back the shell that ran'
+
+run restore-compares-instants-as-strings "$P/localShell.ts" \
+  's/return instantOf\(next\.madeAt\) >= instantOf\(held\.madeAt\);/return next.madeAt >= held.madeAt;/' \
+  'keeps the one made last whichever is listed first'
+
+run restore-ignores-the-requested-shell "$P/localShell.ts" \
+  's/const replaced = typeof shell/const replaced = false \&\& typeof shell/' \
+  'says the shell was replaced when the listing names the shell that was asked for'
+
+run screen-keeps-the-old-replay-running "$P/screen.ts" \
+  's/^      replaying = undefined;$/      replaying = replaying;/' \
+  'writes no more of the ended feed'"'"'s replay after the restart'
+
+run gutter-seal-keeps-running "$P/gutter/commandGutter.ts" \
+  '/    seal: \(\) => \{/,/^    },/ s/settle\(running, .incomplete.\);/void running;/' \
+  'keeps the commands of the old terminal with its transcript'
+
+run gutter-seal-keeps-the-ids "$P/gutter/commandGutter.ts" \
+  's/^      epoch \+= 1;$/      epoch += 0;/' \
+  'lets the new terminal count from c1 again|runs again a command of the terminal before the restart WITHOUT Enter|types its line without Enter, and says it came from the terminal before|types nothing of an earlier terminal'"'"'s multi-line command|refuses the line of an earlier terminal'"'"'s proven command when it has a line break|types nothing into the new shell: the emulator'"'"'s paste turns the line feed into a carriage return'
+
+run screen-restart-does-not-seal "$P/screen.ts" \
+  's/^      gutter\?\.seal\(\);$/      void gutter;/' \
+  'keeps the commands of the ended terminal, and a command it was running|keeps a mark in an old write that the emulator has not parsed at the restart|runs again a command of the terminal before the restart WITHOUT Enter|types nothing of an earlier terminal'"'"'s multi-line command|types nothing into the new shell: the emulator'"'"'s paste turns the line feed into a carriage return'
+
+run gutter-seal-keeps-the-prompt "$P/gutter/commandGutter.ts" \
+  '/    seal: \(\) => \{/,/^    },/ { /release\(pending\./d; /pending = \{\};/d }' \
+  'lets go of the prompt that was waiting'
+
+run screen-seal-at-once "$P/screen.ts" \
+  's/^      sealAfterQueued\(emulator\);$/      gutter?.seal();/' \
+  'keeps a mark in an old write that the emulator has not parsed at the restart|writes no more of the ended feed'"'"'s replay after the restart|does not send to the new feed what the OLD feed'"'"'s queued bytes make|sends nothing the middle feed'"'"'s queued bytes make the emulator answer to the third feed|still mutes what the old queued bytes make the emulator answer'
+
+run screen-flush-drops-marks "$P/screen.ts" \
+  '/    flush: \(\) => \{/,/^    },/ s/if \(out\.chunks\.length === 0 \&\& out\.marks === undefined\) \{/if (out.chunks.length === 0) {/' \
+  'keeps a command whose marks'
+
+run screen-flush-sends-no-marks "$P/screen.ts" \
+  '/    flush: \(\) => \{/,/^    },/ s/send\(engine, out\.chunks, out\.marks\);/send(engine, out.chunks);/' \
+  'keeps a command whose marks'
+
+run gutter-old-command-with-enter "$P/gutter/commandGutter.ts" \
+  's/enter: !earlier,/enter: true,/' \
+  'types its line without Enter, and says it came from the terminal before|runs again a command of the terminal before the restart WITHOUT Enter'
+
+run screen-earlier-words-dropped "$P/screen.ts" \
+  's/plan\.earlier === true \? RERUN_EARLIER : //' \
+  'runs again a command of the terminal before the restart WITHOUT Enter'
+
+run gutter-old-multiline-command-typed "$P/gutter/commandGutter.ts" \
+  's/if \(earlier && \/\[\\r\\n\]\/\.test\(entry\.command\)\) \{/if (false) {/' \
+  'refuses the line of an earlier terminal'"'"'s proven command when it has a line break|types nothing of an earlier terminal'"'"'s multi-line command|types nothing into the new shell: the emulator'"'"'s paste turns the line feed into a carriage return'
+
+run screen-draining-never-cleared "$P/screen.ts" \
+  's/^      draining = restarts !== mine;$/      draining = true;/' \
+  'reaches the new feed: the barrier after the old writes ends the muting|writes no more of the ended feed'"'"'s replay after the restart|answers a cursor position query of the NEW feed|sends nothing the middle feed'"'"'s queued bytes make the emulator answer to the third feed|answers the new feed'"'"'s query: the muting is set before the barrier is queued'
+
+run screen-draining-not-set "$P/screen.ts" \
+  's/^    draining = true;$/    draining = false;/' \
+  'still mutes what the old queued bytes make the emulator answer|writes no more of the ended feed'"'"'s replay after the restart|does not send to the new feed what the OLD feed'
+
+run screen-barrier-ignores-newer-restart "$P/screen.ts" \
+  's/^      draining = restarts !== mine;$/      draining = false;/' \
+  'sends nothing the middle feed'"'"'s queued bytes make the emulator answer to the third feed'
+
+run guard-multiline-bracketed-paste-off "$P/gutter/commandGutter.ts" \
+  's/if \(earlier \&\& \/\[\\r\\n\]\/\.test\(entry\.command\)\) \{/if (false) {/' \
+  'types nothing into the new shell: the emulator'"'"'s paste turns the line feed into a carriage return|refuses the line of an earlier terminal'"'"'s proven command when it has a line break|types nothing of an earlier terminal'"'"'s multi-line command'
+
+run screen-muting-set-after-the-barrier "$P/screen.ts" \
+  '/^    draining = true;$/d; /function sealAfterQueued/,/^  }$/ s/^    \}\);$/    });\n    draining = true;/' \
+  'answers the new feed'"'"'s query: the muting is set before the barrier is queued'
+
+if [ -n "$only" ] && [ "$matched" -eq 0 ]; then echo "no control named $only"; exit 2; fi
+exit $bad

@@ -3,7 +3,7 @@ import { HOST } from '../../core/panel';
 import type { TerminalChannels } from './channel';
 import { createExecFeed } from './execFeed';
 import type { TerminalFeedHandle } from './feed';
-import { attachLocalTerminal, localHereTarget, localProfileTarget, localShellTarget, restoreLocalTerminals } from './localShell';
+import { attachLocalTerminal, localHereTarget, localProfileTarget, localRestartTarget, localShellTarget, restoreLocalTerminals } from './localShell';
 import { appTerminalChannels } from './terminalChannel';
 
 // The host's own shell as a feed, on the terminal channel: `localShell.ts` only maps the targets of the Terminal tool onto `TerminalChannels` (`channel.ts`): which feed a target opens, under which id, with which lease, and
@@ -278,4 +278,162 @@ describe('the name of a terminal the host started', () => {
       expect(retitle?.({ program: 'zsh' } as never)).toBe('zsh');
     });
   }
+});
+
+describe('the target of a terminal that stands in for an ended one (restart, #695 step 5)', () => {
+  const ended = { id: 'old-terminal', command: ['/usr/bin/zsh', '-l'], cwd: '/work', env: { A: '1' } } as const;
+
+  it('is the tab of the ended terminal\'s session, so the tab keeps its place: the session id is the tab\'s, and the terminal\'s id is another', () => {
+    const target = localRestartTarget(ended, 'tab-3', channels(), () => 'fresh-1');
+    expect(target).toMatchObject({ plugin: HOST, id: 'local', title: 'Terminal', sessionId: 'tab-3' });
+    target.open();
+    expect(made().newId?.()).toBe('fresh-1');
+  });
+
+  it('asks the host for the ended terminal\'s shell, arguments, directory and environment, and for the directory to fall back to home when it was removed since', () => {
+    localRestartTarget(ended, 'tab-3', channels(), () => 'fresh-1').open();
+    expect(made().launch).toEqual({ command: ['/usr/bin/zsh', '-l'], cwd: '/work', env: { A: '1' } });
+    expect(made().homeIfMissing).toBe(true);
+  });
+
+  it('asks for what it is given and for nothing else: no shell is the host\'s default, no directory and no environment are the host\'s own choices', () => {
+    localRestartTarget({ id: 'old-terminal' }, 'tab-3', channels(), () => 'fresh-1').open();
+    expect(made().launch).toEqual({});
+    expect(made()).not.toHaveProperty('homeIfMissing');
+  });
+
+  it('attaches the tab to the new terminal, which the host lists back with it', () => {
+    localRestartTarget(ended, 'tab-3', channels(), () => 'fresh-1').open();
+    expect(made().tab).toBe('tab-3');
+  });
+
+  it('never makes the id of the ended terminal again: an id that is the same is asked for another', () => {
+    const answers = ['old-terminal', 'old-terminal', 'fresh-2'];
+    localRestartTarget(ended, 'tab-3', channels(), () => answers.shift() ?? 'never').open();
+    expect(made().newId?.()).toBe('fresh-2');
+  });
+
+  it('is not opened by an id source that answers the ended terminal\'s id for ever: it refuses, so that no host meets the id again', () => {
+    const target = localRestartTarget(ended, 'tab-3', channels(), () => 'old-terminal');
+    expect(() => target.open()).toThrow(/id/);
+    expect(createExecFeed).not.toHaveBeenCalled();
+  });
+
+  it('never answers the id of the tab either: a tab and the terminal of a restart are told apart', () => {
+    const answers = ['tab-3', 'fresh-3'];
+    localRestartTarget(ended, 'tab-3', channels(), () => answers.shift() ?? 'never').open();
+    expect(made().newId?.()).toBe('fresh-3');
+  });
+
+  it('is named by the title a program set while it runs and the shell\'s name otherwise, as every terminal of the host is', () => {
+    const { retitle } = localRestartTarget(ended, 'tab-3', channels(), () => 'fresh-1');
+    expect(retitle?.({ program: 'zsh', title: 'vim: notes' } as never)).toBe('vim: notes');
+    expect(retitle?.({ program: 'zsh' } as never)).toBe('zsh');
+  });
+
+  it('uses the app\'s channels when it is given none', () => {
+    const app = channels();
+    vi.mocked(appTerminalChannels).mockReturnValue(app);
+    localRestartTarget(ended, 'tab-3').open();
+    expect(made().channels).toBe(app);
+  });
+});
+
+describe('the terminals a page that reloaded finds again: the tab, the shell and what they were started with (`params`)', () => {
+  const listed = (id: string, extra: Record<string, unknown> = {}) => ({ id, shell: { name: 'zsh', path: '/usr/bin/zsh' }, ...extra });
+
+  it('belong to the tab the host lists for them (`params.tab`), so that a restarted terminal finds the tab it replaced; with none the tab is the terminal\'s own id', async () => {
+    const targets = await restoreLocalTerminals(channels([listed('fresh', { params: { tab: 'tab-3' } }), listed('plain', { params: {} }), listed('bare')]));
+    expect(targets.map((target) => target.sessionId)).toEqual(['tab-3', 'plain', 'bare']);
+  });
+
+  it('attach to their terminal by its own id and say the shell\'s path and what it was started with, once they are opened', async () => {
+    const launch = JSON.stringify({ command: ['/usr/bin/zsh', '-l'], env: { A: '1' } });
+    const [target] = await restoreLocalTerminals(channels([listed('fresh', { params: { tab: 'tab-3', launch } })]));
+    target?.open();
+    expect(made().attach).toStrictEqual({ id: 'fresh', program: 'zsh', shell: '/usr/bin/zsh', launch: { command: ['/usr/bin/zsh', '-l'], env: { A: '1' } } });
+  });
+
+  it('say nothing of a launch the listing does not have, and attach as before', async () => {
+    const [target] = await restoreLocalTerminals(channels([{ id: 'a', shell: { name: 'zsh' } }]));
+    target?.open();
+    expect(made().attach).toStrictEqual({ id: 'a', program: 'zsh' });
+  });
+
+  it.each([
+    ['a launch that is not JSON', 'not json'],
+    ['a launch that is not an object', '[1]'],
+    ['a command that is not a list of words', JSON.stringify({ command: 'zsh', env: { A: '1' } })],
+    ['a command with a word that is not text', JSON.stringify({ command: ['zsh', 7] })],
+    ['an environment that is not names and text', JSON.stringify({ env: 'A=1' })],
+  ])('read nothing of %s, which anyone who can name a terminal may have attached', async (_what, launch) => {
+    const [target] = await restoreLocalTerminals(channels([listed('a', { params: { launch } })]));
+    target?.open();
+    expect(made().attach).not.toHaveProperty('launch');
+  });
+
+  it('keep the entries of an environment that are text and drop the others', async () => {
+    const launch = JSON.stringify({ env: { A: '1', B: 2, C: null, D: '' } });
+    const [target] = await restoreLocalTerminals(channels([listed('a', { params: { launch } })]));
+    target?.open();
+    expect(made().attach?.launch).toEqual({ env: { A: '1', D: '' } });
+  });
+
+  it.each([
+    ['an empty one', ''],
+    ['one that is not text', 7],
+  ])('take the terminal\'s own id for the tab when the tab it lists is %s', async (_what, tab) => {
+    const targets = await restoreLocalTerminals(channels([listed('a', { params: { tab } })]));
+    expect(targets.map((target) => target.sessionId)).toEqual(['a']);
+  });
+
+  it('make one target for a tab two terminals say they belong to, the one that runs: the ended one the restart replaced may still be listed', async () => {
+    const targets = await restoreLocalTerminals(
+      channels([
+        listed('old', { params: { tab: 'tab-3' }, ended: { reason: 'exited' }, created_at: '2026-11-26T10:00:00Z' }),
+        listed('fresh', { params: { tab: 'tab-3' }, created_at: '2026-11-26T11:00:00Z' }),
+        listed('other', { params: {} }),
+      ]),
+    );
+    expect(targets.map((target) => [target.sessionId, target.ended])).toEqual([['tab-3', undefined], ['other', undefined]]);
+    targets[0]?.open();
+    expect(made().attach).toMatchObject({ id: 'fresh' });
+  });
+
+  it('make one target for a tab two terminals that ended say they belong to, the one made last, whichever the host lists first', async () => {
+    const targets = await restoreLocalTerminals(
+      channels([
+        listed('newer', { params: { tab: 'tab-3' }, ended: { reason: 'exited' }, created_at: '2026-11-26T11:00:00Z' }),
+        listed('older', { params: { tab: 'tab-3' }, ended: { reason: 'exited' }, created_at: '2026-11-26T10:00:00Z' }),
+      ]),
+    );
+    expect(targets).toHaveLength(1);
+    targets[0]?.open();
+    expect(made().attach).toMatchObject({ id: 'newer' });
+  });
+});
+
+describe('review of #791: which of two ended terminals of a tab is the later, by instant', () => {
+  const ended = (id: string, madeAt: string) => ({ id, shell: { name: 'zsh' }, params: { tab: 'tab-3' }, ended: { reason: 'exited' }, created_at: madeAt });
+
+  it.each([
+    ['a fraction trimmed of its zeros', '2026-11-26T10:00:00Z', '2026-11-26T10:00:00.1Z'],
+    ['fractions of different length', '2026-11-26T10:00:00.12Z', '2026-11-26T10:00:00.2Z'],
+    ['nanoseconds', '2026-11-26T10:00:00.123456789Z', '2026-11-26T10:00:00.123456790Z'],
+  ])('keeps the one made last whichever is listed first: %s', async (_what, older, newer) => {
+    for (const order of [[ended('old', older), ended('new', newer)], [ended('new', newer), ended('old', older)]]) {
+      const [target] = await restoreLocalTerminals(channels(order));
+      target?.open();
+      expect(made().attach).toMatchObject({ id: 'new' });
+    }
+  });
+});
+
+describe('review of #791: a replaced shell is listed with what was asked for it', () => {
+  it('says the shell was replaced when the listing names the shell that was asked for, so that a restart gives its arguments to nobody', async () => {
+    const launch = JSON.stringify({ command: ['/opt/gone/zsh', '--no-rcs'] });
+    const [target] = await restoreLocalTerminals(channels([{ id: 'a', shell: { name: 'bash', path: '/bin/bash', requested: '/opt/gone/zsh' }, params: { launch } }]));
+    target?.open();
+    expect(made().attach).toMatchObject({ replaced: true });
+  });
 });

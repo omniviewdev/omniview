@@ -3,7 +3,7 @@ import type { ISearchOptions, SearchAddon } from '@xterm/addon-search';
 import { Terminal, type IBuffer, type IDecoration, type ILink, type ILinkProvider } from '@xterm/xterm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FIND_LIMIT, FULL_RESET, modesPrologue, type Engine, type EngineAppearance, type EngineLoader, type FindOptions, type FindState, type Finder, type LinkHandler, type LinkHover } from './engine';
-import type { TerminalModes, TerminalReplay } from './feed';
+import type { TerminalMark, TerminalModes, TerminalReplay } from './feed';
 import { findDecorations } from './findColours';
 import { createScreen, SCROLLBACK, type ScreenDeps, type TerminalScreen } from './screen';
 import { createScreenReaderChoice } from './screenReader';
@@ -845,6 +845,151 @@ describe('the screen over a real emulator', () => {
         document.removeEventListener('keydown', giveKeyCode, true);
         close();
       }
+    });
+  });
+
+  // Review of #791: the separator a restart writes between the ended process and the new shell, on the real emulator. DECSTR resets the saved cursor and `?1049l` restores it, which homed the cursor and wrote over the transcript.
+  describe('what the real emulator answers across a restart (review of #791)', () => {
+    /** Runs the frames the screen asked for, one round. */
+    const runFrames = (frames: Array<() => void>): void => {
+      for (const callback of frames.splice(0)) {
+        callback();
+      }
+    };
+
+    it('answers a cursor position query of the NEW feed\'s output to the new feed while the old feed\'s bytes are still queued in the emulator: the muting ends at the barrier after the old writes, not when nothing is pending', async () => {
+      const frames: Array<() => void> = [];
+      const feed = fakeTerminalFeed();
+      const { screen, terminal } = await showOver(feed, undefined, frames);
+      feed.push(`old output\r\n${'x'.repeat(2_000)}\r\n`);
+      runFrames(frames);
+      feed.set({ state: 'ended', exit: { code: 0 } });
+      const next = fakeTerminalFeed({ state: 'starting' });
+      // No timer has run: the emulator has parsed none of what it was written, and the new feed's query is queued behind it.
+      screen.continueWith(next);
+      next.set({ state: 'running' });
+      next.push('\u001b[6n');
+      runFrames(frames);
+      await settle();
+      expect(next.replies().join('')).toMatch(/^\u001b\[\d+;\d+R$/);
+      expect(feed.replies(), 'nothing the old bytes drew is sent to the ended feed').toEqual([]);
+      expect(terminal.buffer.active.type).toBe('normal');
+    });
+
+    it('does not send to the new feed what the OLD feed\'s queued bytes make the emulator answer (a query that was in them)', async () => {
+      const frames: Array<() => void> = [];
+      const feed = fakeTerminalFeed();
+      const { screen } = await showOver(feed, undefined, frames);
+      feed.push('\u001b[6n');
+      runFrames(frames);
+      feed.set({ state: 'ended', exit: { code: 0 } });
+      const next = fakeTerminalFeed({ state: 'starting' });
+      screen.continueWith(next);
+      next.set({ state: 'running' });
+      await settle();
+      expect(next.replies()).toEqual([]);
+    });
+  });
+
+  describe('an old multi-line command after a restart, on the real emulator with bracketed paste off (review of #791)', () => {
+    it('types nothing into the new shell: the emulator\'s paste turns the line feed into a carriage return, which would run the first line', async () => {
+      const at = (kind: TerminalMark['kind'], extra: Partial<TerminalMark>, offset: number) => ({ mark: { kind, at: 0, end: 1, trust: 'unverified' as const, ...extra }, at: offset });
+      const host = document.createElement('div');
+      document.body.append(host);
+      const feed = fakeTerminalFeed();
+      const { screen, terminal } = await showOver(feed, host);
+      feed.push('$ a\r\n', [at('prompt-start', { id: 'c1' }, 0), at('input-start', { id: 'c1' }, 2), at('command-start', { id: 'c1', trust: 'nonce', command: 'touch /tmp/x\necho b' }, 5), at('command-end', { id: 'c1', exit: 0, durationMs: 5 }, 5)]);
+      await settle();
+      feed.set({ state: 'ended', exit: { code: 0 } });
+      await settle();
+      const next = fakeTerminalFeed({ state: 'starting' });
+      screen.continueWith(next);
+      next.set({ state: 'running' });
+      next.push('$ ');
+      await settle();
+      expect(terminal.modes.bracketedPasteMode).toBe(false);
+      screen.commands.rerun();
+      await settle();
+      expect(next.typed()).toEqual([]);
+      host.remove();
+    });
+  });
+
+  describe('two restarts before the middle feed\'s bytes are parsed, on the real emulator (review of #791)', () => {
+    it('sends nothing the middle feed\'s queued bytes make the emulator answer to the third feed: only the barrier of the LAST restart ends the muting', async () => {
+      const frames: Array<() => void> = [];
+      const feed = fakeTerminalFeed();
+      const { screen } = await showOver(feed, undefined, frames);
+      const run = (): void => {
+        for (const callback of frames.splice(0)) {
+          callback();
+        }
+      };
+
+      feed.set({ state: 'ended', exit: { code: 0 } });
+      const second = fakeTerminalFeed({ state: 'running' });
+      screen.continueWith(second);
+      second.push(`\u001b[6n\u001b[5n${'y'.repeat(2_000)}`);
+      run();
+      second.set({ state: 'ended', exit: { code: 0 } });
+      const third = fakeTerminalFeed({ state: 'running' });
+      screen.continueWith(third);
+      await settle();
+      expect(second.replies(), 'the middle feed ended').toEqual([]);
+      expect(third.replies(), 'what the middle feed\'s bytes drew is not for the third shell').toEqual([]);
+      // The third feed's own query is answered to it: the muting ended at the barrier of the last restart, and is not on for ever.
+      third.push('\u001b[6n');
+      run();
+      await settle();
+      expect(third.replies().join(''), 'the third feed\'s own cursor position query is answered').toMatch(/^\u001b\[\d+;\d+R$/);
+    });
+  });
+
+  describe('the separator of a restart, on the real emulator', () => {
+    const rows = (terminal: Terminal): string[] => Array.from({ length: terminal.buffer.normal.length }, (_, index) => terminal.buffer.normal.getLine(index)?.translateToString(true) ?? '');
+
+    async function restarted(program: string): Promise<{ readonly terminal: Terminal; readonly next: FakeTerminalFeed }> {
+      const feed = fakeTerminalFeed();
+      const { screen, terminal } = await showOver(feed);
+      feed.push(`transcript one\r\ntranscript two\r\n$ ${program}`);
+      await settle();
+      feed.set({ state: 'ended', exit: { signal: 'SIGKILL' } });
+      await settle();
+      const next = fakeTerminalFeed({ state: 'starting' });
+      screen.continueWith(next);
+      next.set({ state: 'running' });
+      next.push('$ new');
+      await settle();
+      return { terminal, next };
+    }
+
+    const expectKept = (terminal: Terminal): void => {
+      expect(terminal.buffer.active.type).toBe('normal');
+      const lines = rows(terminal).filter((line) => line !== '');
+      const at = (text: string): number => lines.findIndex((line) => line.includes(text));
+      expect(at('transcript one')).toBe(0);
+      expect(at('transcript two')).toBe(1);
+      expect(at('[Restarted]')).toBeGreaterThan(at('transcript two'));
+      expect(at('$ new')).toBe(at('[Restarted]') + 1);
+      expect(terminal.modes).toMatchObject({ mouseTrackingMode: 'none', bracketedPasteMode: false, sendFocusMode: false, applicationCursorKeysMode: false });
+    };
+
+    it('keeps the transcript above, the prompt after [Restarted] and every mode off, for vim killed on the alternate screen with the mouse on', async () => {
+      const { terminal } = await restarted('vim\r\n\u001b[?1049h\u001b[?1000h\u001b[?1002h\u001b[?1006h\u001b[?2004h\u001b[?1h\u001b[?1004hvim screen');
+      expectKept(terminal);
+    });
+
+    it('keeps it for a program with the any-motion mouse on, on the normal screen', async () => {
+      const { terminal } = await restarted('top\r\n\u001b[?1003h\u001b[?1015h');
+      expectKept(terminal);
+    });
+
+    it('keeps it for a program that set a scroll region (3;6), and the region is reset: a line feed at its last row moves the cursor on', async () => {
+      const { terminal, next } = await restarted('less\r\n\u001b[3;6r\u001b[10;1H');
+      expectKept(terminal);
+      next.push('\u001b[6;1H\n');
+      await settle();
+      expect(terminal.buffer.normal.cursorY).toBeGreaterThanOrEqual(6);
     });
   });
 });

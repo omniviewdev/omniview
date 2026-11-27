@@ -623,3 +623,65 @@ describe('what the gutter tells', () => {
     expect(events.at(-1)).toEqual({ kind: 'hover', command: undefined, x: 0, y: 0 });
   });
 });
+
+describe('a new terminal takes the place of an ended one (`seal`, #695 step 5)', () => {
+  it('keeps the commands of the old terminal with its transcript, ends the one that ran as incomplete, and has no command running', async () => {
+    const { gutter, feed, prompt, run } = setup();
+    await run('true', '', { id: 'c1', exit: 0 });
+    await prompt('c2');
+    await feed('sleep 9\r\n', [C('sleep 9', 'c2')]);
+    expect(gutter.busy()).toBe(true);
+    gutter.seal();
+    expect(gutter.busy()).toBe(false);
+    expect(gutter.commands().map((one) => [one.id, one.state])).toEqual([['c1', 'success'], ['c2', 'incomplete']]);
+  });
+
+  it('lets the new terminal count from c1 again: its commands never meet the old ones by id, and its end mark closes its own command', async () => {
+    const { gutter, feed, run } = setup();
+    await run('old', 'out\r\n', { id: 'c1', exit: 7 });
+    gutter.seal();
+    await run('new', 'out\r\n', { id: 'c1', exit: 0 });
+    const commands = gutter.commands();
+    expect(commands.map((one) => one.state)).toEqual(['failure', 'success']);
+    expect(new Set(commands.map((one) => one.id)).size).toBe(2);
+    await feed('', []);
+    expect(gutter.output(commands[1])).toBe('out');
+    expect(gutter.output(commands[0])).toBe('out');
+  });
+
+  it('lets go of the prompt that was waiting: the new terminal\'s first command does not take the old terminal\'s line', async () => {
+    const { gutter, feed } = setup();
+    await feed('old $ ', [A('c1'), B('c1')]);
+    gutter.seal();
+    await feed('\r\nnew $ x\r\n', [C('x', 'c1')]);
+    expect(gutter.commands().map((one) => one.line), 'a start with no prompt of its own is on its own line, not on the old prompt\'s').toEqual([2]);
+  });
+});
+
+describe('running again a command of the terminal before a restart (#695 step 5)', () => {
+  it('types its line without Enter, and says it came from the terminal before: the old shell\'s proof does not hold for the new one, and its directory may differ; a command of the new terminal is proven as ever', async () => {
+    const { gutter, run } = setup();
+    await run('make test', 'ok\r\n', { id: 'c1', exit: 0 });
+    gutter.seal();
+    await run('ls', 'x\r\n', { id: 'c1', exit: 0 });
+    const [old, fresh] = gutter.commands();
+    expect(gutter.rerun(old)).toEqual({ text: 'make test', enter: false, earlier: true });
+    expect(gutter.rerun(fresh)).toEqual({ text: 'ls', enter: true });
+  });
+});
+
+describe('review of #791: an old command with a line break is not typed (#695 step 5)', () => {
+  it('refuses the line of an earlier terminal\'s proven command when it has a line break: it is typed without Enter, and with bracketed paste off a pasted line feed is a carriage return that runs its first line', async () => {
+    const { gutter, run } = setup();
+    await run('echo a\necho b', 'a\r\nb\r\n', { id: 'c1', exit: 0 });
+    gutter.seal();
+    const [old] = gutter.commands();
+    expect(gutter.rerun(old)).toBeUndefined();
+  });
+
+  it('still runs a multi-line proven command of the terminal that runs, as before: the shell proved it and Enter is pressed', async () => {
+    const { gutter, run } = setup();
+    await run('echo a\necho b', 'a\r\nb\r\n', { id: 'c1', exit: 0 });
+    expect(gutter.rerun()).toEqual({ text: 'echo a\necho b', enter: true });
+  });
+});

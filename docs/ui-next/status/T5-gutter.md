@@ -37,3 +37,5 @@ Linux amd64, Node, the packages built with `OMNIVIEW_UI=next`. SYNTHETIC far end
 ## Backend catalog
 
 - Nothing for the host or the SDK: the page reads the marks the host already sends. The SDK's X4 (pods) would send the same frame and the page would draw the same gutter.
+
+- **Run again after a restart (#695 step 5).** A command of an earlier terminal (before a restart, `seal`) is typed WITHOUT Enter and the person is told it came from the terminal before the restart: the old shell's proof does not hold for the new shell, and its directory may differ. A command of the new terminal is run as ever. A restart keeps the old terminal's commands (marks still held are placed first: `flush`), ends the one that ran as incomplete and gives the new terminal ids of its own.

@@ -4,7 +4,7 @@ import { useSyncExternalStore } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPanelStore, HOST, type PanelStore, type Session } from '../../core/panel';
 import { RenamingProvider, type Renaming } from '../renaming';
-import type { TerminalFeedHandle, TerminalFeedSnapshot, TerminalTarget } from './feed';
+import type { TerminalFeedHandle, TerminalFeedSnapshot, TerminalRestart, TerminalTarget } from './feed';
 import { createScreenReaderChoice, SCREEN_READER_COMMAND, type ScreenReaderChoice } from './screenReader';
 import { sessionStateOf } from './state';
 import { fakeEngineLoader, fakeTerminalFeed, type FakeEngineLoader, type FakeTerminalFeed } from './testing';
@@ -1037,5 +1037,266 @@ describe('the feed of a session, as the registry holds it (the body follows the 
     expect(feedListeners()).toBe(1);
     cleanup();
     expect(feedListeners()).toBe(0);
+  });
+});
+
+// Step 5 of #695: restart an ended terminal. The lane of a session whose terminal is over for good (the producer says a restart can be made from it) offers Restart, and Enter in the screen is its key. A press puts a new feed in the SAME
+// session through the registry, and the screen goes on with it: the same emulator, so the transcript of the ended terminal stays above the new shell. Against the real registry and a fake emulator.
+
+const RESTART = { name: 'Restart' } as const;
+
+type Restartable = {
+  readonly store: PanelStore;
+  readonly sessions: TerminalSessions;
+  readonly loader: FakeEngineLoader;
+  readonly old: FakeTerminalFeed;
+  readonly fresh: FakeTerminalFeed;
+  readonly id: string;
+  readonly asked: ReadonlyArray<readonly [TerminalRestart, string]>;
+  /** The terminal's process is over for good, as the producer says it. */
+  readonly end: (patch?: Partial<TerminalFeedSnapshot>) => void;
+};
+
+async function mountRestartable(): Promise<Restartable> {
+  counter = 0;
+  const store = createPanelStore({ now: () => 1_000, newId: () => `s${String(++counter)}` });
+  store.registerTool(TERMINAL_TOOL);
+  const fresh = fakeTerminalFeed({ state: 'starting' });
+  const asked: Array<readonly [TerminalRestart, string]> = [];
+  const spec: TerminalRestart = { id: 'term-old', command: ['/bin/zsh'], cwd: '/work' };
+  const sessions = createTerminalSessions(store, {
+    newId: () => `term-${String(++counter)}`,
+    restart: (made, session) => {
+      asked.push([made, session]);
+      return { plugin: HOST, id: 'local', title: 'Terminal', sessionId: session, open: () => fresh };
+    },
+  });
+  sessions.attach();
+  let over = false;
+  const old = fakeTerminalFeed({ state: 'running', restart: () => (over ? spec : undefined) });
+  const loader = fakeEngineLoader();
+  const reader = createScreenReaderChoice();
+  const id = sessions.open({ plugin: HOST, id: 'local', title: 'Terminal', open: () => old })?.id ?? '';
+  function Harness() {
+    const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
+    const session = state.sessions[id];
+    return session === undefined ? null : <TerminalBody sessions={sessions} session={session} visible load={loader.load} screenReader={reader} />;
+  }
+
+  render(<Harness />);
+  await flush();
+  return {
+    store,
+    sessions,
+    loader,
+    old,
+    fresh,
+    id,
+    asked,
+    end: (patch = {}) => {
+      over = true;
+      act(() => {
+        old.set({ state: 'ended', exit: { code: 0 }, ...patch });
+      });
+    },
+  };
+}
+
+describe('the lane\'s Restart', () => {
+  it('is not drawn while the terminal runs, and is drawn once the producer says its process is over for good: a button at the end of the lane, after the words of how it ended', async () => {
+    const r = await mountRestartable();
+    expect(page.queryByRole('button', RESTART)).toBeNull();
+    r.end({ exit: { code: 3 } });
+    const lane = page.getByRole('status');
+    expect(lane).toHaveTextContent('Exited with code 3');
+    const button = within(lane).queryByRole('button', RESTART);
+    expect(button).toBeInTheDocument();
+    expect(lane.lastElementChild?.contains(button)).toBe(true);
+  });
+
+  it('is not drawn for an ended terminal the producer says nothing of a restart for: a terminal another tab took, or whose connection was lost', async () => {
+    const r = await mountRestartable();
+    act(() => {
+      r.old.set({ state: 'ended', detached: { by: 'taken-over' } });
+    });
+    expect(page.queryByRole('button', RESTART)).toBeNull();
+    act(() => {
+      r.old.set({ state: 'failed', cause: { stage: 'session', message: 'The connection to the terminal was lost.' } });
+    });
+    expect(page.queryByRole('button', RESTART)).toBeNull();
+  });
+
+  it('is drawn for a failed session whose process is over (a pty that failed) and the lane says why it stopped', async () => {
+    const r = await mountRestartable();
+    r.end({ state: 'failed', exit: undefined, cause: { stage: 'session', message: 'input/output error' } });
+    expect(page.getByRole('status')).toHaveTextContent('input/output error');
+    expect(page.queryByRole('button', RESTART)).toBeInTheDocument();
+  });
+
+  it('puts a new feed in the same session when pressed, and the screen goes on with it: the same emulator, and the transcript of the ended terminal stays above the new shell', async () => {
+    const r = await mountRestartable();
+    r.old.push('bye\r\n');
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20);
+    });
+    r.end({ exit: { code: 3 } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20);
+    });
+    act(() => {
+      page.queryByRole('button', RESTART)?.click();
+    });
+    await flush();
+    expect(r.asked).toEqual([[{ id: 'term-old', command: ['/bin/zsh'], cwd: '/work' }, r.id]]);
+    expect(r.sessions.feedOf(r.id)).toBe(r.fresh);
+    expect(r.loader.engines).toHaveLength(1);
+    expect(r.loader.engines[0]?.disposed()).toBe(0);
+    act(() => {
+      r.fresh.set({ state: 'running', program: 'zsh' });
+      r.fresh.push('$ ');
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20);
+    });
+    expect(r.loader.engines[0]?.text()).toBe('bye\r\n\u001b[0m\r\n\u001b[90m[Process exited with code 3]\u001b[0m\r\n\u001b[?47l\u001b[?1000l\u001b[?1002l\u001b[?1003l\u001b[?1004l\u001b[?1005l\u001b[?1006l\u001b[?1015l\u001b[?2004l\u001b[?1l\u001b[!p\u001b[0m\r\n\u001b[90m[Restarted]\u001b[0m\r\n$ ');
+  });
+
+  it('draws what the ended terminal still held before the new shell starts: the last lines of the transcript are not lost to the restart', async () => {
+    const r = await mountRestartable();
+    r.old.push('last\r\n');
+    r.end({ exit: { code: 3 } });
+    act(() => {
+      page.queryByRole('button', RESTART)?.click();
+    });
+    await flush();
+    expect(r.loader.engines[0]?.text()).toBe('last\r\n\u001b[0m\r\n\u001b[90m[Process exited with code 3]\u001b[0m\r\n\u001b[?47l\u001b[?1000l\u001b[?1002l\u001b[?1003l\u001b[?1004l\u001b[?1005l\u001b[?1006l\u001b[?1015l\u001b[?2004l\u001b[?1l\u001b[!p\u001b[0m\r\n\u001b[90m[Restarted]\u001b[0m\r\n');
+  });
+
+  it('is the lane of the new feed afterwards: no button while the new shell starts or runs, and Connected when it does', async () => {
+    const r = await mountRestartable();
+    r.end();
+    act(() => {
+      page.queryByRole('button', RESTART)?.click();
+    });
+    await flush();
+    expect(page.queryByRole('button', RESTART)).toBeNull();
+    expect(page.getByRole('status')).toHaveTextContent('Connecting');
+    act(() => {
+      r.fresh.set({ state: 'running' });
+    });
+    expect(page.queryByRole('button', RESTART)).toBeNull();
+    expect(page.getByRole('status').textContent).toBe('');
+  });
+
+  it('leaves the ended feed and listens to the new one alone, and the new feed is told the size of the screen so that it starts', async () => {
+    const r = await mountRestartable();
+    r.end();
+    act(() => {
+      page.queryByRole('button', RESTART)?.click();
+    });
+    await flush();
+    expect(r.old.listeners()).toBe(0);
+    expect(r.old.closed()).toBe(1);
+    expect(r.fresh.sizes()).toEqual([[80, 24]]);
+  });
+
+  it('puts the keyboard in the screen when the new shell runs, once, because the person pressed a control there', async () => {
+    (document.activeElement as HTMLElement | null)?.blur();
+    const r = await mountRestartable();
+    r.end();
+    act(() => {
+      page.queryByRole('button', RESTART)?.click();
+    });
+    await flush();
+    expect(r.loader.engines[0]?.focuses()).toBe(0);
+    act(() => {
+      r.fresh.set({ state: 'running' });
+    });
+    await flush();
+    expect(r.loader.engines[0]?.focuses()).toBe(1);
+  });
+
+  it('says why a restart that the host refused could not start, in the lane and in the transcript, and offers no second Restart: the same request would be refused the same way', async () => {
+    const r = await mountRestartable();
+    r.end();
+    act(() => {
+      page.queryByRole('button', RESTART)?.click();
+    });
+    await flush();
+    act(() => {
+      r.fresh.set({ state: 'failed', cause: { stage: 'start', message: 'No shell could be started.', code: 'SHELL_UNAVAILABLE' } });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20);
+    });
+    expect(page.getByRole('status')).toHaveTextContent('Failed to start');
+    expect(page.queryByRole('button', RESTART)).toBeNull();
+    expect(r.loader.engines[0]?.text()).toContain('[No shell could be started]');
+  });
+
+  it('says that the terminal started in the home directory because the one it started in was removed, and that another shell started because the shell was gone', async () => {
+    const r = await mountRestartable();
+    r.end();
+    act(() => {
+      page.queryByRole('button', RESTART)?.click();
+    });
+    await flush();
+    act(() => {
+      r.fresh.set({ state: 'running', startNote: 'home-for-removed-directory' });
+    });
+    expect(page.getByRole('status')).toHaveTextContent('Started in your home directory');
+    expect(page.getByRole('status')).toHaveTextContent('The directory it started in is gone.');
+    act(() => {
+      r.fresh.set({ startNote: 'shell-replaced' });
+    });
+    expect(page.getByRole('status')).toHaveTextContent('Started another shell');
+    expect(page.getByRole('status')).toHaveTextContent('The shell it ran before is not available.');
+  });
+});
+
+describe('Enter in the screen of an ended terminal', () => {
+  const ENTER = { key: 'Enter', code: 'Enter', keyCode: 13 } as const;
+
+  it('restarts the session when its process is over for good: the key of Restart', async () => {
+    const r = await mountRestartable();
+    r.end();
+    const engine = r.loader.engines[0];
+    expect(engine?.key(ENTER)).toEqual({ handled: false, defaultPrevented: true });
+    await flush();
+    expect(r.sessions.feedOf(r.id)).toBe(r.fresh);
+    expect(r.asked).toHaveLength(1);
+  });
+
+  it('is the shell\'s while it runs: Enter reaches the terminal and nothing restarts', async () => {
+    const r = await mountRestartable();
+    expect(r.loader.engines[0]?.key(ENTER)).toEqual({ handled: true, defaultPrevented: false });
+    expect(r.asked).toEqual([]);
+  });
+
+  it('does nothing for an ended terminal the producer says nothing of a restart for: it is what it was', async () => {
+    const r = await mountRestartable();
+    act(() => {
+      r.old.set({ state: 'ended', detached: { by: 'taken-over' } });
+    });
+    expect(r.loader.engines[0]?.key(ENTER)).toEqual({ handled: true, defaultPrevented: false });
+    expect(r.asked).toEqual([]);
+  });
+
+  it('draws what the ended terminal still held before the new shell starts, when Enter restarts it as when the button does', async () => {
+    const r = await mountRestartable();
+    r.old.push('last\r\n');
+    r.end({ exit: { code: 3 } });
+    r.loader.engines[0]?.key(ENTER);
+    await flush();
+    expect(r.loader.engines[0]?.text()).toBe('last\r\n\u001b[0m\r\n\u001b[90m[Process exited with code 3]\u001b[0m\r\n\u001b[?47l\u001b[?1000l\u001b[?1002l\u001b[?1003l\u001b[?1004l\u001b[?1005l\u001b[?1006l\u001b[?1015l\u001b[?2004l\u001b[?1l\u001b[!p\u001b[0m\r\n\u001b[90m[Restarted]\u001b[0m\r\n');
+  });
+
+  it('restarts once for two presses in a row: the second finds a terminal that starts', async () => {
+    const r = await mountRestartable();
+    r.end();
+    r.loader.engines[0]?.key(ENTER);
+    r.loader.engines[0]?.key(ENTER);
+    await flush();
+    expect(r.asked).toHaveLength(1);
   });
 });
