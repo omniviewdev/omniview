@@ -3194,3 +3194,19 @@ describe('review of #791: replies to the new feed\'s output while old bytes are 
     expect(next.replies()).toEqual([]);
   });
 });
+
+describe('review of #791: an emulator that runs the barrier\'s callback at once (an empty queue)', () => {
+  it('answers the new feed\'s query: the muting is set before the barrier is queued, so a barrier that runs synchronously ends it for good', async () => {
+    const r = rig({ answers: [['\u001b[6n', '\u001b[1;1R']] });
+    r.screen.mount(r.host);
+    r.screen.show();
+    await r.settle();
+    r.frame();
+    expect(r.engine().pendingWrites(), 'the queue is empty and the fake parses at once').toBe(0);
+    const next = fakeTerminalFeed({ state: 'running', takeReplay: true });
+    r.screen.continueWith(next);
+    next.push('\u001b[6n');
+    r.frame();
+    expect(next.replies()).toEqual(['\u001b[1;1R']);
+  });
+});
