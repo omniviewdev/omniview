@@ -275,6 +275,8 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
     markWrites += 1;
     restarts += 1;
     const mine = restarts;
+    // Set BEFORE the barrier is queued: an emulator may run its callback at once (an empty queue), and the muting must end there and not be set again after it.
+    draining = true;
     emulator.write(NOTHING, () => {
       markWrites -= 1;
       // Everything queued before the restart is parsed: what the emulator answers from here on is for the new shell.
@@ -1120,7 +1122,6 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
       replaying = undefined;
       // The commands of the ended terminal stay with its transcript, none of them runs any more, and the new terminal's are its own.
       sealAfterQueued(emulator);
-      draining = true;
       held = [];
       heldLength = 0;
       heldFull = false;
