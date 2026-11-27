@@ -4,6 +4,7 @@ package terminal
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -58,6 +59,36 @@ func TestAStartDirectoryThatIsAFileOrGoneOrRelativeStartsNothing(t *testing.T) {
 			assert.Equal(t, "INVALID_REQUEST", problem.Code)
 			assert.Contains(t, problem.Detail, "cwd", "the detail names cwd")
 			assert.Len(t, m.running(), before)
+		})
+	}
+}
+
+// Every shell agrees on where it is: `pwd`, `pwd -P` and the directory after a `cd .` all name the validated
+// directory, whatever the shell does with the PWD it is started with (bash cleans a `link/..` in PWD
+// logically, which names another directory).
+func TestEveryShellStartedThroughALinkAndDotDotIsWhereTheSystemLeadsThePath(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "data", "inner"), 0o700))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "work"), 0o700))
+	require.NoError(t, os.Symlink(filepath.Join(root, "data", "inner"), filepath.Join(root, "work", "link")))
+	requested := filepath.Join(root, "work", "link") + string(filepath.Separator) + ".."
+	data := filepath.Join(root, "data")
+	for _, name := range []string{"sh", "bash", "zsh"} {
+		t.Run(name, func(t *testing.T) {
+			path, lookErr := exec.LookPath(name)
+			if lookErr != nil {
+				t.Skipf("not run: %s is not installed on this machine", name)
+			}
+			m, rec := newTestManager(t)
+			require.NoError(t, os.WriteFile(filepath.Join(os.Getenv("HOME"), ".zshrc"), nil, 0o600), "zsh asks a user with no startup file to set one up")
+			info, startErr := m.Start(Options{Command: []string{path, "-c", "echo a-$(pwd)-a; echo b-$(pwd -P)-b; cd .; echo c-$(pwd -P)-c; echo d-$(pwd)-d; echo end"}, Cwd: requested}, nil)
+			require.NoError(t, startErr)
+			text := rec.waitFor(t, info.ID, "end")
+			assert.Contains(t, text, "a-"+data+"-a", "pwd")
+			assert.Contains(t, text, "b-"+data+"-b", "pwd -P")
+			assert.Contains(t, text, "c-"+data+"-c", "pwd -P after cd .")
+			assert.Contains(t, text, "d-"+data+"-d", "pwd after cd .")
 		})
 	}
 }
