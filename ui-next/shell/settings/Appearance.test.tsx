@@ -125,6 +125,7 @@ describe('Window material', () => {
     m.host.next.commit = async () => {
       throw new Error('disk unavailable');
     };
+
     const input = range('Content');
     move(input, 40);
     await settle(m.clock);

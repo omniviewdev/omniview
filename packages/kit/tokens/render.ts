@@ -175,6 +175,7 @@ export function renderTokensCss(themes: readonly ThemeDefinition[], defaultTheme
     lines.push('  }');
     blocks.push(lines.join('\n'));
   }
+
   blocks.push(materialRules());
 
   return `/* ${BANNER} */\n@layer ov.tokens {\n${blocks.join('\n\n')}\n}\n`;

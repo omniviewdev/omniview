@@ -165,7 +165,7 @@ export function SettingRow({ form, session, id, concise, rollback, disabledReaso
     }
   }, [modified]);
 
-  if (field === undefined || !field.visible) {
+  if (!field?.visible) {
     return null;
   }
 

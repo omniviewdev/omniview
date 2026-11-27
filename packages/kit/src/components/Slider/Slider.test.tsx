@@ -183,7 +183,8 @@ describe('Slider', () => {
 
   it('cancels on an inherited lock and cannot revive the gesture if the lock lifts before release', () => {
     const onCommit = vi.fn();
-    const view = (readOnly: boolean) => <Field label="Opacity" readOnly={readOnly}>{slider({ onCommit })}</Field>;
+    const onValueChange = vi.fn();
+    const view = (readOnly: boolean) => <Field label="Opacity" readOnly={readOnly}>{slider({ onCommit, onValueChange })}</Field>;
     const { rerender } = render(view(false));
     fireEvent.pointerDown(range(), pointer);
     move(96);
@@ -191,8 +192,10 @@ describe('Slider', () => {
     expect(range().getAttribute('aria-readonly')).toBe('true');
     expect(range().valueAsNumber).toBe(62);
     rerender(view(false));
+    expect(range().valueAsNumber).toBe(62);
     move(95);
     fireEvent.pointerUp(range(), pointer);
+    expect(onValueChange.mock.calls).toEqual([[96], [62]]);
     expect(onCommit).not.toHaveBeenCalled();
     fireEvent.pointerDown(range(), pointer);
     move(85);

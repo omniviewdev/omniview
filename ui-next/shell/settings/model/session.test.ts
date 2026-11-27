@@ -152,6 +152,7 @@ describe('material reset', () => {
     host.next.commit = async () => {
       throw new Error('unreachable');
     };
+
     expect(await session.resetMaterial()).toBe(false);
     expect(fieldOf(session, 'appearance.contentOpacity')).toMatchObject({ value: 32, enabled: true, dirty: false });
     expect(await session.resetMaterial()).toBe(true);

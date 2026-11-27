@@ -14,7 +14,9 @@ export type AppearanceSource = {
 
 const host: AppearanceSource = {
   read: async () => SettingsService.GetAppearance(),
-  changed: (listener) => Events.On('appearance/changed', (event) => listener(event.data)),
+  changed: (listener) => Events.On('appearance/changed', (event) => {
+    listener(event.data);
+  }),
   reconnect: (listener) => onEventsReconnect(listener),
 };
 

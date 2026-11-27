@@ -23,11 +23,15 @@ function client() {
     read,
     changed: (listener) => {
       changed = listener;
-      return () => { changed = undefined; };
+      return () => {
+        changed = undefined;
+      };
     },
     reconnect: (listener) => {
       reconnected = listener;
-      return () => { reconnected = undefined; };
+      return () => {
+        reconnected = undefined;
+      };
     },
   };
   return { source, read, change: (revision: number) => changed?.(revision), reconnect: () => reconnected?.() };
@@ -58,14 +62,19 @@ describe('committed window appearance', () => {
     const before = commits.mock.calls.length;
     const style = root.getAttribute('style');
     fx.read.mockResolvedValue(snapshot(2, { chromeOpacity: 0, contentOpacity: 100, menuOpacity: 1, sheetOpacity: 99 }));
-    await act(async () => { fx.change(2); });
+    await act(async () => {
+      fx.change(2);
+    });
     expect(root).toHaveAttribute('data-ov-chrome-opacity', '0');
     expect(root).toHaveAttribute('data-ov-content-opacity', '100');
     expect(root).toHaveAttribute('data-ov-menu-opacity', '1');
     expect(root).toHaveAttribute('data-ov-sheet-opacity', '99');
     expect(root.getAttribute('style')).toBe(style);
     expect(commits).toHaveBeenCalledTimes(before);
-    await act(async () => { fx.change(1); fx.change(2); });
+    await act(async () => {
+      fx.change(1);
+      fx.change(2);
+    });
     expect(fx.read).toHaveBeenCalledTimes(2);
   });
 
@@ -74,21 +83,34 @@ describe('committed window appearance', () => {
     const delayed = Promise.withResolvers<AppearanceSnapshot>();
     fx.read.mockReturnValueOnce(delayed.promise);
     const mounted = render(<WindowAppearance source={fx.source}><Consumer /></WindowAppearance>);
-    await waitFor(() => expect(fx.read).toHaveBeenCalledTimes(1));
+    await waitFor(() => {
+      expect(fx.read).toHaveBeenCalledTimes(1);
+    });
     expect(root).not.toHaveAttribute('data-ov-material');
     fx.read.mockResolvedValueOnce(snapshot(6, { chromeOpacity: 42 }));
-    await act(async () => { fx.change(6); });
+    await act(async () => {
+      fx.change(6);
+    });
     expect(root).toHaveAttribute('data-ov-chrome-opacity', '42');
-    await act(async () => { delayed.resolve(snapshot(5)); });
+    await act(async () => {
+      delayed.resolve(snapshot(5));
+    });
     expect(root).toHaveAttribute('data-ov-chrome-opacity', '42');
     fx.read.mockRejectedValueOnce(new Error('unavailable'));
-    await act(async () => { fx.change(7); });
+    await act(async () => {
+      fx.change(7);
+    });
     expect(root).toHaveAttribute('data-ov-chrome-opacity', '42');
     fx.read.mockResolvedValueOnce(snapshot(1, { chromeOpacity: 13 }));
-    await act(async () => { fx.reconnect(); });
+    await act(async () => {
+      fx.reconnect();
+    });
     expect(root).toHaveAttribute('data-ov-chrome-opacity', '13');
     mounted.unmount();
-    await act(async () => { fx.change(2); fx.reconnect(); });
+    await act(async () => {
+      fx.change(2);
+      fx.reconnect();
+    });
     expect(fx.read).toHaveBeenCalledTimes(4);
     expect(root).not.toHaveAttribute('data-ov-material');
   });
@@ -100,7 +122,9 @@ describe('committed window appearance', () => {
     await waitFor(() => expect(root).toHaveAttribute('data-ov-material', 'opaque'));
     const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
     fx.read.mockResolvedValueOnce(snapshot(2, {}, { effective: 'glass', glass: true, reason: '' }));
-    await act(async () => { fx.change(2); });
+    await act(async () => {
+      fx.change(2);
+    });
     expect(fx.read).toHaveBeenCalledTimes(1);
     hidden.mockReturnValue(false);
     await act(async () => {
@@ -124,16 +148,22 @@ describe('committed window appearance', () => {
     render(<WindowAppearance source={fx.source}><Consumer /></WindowAppearance>);
     await screen.findByText('light:no-glass:normal');
     solid = true;
-    act(() => { events.dispatchEvent(new Event('change')); });
+    act(() => {
+      events.dispatchEvent(new Event('change'));
+    });
     expect(screen.getByText('light:no-glass:forced')).toBeInTheDocument();
     expect(root).toHaveAttribute('data-ov-material', 'opaque');
     expect(root).toHaveAttribute('data-ov-chrome-opacity', '62');
     solid = false;
-    act(() => { events.dispatchEvent(new Event('change')); });
+    act(() => {
+      events.dispatchEvent(new Event('change'));
+    });
     expect(root).toHaveAttribute('data-ov-material', 'in-page');
     expect(fx.read).toHaveBeenCalledTimes(1);
     fx.read.mockResolvedValueOnce(snapshot(2, { theme: 'high-contrast-dark' }));
-    await act(async () => { fx.change(2); });
+    await act(async () => {
+      fx.change(2);
+    });
     expect(screen.getByText('high-contrast-dark:no-glass:forced')).toBeInTheDocument();
     expect(root).toHaveAttribute('data-ov-material', 'opaque');
   });

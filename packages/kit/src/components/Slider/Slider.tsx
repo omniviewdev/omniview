@@ -40,6 +40,8 @@ type Gesture = {
   cancelled: boolean;
 };
 
+type GestureEnd = 'commit' | 'cancel' | 'suppress';
+
 /** A native horizontal range with a live numeric readout. No focus, document listeners or persistence work while idle. */
 export function Slider({ value, onValueChange, onCommit, min = 0, max = 100, step = 1, unit, label, invalid, readOnly, disabledReason, ...rest }: SliderProps) {
   const control = useFieldControl({ label, invalid, readOnly, disabledReason });
@@ -48,7 +50,7 @@ export function Slider({ value, onValueChange, onCommit, min = 0, max = 100, ste
   const active = useRef<Gesture | null>(null);
   const latest = useRef({ accepted, onValueChange, onCommit });
 
-  const finish = useCallback((action: 'commit' | 'cancel' | 'suppress' | 'unmount') => {
+  const settleGesture = useCallback((action: GestureEnd) => {
     const gesture = active.current;
     if (gesture === null) {
       return;
@@ -65,9 +67,6 @@ export function Slider({ value, onValueChange, onCommit, min = 0, max = 100, ste
     }
 
     gesture.cancelled = action !== 'commit';
-    if (action !== 'unmount') {
-      setDraft(null);
-    }
 
     const current = latest.current;
     if (action === 'commit') {
@@ -82,12 +81,24 @@ export function Slider({ value, onValueChange, onCommit, min = 0, max = 100, ste
   useLayoutEffect(() => {
     latest.current = { accepted, onValueChange, onCommit };
     if (control.locked) {
-      finish('suppress');
+      settleGesture('suppress');
     }
-  }, [accepted, onValueChange, onCommit, control.locked, finish]);
+  }, [accepted, onValueChange, onCommit, control.locked, settleGesture]);
   useLayoutEffect(() => () => {
-    finish('unmount');
-  }, [finish]);
+    settleGesture('cancel');
+  }, [settleGesture]);
+
+  // Discard the local preview when a lock arrives, so unlocking before release cannot show the old draft.
+  if (control.locked && draft !== null) {
+    setDraft(null);
+  }
+
+  const finish = (action: GestureEnd) => {
+    if (active.current !== null) {
+      setDraft(null);
+      settleGesture(action);
+    }
+  };
 
   const begin = (input: HTMLInputElement, source: number | string) => {
     const previous = active.current;
@@ -177,7 +188,7 @@ export function Slider({ value, onValueChange, onCommit, min = 0, max = 100, ste
               event.preventDefault();
               event.stopPropagation();
               finish('suppress');
-            } else if (Object.hasOwn(ADJUSTMENT_KEYS, event.key) && (control.locked || (event.repeat && active.current?.cancelled) || !begin(event.currentTarget, event.key))) {
+            } else if (Object.hasOwn(ADJUSTMENT_KEYS, event.key) && (control.locked || (event.repeat && active.current?.cancelled === true) || !begin(event.currentTarget, event.key))) {
               event.preventDefault();
             }
           }}
@@ -187,7 +198,7 @@ export function Slider({ value, onValueChange, onCommit, min = 0, max = 100, ste
           onChange={event => {
             const next = event.currentTarget.valueAsNumber;
             const gesture = active.current;
-            if (control.locked || gesture?.cancelled || event.currentTarget.ownerDocument.hidden || next === (gesture?.last ?? accepted)) {
+            if (control.locked || gesture?.cancelled === true || event.currentTarget.ownerDocument.hidden || next === (gesture?.last ?? accepted)) {
               return;
             }
 

@@ -73,7 +73,9 @@ describe('the generated token files', () => {
     stylesheet.walkAtRules('media', (media) => {
       media.walkRules(':root', (rule) => {
         const declarations = Object.fromEntries(rule.nodes.filter((n): n is postcss.Declaration => n.type === 'decl').map((d) => [d.prop, d.value]));
-        for (const query of media.params.split(', ')) overrides.set(query, declarations);
+        for (const query of media.params.split(', ')) {
+          overrides.set(query, declarations);
+        }
       });
     });
     for (const query of ['(forced-colors: active)', '(prefers-contrast: more)', '(prefers-reduced-transparency: reduce)']) {
