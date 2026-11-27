@@ -849,6 +849,48 @@ describe('the screen over a real emulator', () => {
   });
 
   // Review of #791: the separator a restart writes between the ended process and the new shell, on the real emulator. DECSTR resets the saved cursor and `?1049l` restores it, which homed the cursor and wrote over the transcript.
+  describe('what the real emulator answers across a restart (review of #791)', () => {
+    /** Runs the frames the screen asked for, one round. */
+    const runFrames = (frames: Array<() => void>): void => {
+      for (const callback of frames.splice(0)) {
+        callback();
+      }
+    };
+
+    it('answers a cursor position query of the NEW feed\'s output to the new feed while the old feed\'s bytes are still queued in the emulator: the muting ends at the barrier after the old writes, not when nothing is pending', async () => {
+      const frames: Array<() => void> = [];
+      const feed = fakeTerminalFeed();
+      const { screen, terminal } = await showOver(feed, undefined, frames);
+      feed.push(`old output\r\n${'x'.repeat(2_000)}\r\n`);
+      runFrames(frames);
+      feed.set({ state: 'ended', exit: { code: 0 } });
+      const next = fakeTerminalFeed({ state: 'starting' });
+      // No timer has run: the emulator has parsed none of what it was written, and the new feed's query is queued behind it.
+      screen.continueWith(next);
+      next.set({ state: 'running' });
+      next.push('\u001b[6n');
+      runFrames(frames);
+      await settle();
+      expect(next.replies().join('')).toMatch(/^\u001b\[\d+;\d+R$/);
+      expect(feed.replies(), 'nothing the old bytes drew is sent to the ended feed').toEqual([]);
+      expect(terminal.buffer.active.type).toBe('normal');
+    });
+
+    it('does not send to the new feed what the OLD feed\'s queued bytes make the emulator answer (a query that was in them)', async () => {
+      const frames: Array<() => void> = [];
+      const feed = fakeTerminalFeed();
+      const { screen } = await showOver(feed, undefined, frames);
+      feed.push('\u001b[6n');
+      runFrames(frames);
+      feed.set({ state: 'ended', exit: { code: 0 } });
+      const next = fakeTerminalFeed({ state: 'starting' });
+      screen.continueWith(next);
+      next.set({ state: 'running' });
+      await settle();
+      expect(next.replies()).toEqual([]);
+    });
+  });
+
   describe('the separator of a restart, on the real emulator', () => {
     const rows = (terminal: Terminal): string[] => Array.from({ length: terminal.buffer.normal.length }, (_, index) => terminal.buffer.normal.getLine(index)?.translateToString(true) ?? '');
 
