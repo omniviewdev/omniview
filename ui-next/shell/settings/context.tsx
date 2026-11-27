@@ -5,6 +5,9 @@ import type { SettingsControl } from './host';
 
 const SettingsContext = createContext<SettingsControl | null>(null);
 
+/** A native hide keeps Settings mounted, but a range gesture must not outlive its window. Sheets unmount on close. */
+export const SettingsWindowShown = createContext(true);
+
 export function SettingsProvider({ settings, children }: { readonly settings: SettingsControl; readonly children: ReactNode }) {
   return <SettingsContext value={settings}>{children}</SettingsContext>;
 }

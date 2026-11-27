@@ -166,9 +166,10 @@ export type ShellRegistration = {
    * Who scrolls the page (ch12 section 5; the mock's `AWS.page(id, render, { layout })`). `document` (the default): the shell's page scrolls, the
    * content flows at its natural height. `pane`: the page owns its scrolling (a collection view), so the shell scrolls nothing: the content fills
    * the island under the scope lane, its bottom inset is the page's own (a collection's footer is the last lane of the pane), and the page has no
-   * tab stop of its own. The page declares it; a page whose layout depends on its state re-registers.
+   * tab stop of its own. `split` scrolls like a pane but draws its own islands over the window rather than over another
+   * content fill. The page declares its layout; a page whose layout depends on its state re-registers.
    */
-  readonly layout?: 'document' | 'pane';
+  readonly layout?: 'document' | 'pane' | 'split';
   /**
    * The plugin's frame is on its way: its interface is loading and the window does not wait for it. The shell draws the regions a plugin's frame has, empty, at the rectangles the
    * frame will have (the rail's track, the sidebar with no tree, the scope lane), so nothing moves when the frame registers. Whatever else the registration declares is drawn as

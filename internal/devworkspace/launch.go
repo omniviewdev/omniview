@@ -708,7 +708,7 @@ func (s *workspaceSupervisor) buildHost(ctx context.Context, request HostBuildRe
 		// Never the repository's vendor tree, never an implicit module edit.
 		build = append(build, "-mod=readonly")
 	}
-	build = append(build, "-tags="+tags, "-buildvcs=false", "-ldflags=-X github.com/omniviewdev/omniview/internal/instance.buildChannel=local", "-o", binary, ".")
+	build = append(build, "-tags="+hostUITags(tags), "-buildvcs=false", "-ldflags=-X github.com/omniviewdev/omniview/internal/instance.buildChannel=local", "-o", binary, ".")
 	if _, err = s.runLaunchCommand(ctx, host, env, s.output, "go", build...); err != nil {
 		return err
 	}
@@ -733,6 +733,15 @@ func (s *workspaceSupervisor) buildHost(ctx context.Context, request HostBuildRe
 		}
 	}
 	return nil
+}
+
+// hostUITags mirrors the Taskfile and release build's compile-time flavour.
+// Do not enable Wails' broader private_mac_apis tag.
+func hostUITags(tags string) string {
+	if os.Getenv("OMNIVIEW_UI") == "next" {
+		return tags + ",ui_next"
+	}
+	return tags
 }
 
 // hostOutput is the generated tree buildHost publishes for this mode.

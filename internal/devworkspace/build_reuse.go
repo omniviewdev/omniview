@@ -322,6 +322,10 @@ func (g *BuildGraph) nodeInputs(ctx context.Context, n BuildNode) (string, error
 		return "", err
 	}
 	fmt.Fprintf(hash, "omniview-build-inputs-v1\x00builder\x00%s\x00node\x00%s\x00%s\x00%s\x00%s\x00%s\x00", builder, n.ID, n.Kind, n.Directory, n.PNPMVersion, n.PluginID)
+	if n.ID == "host-frontend" || n.Kind == "bindings" || n.Kind == "host-backend" {
+		// Never embed a cached current frontend in a next host, or vice versa.
+		fmt.Fprintf(hash, "ui\x00%s\x00", os.Getenv("OMNIVIEW_UI"))
+	}
 	dependencies := append([]string(nil), n.Dependencies...)
 	sort.Strings(dependencies)
 	for _, dependency := range dependencies {

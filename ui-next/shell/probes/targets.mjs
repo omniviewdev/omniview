@@ -70,7 +70,7 @@ const surface = ['backgroundColor', 'borderTopLeftRadius'];
 /** Computed style that must be equal. `edge` is the colour of a 1 px edge: a border in the mock, an inset shadow in the shell. */
 export const STYLES = [
   { name: 'window', props: ['backgroundColor'] },
-  { name: 'topRow', props: ['backgroundColor'] },
+  { name: 'topRow', props: ['backgroundColor'], sharedFill: true },
   { name: 'dot1', props: surface },
   { name: 'tab', props: [...surface, 'edge'] },
   { name: 'tabTitle', props: text },
@@ -86,7 +86,7 @@ export const STYLES = [
   { name: 'face1Label', props: text },
   { name: 'face2Label', props: text },
   { name: 'face1Icon', props: ['color'] },
-  { name: 'statusBar', props: ['backgroundColor', 'color', 'fontSize', 'lineHeight'] },
+  { name: 'statusBar', props: ['backgroundColor', 'color', 'fontSize', 'lineHeight'], sharedFill: true },
   { name: 'crumb1', props: text },
   { name: 'crumb3', props: text },
   { name: 'chevron1', props: [], path: 'stroke' },

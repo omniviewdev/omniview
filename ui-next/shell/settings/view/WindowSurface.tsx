@@ -1,6 +1,7 @@
 import { IconButton } from '@omniviewdev/kit';
 import { useEffect } from 'react';
 import { platformOf } from '../../core/chords';
+import { SettingsWindowShown } from '../context';
 import type { PageMemory } from '../host';
 import type { SettingsSession } from '../model/session';
 import { Body } from './Body';
@@ -51,7 +52,9 @@ export function WindowSurface({ session, page, onClose, request, visible }: Wind
         <IconButton icon="close" label="Close" variant="ghost" size="row" onClick={onClose} />
       </header>
       <div className={styles.body}>
-        <Body key={request} session={session} page={page} headingLevel="h2" />
+        <SettingsWindowShown value={visible}>
+          <Body key={request} session={session} page={page} headingLevel="h2" />
+        </SettingsWindowShown>
       </div>
     </div>
   );

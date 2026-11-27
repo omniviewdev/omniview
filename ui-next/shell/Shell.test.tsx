@@ -161,6 +161,13 @@ describe('the page region', () => {
     expect(panel).not.toHaveAttribute('tabindex');
   });
 
+  it('lets a split page paint its own islands without changing pane scrolling', () => {
+    renderShell({ ...registration, layout: 'split' });
+    expect(screen.getByRole('main')).toHaveAttribute('data-split');
+    expect(screen.getByRole('tabpanel')).toHaveAttribute('data-layout', 'pane');
+    expect(screen.getByRole('tabpanel')).not.toHaveAttribute('tabindex');
+  });
+
   it('still hosts the page, whatever its layout', () => {
     renderShell({ ...registration, layout: 'pane' });
     expect(within(screen.getByRole('tabpanel', { name: 'Widgets' })).getByRole('button', { name: 'Inside the page' })).toBeInTheDocument();

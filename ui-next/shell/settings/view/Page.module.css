@@ -36,4 +36,39 @@
     flex-direction: column;
     min-inline-size: 0;
   }
+
+  .group + .group {
+    margin-block-start: var(--ov-spacing-16);
+  }
+
+  .group > [data-settings-part='section-title'] {
+    margin-block-end: var(--ov-spacing-4);
+  }
+
+  .group [data-ov-layout='row'] {
+    align-items: center;
+  }
+
+  /* The dimmed control communicates availability visually; its field still describes the reason to assistive technology. */
+  .group [data-ov-unavailable='true'] [data-ov-part='lane'][data-ov-kind='info'] {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .reset {
+    display: flex;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    margin-block-start: var(--ov-spacing-8);
+    padding-inline-start: var(--ov-spacing-20);
+  }
+
+  .reset > [role='alert'] {
+    color: var(--ov-error-fg);
+    font-size: var(--ov-fs-12);
+  }
 }

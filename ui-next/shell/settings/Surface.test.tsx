@@ -69,7 +69,9 @@ describe('the pages', () => {
     expect(screen.getByRole('button', { name: 'Appearance' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('region', { name: 'Appearance' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 3, name: 'Appearance' })).toBeInTheDocument();
-    expect(screen.getByText('Customize the look and feel of the application')).toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { level: 4 }).map((heading) => heading.textContent)).toEqual(['Window material', 'Surface opacity', 'Interface']);
+    expect(screen.queryByText('Customize the look and feel of the application')).toBeNull();
+    expect(screen.queryByText(/Only backgrounds change|Active (here|in this window)/i)).toBeNull();
   });
 
   it('draw the glyph the host names for each category, now that the kit has all six, in a column of their own', async () => {
@@ -101,10 +103,13 @@ describe('the pages', () => {
 
   it('do not offer a setting the sheet has no part for, nor a page left empty by that', async () => {
     await mount();
-    // Appearance has a theme in the host's schema; its editor is a picker, which is not built: three rows, not four.
+    // Theme is a picker, not a text field. Its absence does not hide the host's material and interface settings.
     expect(screen.queryByRole('textbox', { name: 'Theme' })).toBeNull();
     const rows = document.querySelectorAll('[data-settings-row]');
-    expect([...rows].map((row) => row.getAttribute('data-settings-row'))).toEqual(['appearance.density', 'appearance.motion', 'appearance.textSize']);
+    expect([...rows].map((row) => row.getAttribute('data-settings-row'))).toEqual([
+      'appearance.windowMaterial', 'appearance.glassStyle', 'appearance.chromeOpacity', 'appearance.contentOpacity', 'appearance.menuOpacity', 'appearance.sheetOpacity',
+      'appearance.density', 'appearance.textSize', 'appearance.motion',
+    ]);
   });
 });
 

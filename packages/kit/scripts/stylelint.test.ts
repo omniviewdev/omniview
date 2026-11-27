@@ -76,8 +76,10 @@ describe('the stylelint config makes three exceptions', () => {
     expect(await lint(face, 'src/components/Probe/Probe.module.css')).toContain('declaration-property-value-allowed-list');
   });
 
-  it('lets the generated stylesheet define tokens and use hex', async () => {
+  it('lets the generated stylesheet define tokens and derive RGB surface paints, not mix arbitrary colours', async () => {
     expect(await lint('.a { --ov-fg: #D1D3D9; }', 'src/generated/tokens.css')).toEqual([]);
+    expect(await lint('.a { --ov-surface-content: rgb(25 26 28 / 94%); }', 'src/generated/tokens.css')).toEqual([]);
+    expect(await lint('.a { --ov-surface-content: color-mix(in srgb, transparent, currentcolor); }', 'src/generated/tokens.css')).toContain('function-disallowed-list');
   });
 
   it('lets the host\'s document reset write a rule for body, and only that file', async () => {

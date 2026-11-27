@@ -69,6 +69,23 @@ describe('a field is the id a commit takes, and its kind follows what the host d
     expect(field?.constraints?.integer).toBeUndefined();
   });
 
+  it('renders only the four declared surface percentages as bounded sliders, not remotely checked typed numbers', () => {
+    for (const [key, value] of [['chromeOpacity', 62], ['contentOpacity', 94], ['menuOpacity', 90], ['sheetOpacity', 96]] as const) {
+      const field = fieldOf(`appearance.${key}`);
+      expect(field).toMatchObject({ kind: 'number', display: 'slider', unit: '%', constraints: { integer: true, min: 0, max: 100, step: 1 }, default: value });
+      expect(field?.validate).toBeUndefined();
+    }
+
+    expect(fieldOf('terminal.fontSize')?.display).toBeUndefined();
+  });
+
+  it('does not synthesize material settings in hosts that do not declare them', () => {
+    const appearance = category('appearance', 'Appearance', 'Host appearance', '', [setting('density', 'text', 'Density', '', 'compact')]);
+    const older = modelOf({ categories: { appearance } });
+    expect(older.pages[0]).toMatchObject({ description: 'Host appearance', fields: ['appearance.density'] });
+    expect(older.schema.sections[0]?.fields).toHaveLength(1);
+  });
+
   it('draws text that picks a file as a path, in the code face, and plain text as text', () => {
     expect(fieldOf('developer.gopath')).toMatchObject({ kind: 'path', mono: true, constraints: { pathKind: 'file' } });
     expect(kindOf('developer.marketplace_url')).toBe('text');
@@ -109,8 +126,10 @@ describe('what is not drawn, and why', () => {
     expect(kindOf('terminal.nativeApplication')).toBeUndefined();
     expect(reason('appearance.theme')).toBe('picker');
     expect(reason('terminal.nativeApplication')).toBe('picker');
-    // The other Appearance rows are drawn.
-    expect(model.pages.find((page) => page.id === 'appearance')?.fields).toEqual(['appearance.density', 'appearance.motion', 'appearance.textSize']);
+    expect(model.pages.find((page) => page.id === 'appearance')?.fields).toEqual([
+      'appearance.windowMaterial', 'appearance.glassStyle', 'appearance.chromeOpacity', 'appearance.contentOpacity', 'appearance.menuOpacity', 'appearance.sheetOpacity',
+      'appearance.density', 'appearance.textSize', 'appearance.motion',
+    ]);
   });
 
   it('leaves out a setting that is for developers: none of the host\'s core settings is, and no flag says developer mode is on here', () => {

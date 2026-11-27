@@ -110,6 +110,56 @@ describe('a setting that applies when it is chosen', () => {
   });
 });
 
+describe('material reset', () => {
+  it('serializes one group transaction, without locking unrelated settings or sending a second reset', async () => {
+    const host = fakeHost({ 'appearance.windowMaterial': 'glass', 'appearance.menuOpacity': 55 });
+    const clock = manualClock();
+    const release = deferred<void>();
+    const client: SettingsClient = {
+      ...host.client,
+      commit: async (values) => {
+        if (Object.keys(values).length > 1) {
+          await release.promise;
+        }
+
+        return host.client.commit(values);
+      },
+    };
+    const session = createSettingsSession({ client, scheduler: clock.scheduler });
+    await clock.flush();
+    const { form } = ready(session);
+    const reset = session.resetMaterial();
+    expect(form.setValue('appearance.menuOpacity', 61)).toEqual({ status: 'refused', reason: 'locked' });
+    expect(await session.resetMaterial()).toBe(false);
+    form.setValue('appearance.density', 'compact');
+    await clock.flush();
+    release.resolve();
+    expect(await reset).toBe(true);
+    await clock.flush();
+    expect(host.calls.commit).toEqual([
+      { 'appearance.density': 'compact' },
+      { 'appearance.windowMaterial': 'opaque', 'appearance.glassStyle': 'regular', 'appearance.chromeOpacity': 62, 'appearance.contentOpacity': 94, 'appearance.menuOpacity': 90, 'appearance.sheetOpacity': 96 },
+    ]);
+    expect(fieldOf(session, 'appearance.density').value).toBe('compact');
+    expect(fieldOf(session, 'appearance.windowMaterial').value).toBe('opaque');
+    expect(await session.resetMaterial()).toBe(false);
+    expect(host.calls.commit).toHaveLength(2);
+    session.dispose();
+  });
+
+  it('leaves the applied values intact after a refusal, and restores the controls for another attempt', async () => {
+    const { session, host } = await rig({ 'appearance.windowMaterial': 'translucent', 'appearance.contentOpacity': 32 });
+    host.next.commit = async () => {
+      throw new Error('unreachable');
+    };
+    expect(await session.resetMaterial()).toBe(false);
+    expect(fieldOf(session, 'appearance.contentOpacity')).toMatchObject({ value: 32, enabled: true, dirty: false });
+    expect(await session.resetMaterial()).toBe(true);
+    expect(fieldOf(session, 'appearance.contentOpacity')).toMatchObject({ value: 94, enabled: false });
+    session.dispose();
+  });
+});
+
 describe('a setting that is typed', () => {
   it('is asked of the host when it is committed, and then sent', async () => {
     const { session, host, clock } = await rig();

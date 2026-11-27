@@ -13,7 +13,7 @@ describe('the hover card surface (design 12, "Hover card"; the mock, core.css .d
   it('is drawn in the component layer, from tokens', () => {
     expect(css).toMatch(/^@layer ov\.components\s*\{/);
     expect(rules.every((rule) => rule.context[0] === '@layer ov.components')).toBe(true);
-    expect(surface['background-color']).toBe('var(--ov-bg-popup)');
+    expect(surface['background-color']).toBe('var(--ov-surface-sheet-raised)');
     expect(surface.border).toBe('1px solid var(--ov-border-popup)');
     expect(surface.color).toBe('var(--ov-fg)');
     expect(surface['border-radius']).toBe('var(--ov-radius-popup)');

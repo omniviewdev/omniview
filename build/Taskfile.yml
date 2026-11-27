@@ -36,12 +36,42 @@ tasks:
     vars:
       BUILD_COMMAND: '{{if eq .DEV "true"}}build:dev{{else}}build{{end}}'
 
+  compile:host:
+    internal: true
+    dir: "{{.ROOT_DIR}}"
+    vars:
+      # Preserve caller quoting (especially -ldflags). Resolve Go's last -tags
+      # as an argument, not a substring of some other flag, then pass that list
+      # plus ui_next as the final authoritative -tags to both Go and Wails.
+      FLAGS_FOR_UI: &flagsForUI >-
+        {{- $flags := .BUILD_FLAGS -}}
+        {{- if eq (env "OMNIVIEW_UI") "next" -}}
+          {{- $args := splitArgs $flags -}}{{- $tags := "" -}}
+          {{- range $i, $arg := $args -}}
+            {{- if or (eq $arg "-tags") (eq $arg "--tags") -}}{{- $tags = index $args (add1 $i) -}}
+            {{- else if regexMatch `^--?tags=` $arg -}}{{- $tags = regexReplaceAll `^--?tags=` $arg "" -}}{{- end -}}
+          {{- end -}}
+          {{- $list := splitList "," (regexReplaceAll "[,[:space:]]+" $tags ",") | compact -}}
+          {{ $flags }} -tags {{ append $list "ui_next" | uniq | join "," | shellQuote }}
+        {{- else -}}{{ $flags }}{{- end -}}
+      TARGET_ENV: >-
+        {{- if ne .HOST_TARGET "server" -}}
+        GOOS={{.HOST_TARGET | shellQuote}} GOARCH={{.HOST_ARCH | shellQuote}} CGO_ENABLED={{if eq .HOST_TARGET "windows"}}0{{else}}1{{end}}
+        {{- if eq .HOST_TARGET "darwin"}} CGO_CFLAGS="-mmacosx-version-min=13.0" CGO_LDFLAGS="-mmacosx-version-min=13.0" MACOSX_DEPLOYMENT_TARGET=13.0{{end -}}
+        {{- end -}}
+    cmds:
+      - |
+        set -e
+        HOST_MODFILE="$({{.HOST_BOOTSTRAP}})"
+        {{.TARGET_ENV}} GOWORK=off GOFLAGS= go build {{.FLAGS_FOR_UI}} -modfile="$HOST_MODFILE" -o {{.OUTPUT | shellQuote}} .
+
   generate:bindings:
     label: generate:bindings (BUILD_FLAGS={{.BUILD_FLAGS}})
     summary: Generates bindings for the frontend
     dir: "{{.ROOT_DIR}}"
     vars:
       BUILD_FLAGS: '{{if eq .RELEASE "true"}}{{.COMPOSED_BUILD_FLAGS}}{{else}}{{.BUILD_FLAGS | default .COMPOSED_BUILD_FLAGS}}{{end}}'
+      FLAGS_FOR_UI: *flagsForUI
       BINDINGS_OUTPUT_DIRECTORY: '{{.BINDINGS_OUTPUT_DIRECTORY | default "packages/omniviewdev-runtime/src/bindings"}}'
     cmds:
       - |
@@ -49,7 +79,7 @@ tasks:
         HOST_MODFILE="$({{.HOST_BOOTSTRAP}})"
         GOWORK=off GOFLAGS= go mod tidy -modfile="$HOST_MODFILE"
         HOST_BINDING_GOFLAGS="$({{.HOST_BOOTSTRAP}} --host-modfile="$HOST_MODFILE" --format goflags)"
-        BINDING_FLAGS={{.BUILD_FLAGS | shellQuote}}
+        BINDING_FLAGS={{.FLAGS_FOR_UI | shellQuote}}
         {{.WAILS_CLI}} generate bindings -d {{.BINDINGS_OUTPUT_DIRECTORY | shellQuote}} -f "$BINDING_FLAGS $HOST_BINDING_GOFLAGS" -clean=true -ts
 
   generate:icons:

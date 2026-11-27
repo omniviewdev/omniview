@@ -30,6 +30,19 @@ func TestLaunchOptionsRejectInvalidModes(t *testing.T) {
 	}
 }
 
+func TestHostUITagsFollowBuiltFrontend(t *testing.T) {
+	for _, tc := range []struct{ flavor, tags string }{
+		{"", "server,devcontrol"},
+		{"current", "server,devcontrol"},
+		{"next", "server,devcontrol,ui_next"},
+	} {
+		t.Setenv("OMNIVIEW_UI", tc.flavor)
+		if got := hostUITags("server,devcontrol"); got != tc.tags {
+			t.Fatalf("UI %q: got %q, want %q", tc.flavor, got, tc.tags)
+		}
+	}
+}
+
 func TestWorkspaceChildEnvironmentDoesNotLeakHostModuleFlags(t *testing.T) {
 	t.Parallel()
 	w := Workspace{ResolvedWorkspace: devcontract.ResolvedWorkspace{Root: "/selected", ManifestPath: "/selected/workspace.json", StateRoot: "/profile/state", Manifest: devcontract.WorkspaceManifest{WorkspaceID: "f14566c4-5130-4e3f-aa09-3e49c63b29a6"}}}

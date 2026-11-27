@@ -17,7 +17,7 @@
     overflow: visible;
     border: 1px solid var(--ov-border-popup);
     border-radius: var(--ov-radius-popup);
-    background-color: var(--ov-bg-popup);
+    background-color: var(--ov-surface-sheet-raised);
     color: var(--ov-fg);
     font-family: var(--ov-font-ui);
     font-feature-settings: var(--ov-font-features);

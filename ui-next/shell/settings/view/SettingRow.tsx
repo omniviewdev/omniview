@@ -1,6 +1,7 @@
-import { Field, IconButton, NumberInput, SecretInput, Select, TextInput, Toggle, tip } from '@omniviewdev/kit';
-import { useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
-import type { FieldState, FormStore, Json } from '../../core/fields';
+import { Field, IconButton, NumberInput, SecretInput, Select, Slider, TextInput, Toggle, tip } from '@omniviewdev/kit';
+import { useContext, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import type { FieldState, FormStore, Json, Scalar, SetResult } from '../../core/fields';
+import { SettingsWindowShown } from '../context';
 import type { SettingsSession } from '../model/session';
 import styles from './SettingRow.module.css';
 import { elsewhereNote, laneOf, resetLabel, SECRET_ELSEWHERE } from './words';
@@ -44,20 +45,26 @@ function NumberControl({ field, form }: { readonly field: FieldState; readonly f
   );
 }
 
-function Control({ field, form }: { readonly field: FieldState; readonly form: FormStore }) {
+type Choose = (value: Scalar) => void;
+type UnavailableOption = (value: Scalar) => boolean;
+
+function RangeControl({ field, choose }: { readonly field: FieldState; readonly choose: Choose }) {
+  const shown = useContext(SettingsWindowShown);
+  if (typeof field.value !== 'number') {
+    return null;
+  }
+
+  // The kit owns the gesture. The form auto-commits sliders, so only the final value reaches it.
+  return <Slider value={field.value} min={field.spec.min} max={field.spec.max} step={field.spec.step} unit={field.spec.unit} readOnly={!shown} onCommit={choose} />;
+}
+
+function Control({ field, form, choose, unavailableOption }: { readonly field: FieldState; readonly form: FormStore; readonly choose: Choose; readonly unavailableOption?: UnavailableOption | undefined }) {
   const { id } = field;
   switch (field.kind) {
     case 'boolean':
-      return (
-        <Toggle
-          checked={field.value === true}
-          onCheckedChange={(checked) => {
-            form.setValue(id, checked);
-          }}
-        />
-      );
+      return <Toggle checked={field.value === true} onCheckedChange={choose} />;
     case 'select': {
-      const options = (field.options ?? []).map((option) => ({ value: String(option.value), label: option.label }));
+      const options = (field.options ?? []).map((option) => ({ value: String(option.value), label: option.label, disabled: Boolean(option.disabled) || unavailableOption?.(option.value) === true }));
       return (
         <Select
           value={typeof field.value === 'string' || typeof field.value === 'number' || typeof field.value === 'boolean' ? String(field.value) : ''}
@@ -65,13 +72,20 @@ function Control({ field, form }: { readonly field: FieldState; readonly form: F
           placeholder="Choose a value"
           width="normal"
           onValueChange={(next) => {
-            form.setValue(id, (field.options ?? []).find((option) => String(option.value) === next)?.value ?? next);
+            const option = field.options?.find((candidate) => String(candidate.value) === next);
+            if (option && !option.disabled && !unavailableOption?.(option.value)) {
+              choose(option.value);
+            }
           }}
         />
       );
     }
 
     case 'number':
+      if (field.spec.display === 'slider') {
+        return <RangeControl field={field} choose={choose} />;
+      }
+
       return <NumberControl field={field} form={form} />;
     case 'secret':
       return (
@@ -130,12 +144,17 @@ type SettingRowProps = {
   readonly form: FormStore;
   readonly session: SettingsSession;
   readonly id: string;
+  readonly concise?: boolean;
+  readonly rollback?: boolean;
+  readonly disabledReason?: string | undefined;
+  readonly unavailableOption?: UnavailableOption | undefined;
 };
 
-export function SettingRow({ form, session, id }: SettingRowProps) {
+export function SettingRow({ form, session, id, concise, rollback, disabledReason, unavailableOption }: SettingRowProps) {
   const field = useSyncExternalStore(form.subscribe, () => form.field(id));
   const notes = useSyncExternalStore(session.elsewhere.subscribe, session.elsewhere.getSnapshot);
   const row = useRef<HTMLDivElement>(null);
+  const [saveError, setSaveError] = useState('');
   // Reset leaves the row's control with the focus when the button that was pressed goes with the value that is the default again (S144: an action that removes the control that had focus moves it to a defined target).
   const resetting = useRef(false);
   const modified = field?.modified === true;
@@ -146,9 +165,33 @@ export function SettingRow({ form, session, id }: SettingRowProps) {
     }
   }, [modified]);
 
-  if (field === undefined) {
+  if (field === undefined || !field.visible) {
     return null;
   }
+
+  const blocked = disabledReason ?? (!field.enabled ? field.lock?.reason : undefined);
+  const settle = (attempt: SetResult, value: Json | undefined): void => {
+    if (!rollback) {
+      return;
+    }
+
+    setSaveError('');
+    if (attempt.status !== 'set' || !attempt.commit) {
+      return;
+    }
+
+    void attempt.commit.then((result) => {
+      if (result.status !== 'failed' && result.status !== 'invalid' && result.status !== 'unchecked') {
+        return;
+      }
+
+      // Never overwrite a later choice. Revert reads the latest applied value, including a change from another window.
+      const current = form.field(id);
+      if (current?.dirty && current.value === value && form.revert(id)) {
+        setSaveError(current.message?.text ?? 'Couldn’t save this change.');
+      }
+    });
+  };
 
   const drafted = field.dirty || field.secret?.changed === true;
   const note = drafted && Object.hasOwn(notes, id) ? (field.secret === undefined ? elsewhereNote(notes[id]) : SECRET_ELSEWHERE) : undefined;
@@ -157,9 +200,11 @@ export function SettingRow({ form, session, id }: SettingRowProps) {
       <Field
         layout="row"
         label={field.label}
-        help={field.help === '' ? undefined : field.help}
-        message={laneOf(field.message, note)}
-        lane
+        help={!concise && field.help !== '' ? field.help : undefined}
+        readOnly={field.readonly}
+        disabledReason={blocked}
+        message={saveError !== '' ? { kind: 'error', text: saveError } : laneOf(concise && field.message?.kind === 'saved' ? undefined : field.message, note)}
+        lane={!concise}
         onRetry={() => {
           void form.retry(id);
         }}
@@ -170,16 +215,24 @@ export function SettingRow({ form, session, id }: SettingRowProps) {
               label={resetLabel(field.label)}
               variant="ghost"
               size="row"
+              disabledReason={blocked ?? (field.readonly ? 'Read-only.' : undefined)}
               {...tip(resetLabel(field.label))}
               onClick={() => {
                 resetting.current = true;
-                form.reset(id);
+                settle(form.reset(id), field.default);
               }}
             />
           ) : undefined
         }
       >
-        <Control field={field} form={form} />
+        <Control
+          field={field}
+          form={form}
+          unavailableOption={unavailableOption}
+          choose={(value) => {
+            settle(form.setValue(id, value), value);
+          }}
+        />
       </Field>
     </div>
   );

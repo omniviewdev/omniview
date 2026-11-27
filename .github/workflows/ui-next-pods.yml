@@ -180,7 +180,7 @@ jobs:
           set -euo pipefail
           PRODUCTION=true pnpm run build
           HOST_MODFILE="$(task --silent host:prepare)"
-          CGO_ENABLED=0 go build -tags production,server -trimpath -buildvcs=false -ldflags="-w -s" -modfile="$HOST_MODFILE" -o bin/Omniview-server .
+          CGO_ENABLED=0 go build -tags production,server,ui_next -trimpath -buildvcs=false -ldflags="-w -s" -modfile="$HOST_MODFILE" -o bin/Omniview-server .
 
       # The plugin's own packaging: its UI (`pnpm install --frozen-lockfile && pnpm run build` in ui/, which writes ui/dist/assets/entry.js and fails on any import the host does
       # not share) and its binary, one archive with plugin.yaml, bin/plugin and assets/ at its root, the layout the app installs. Extracted, that is the directory host.sh installs.

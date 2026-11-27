@@ -106,6 +106,18 @@ export type ColorRole = (typeof COLOR_ROLE_GROUPS)[ColorRoleGroup][number];
 export const COLOR_ROLES: readonly ColorRole[] = Object.values(COLOR_ROLE_GROUPS).flat();
 
 /**
+ * Material changes background paint, never a palette colour or an element's opacity. Raised dialogs (the command palette,
+ * for example) keep the popup colour they have in the opaque theme, but use the same opacity setting as a sheet.
+ */
+export const SURFACE_FILLS = {
+  chrome: { colour: 'bg-window', opacity: 'chrome' },
+  content: { colour: 'bg-island', opacity: 'content' },
+  menu: { colour: 'bg-popup', opacity: 'menu' },
+  sheet: { colour: 'bg-dialog', opacity: 'sheet' },
+  'sheet-raised': { colour: 'bg-popup', opacity: 'sheet' },
+} as const satisfies Record<string, { colour: ColorRole; opacity: 'chrome' | 'content' | 'menu' | 'sheet' }>;
+
+/**
  * Font families. The faces register under these aliases (`Int UI Inter` 400 and 600, `Int UI Mono` 400). Delivering the font
  * files is the host's job (design D4.7) and has not landed: until it does, a stack falls through to the system font.
  * `calt` stays off for every text: Inter's contextual alternates draw the `x` of `7x5nx` as a

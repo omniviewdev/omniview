@@ -14,7 +14,7 @@
     min-width: 0;
     height: 100%;
     min-height: 0;
-    background-color: var(--ov-bg-island);
+    background-color: var(--ov-surface-content);
     color: var(--ov-fg);
     font-family: var(--ov-font-ui);
     font-feature-settings: var(--ov-font-features);
@@ -151,7 +151,6 @@
     min-height: 0;
     overflow: auto;
     overscroll-behavior: contain;
-    background-color: var(--ov-bg-island);
   }
 
   .list:focus-visible {
@@ -529,7 +528,6 @@
     height: 28px;
     padding-inline: var(--ov-spacing-12);
     border-top: 1px solid var(--ov-border-subtle);
-    background-color: var(--ov-bg-island);
     color: var(--ov-fg-muted);
     font-size: var(--ov-fs-12);
     line-height: var(--ov-lh-16);

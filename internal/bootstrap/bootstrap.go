@@ -23,6 +23,7 @@ const settingsChangedEvent = "settings/changed"
 func init() {
 	// Invalidation only: setting values can contain credentials.
 	application.RegisterEvent[settingsservice.Scope](settingsChangedEvent)
+	application.RegisterEvent[uint64](settingsservice.AppearanceChangedEvent)
 }
 
 // Service wraps the startup/shutdown logic that was previously in the
@@ -70,6 +71,10 @@ func (b *Service) ServiceStartup(ctx context.Context, _ application.ServiceOptio
 
 func (b *Service) attachSettingsEffects(ctx context.Context) {
 	b.Settings.SetApplyHandler(func(category string, values map[string]any) error {
+		if category == coresettings.Appearance.ID {
+			b.Settings.ApplyAppearance(values)
+			return nil
+		}
 		if category != coresettings.Telemetry.ID {
 			return nil
 		}
