@@ -32,6 +32,7 @@ stty -echo -opost
 echo ready >&3
 while read -r name; do
   [ "$name" = quit ] && exit 0
+  case "$name" in cd:*) cd "${name#cd:}" || exit 3; continue;; esac
   cat "$MARKS_DIR/$name"
 done
 `

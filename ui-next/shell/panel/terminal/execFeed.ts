@@ -1,5 +1,5 @@
 import { CHANNEL_VERSION, MAX_INPUT_BYTES, MAX_KEPT_INPUT_BYTES, MAX_MARKS, type ChannelLaunch, type ChannelLink, type TerminalChannels } from './channel';
-import type { TerminalBusy, TerminalClosedBy, TerminalDirectory, TerminalExit, TerminalFeedCause, TerminalFeedHandle, TerminalFeedSnapshot, TerminalFeedStage, PlacedMark, TerminalMark, TerminalModes, TerminalOutput, TerminalReplay, TerminalRestart } from './feed';
+import type { TerminalBusy, TerminalClosedBy, TerminalDirectory, TerminalExit, TerminalFeedCause, TerminalFeedHandle, TerminalFeedSnapshot, TerminalFeedStage, TerminalFinished, TerminalIntegration, TerminalIntegrationState, PlacedMark, TerminalMark, TerminalModes, TerminalOutput, TerminalReplay, TerminalRestart } from './feed';
 import { marksOf } from './marks';
 import { titleOf } from './title';
 import { createHeldOutput } from './heldOutput';
@@ -178,6 +178,28 @@ function replacedOf(session: unknown): boolean {
 
   const shell: unknown = Reflect.get(session, 'shell');
   return typeof shell === 'object' && shell !== null && worded(Reflect.get(shell, 'requested')) !== undefined;
+}
+
+const INTEGRATION_STATES: readonly string[] = ['on', 'off', 'skipped', 'failed', 'unconfirmed'];
+
+/** What the host says of the shell integration in a `terminal.Session` (`integration`: `{ state, reason? }`): the state is one of its five, the reason is text. Anything else is no word. */
+function integrationOf(session: unknown): TerminalIntegration | undefined {
+  if (typeof session !== 'object' || session === null) {
+    return undefined;
+  }
+
+  const said: unknown = Reflect.get(session, 'integration');
+  if (typeof said !== 'object' || said === null) {
+    return undefined;
+  }
+
+  const state: unknown = Reflect.get(said, 'state');
+  if (typeof state !== 'string' || !INTEGRATION_STATES.includes(state)) {
+    return undefined;
+  }
+
+  const reason = worded(Reflect.get(said, 'reason'));
+  return { state: state as TerminalIntegrationState, ...(reason === undefined ? {} : { reason }) };
 }
 
 /** The directory the host started a shell in, as it says it in a `terminal.Session` (`cwd`, an absolute path); nothing when it does not say. */
@@ -422,6 +444,8 @@ type Ready = {
   readonly shellPath: string | undefined;
   /** The host started another shell in place of the one asked for (`session.shell.requested`). */
   readonly replaced: boolean;
+  /** The host's word on the shell integration (`session.integration`), when it says one this page can read. */
+  readonly integration: TerminalIntegration | undefined;
   /** How the terminal ended, when the host's `ready` says it had: its `ended` frame follows the replay. */
   readonly ended: unknown;
 };
@@ -464,6 +488,7 @@ function readyOf(value: unknown): Ready | undefined {
     startedIn: startOf(Reflect.get(value, 'session')),
     shellPath: shellPathOf(Reflect.get(value, 'session')),
     replaced: replacedOf(Reflect.get(value, 'session')),
+    integration: integrationOf(Reflect.get(value, 'session')),
     ended: typeof ended === 'object' && ended !== null ? ended : undefined,
   };
 }
@@ -601,8 +626,30 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   /** The marks of the shell's integration taken so far, oldest first, the end offset of the last one, what a command start said runs (the producer's word), and the list the feed hands out until a mark comes. */
   let marks: TerminalMark[] = [];
   let markedEnd = -1;
+  let historicalFrom = 0;
+  let historicalEnd = 0;
   let running = false;
   let markList: readonly TerminalMark[] | undefined;
+  /** What the host said of the shell integration; whether a mark the nonce vouched for has come (the shell proved itself: it stays so, the screen being brought afresh does not undo it); the last command that finished live; and the start whose line the shell proved, for the command the next end mark belongs to. */
+  let integration: TerminalIntegration | undefined;
+  let proven = false;
+  let lastFinished: TerminalFinished | undefined;
+  let lastStart: { readonly id: string; readonly command: string | undefined } | undefined;
+  /** The status with what the host said of the integration, the proof and the last finished command added: the same object until one of them changes. */
+  let composed: { readonly status: TerminalFeedSnapshot; readonly integration: TerminalIntegration | undefined; readonly proven: boolean; readonly lastFinished: TerminalFinished | undefined; readonly out: TerminalFeedSnapshot } | undefined;
+  const snapshotOf = (): TerminalFeedSnapshot => {
+    if (integration === undefined && !proven && lastFinished === undefined) {
+      return status;
+    }
+
+    if (composed?.status === status && composed.integration === integration && composed.proven === proven && composed.lastFinished === lastFinished) {
+      return composed.out;
+    }
+
+    const out: TerminalFeedSnapshot = { ...status, ...(integration === undefined ? {} : { integration }), ...(proven ? { proven: true as const } : {}), ...(lastFinished === undefined ? {} : { finished: lastFinished }) };
+    composed = { status, integration, proven, lastFinished, out };
+    return out;
+  };
 
   /** The offset the feed has applied up to: what a stream that drops is connected again from. A terminal the feed made starts at 0; one it attaches to has nothing until its replay is complete. */
   let next: number | undefined = attachTo === undefined ? 0 : undefined;
@@ -1007,6 +1054,9 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
 
     readyEnded = ready.ended;
     resumeEnd = ready.end;
+    // What the host held when this stream opened: a command that finished in bytes up to here finished before the page was listening, whatever the reader has taken.
+    historicalFrom = cursor;
+    historicalEnd = ready.end;
     // A continuation is complete when the cursor reaches the end the host advertised (at once when there is nothing to bring); a replay when it is whole.
     complete = resumed && ready.end === ready.start;
     if (complete) {
@@ -1016,10 +1066,19 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     startedIn = ready.startedIn ?? startedIn;
     startedShell = ready.shellPath ?? startedShell;
     shellReplaced = shellReplaced || ready.replaced;
+    // The host's word on the integration: told when it changes (the first ready of a terminal, or a host that says another thing), never guessed.
+    const hostSays = ready.integration;
+    const integrationChanged = hostSays !== undefined && (integration?.state !== hostSays.state || integration.reason !== hostSays.reason);
+    if (integrationChanged) {
+      integration = hostSays;
+    }
+
     if (status.state === 'starting') {
       const program = ready.program ?? createdProgram ?? status.program;
       const { startNote } = status;
       status = { state: 'running', ...(program === undefined ? {} : { program }), ...(startNote === undefined ? {} : { startNote }) };
+      tell();
+    } else if (integrationChanged) {
       tell();
     }
 
@@ -1155,6 +1214,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
 
     let taken = false;
     let placed = false;
+    let provedNow = false;
     for (const mark of marksOf(frame)) {
       if (mark.end <= markedEnd) {
         continue;
@@ -1164,6 +1224,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       markedEnd = mark.end;
       marks.push(mark);
       // The reader makes its marker where the mark stands: in the bytes of the replay being gathered, or among the live bytes held for it. A host that cut where the protocol says gives `end` at the end of what is held.
+      let live = false;
       if (gathering === undefined && awaiting !== undefined && mark.end <= awaiting.end) {
         // The replay is complete and not taken yet, and the mark stands in it (the host sends a mark after the bytes it ends at, and the last of them completed the replay).
         const start = awaiting.end - awaiting.data.length;
@@ -1171,14 +1232,39 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       } else if (gathering === undefined) {
         held.mark(mark, cursor - mark.end);
         placed = true;
+        live = true;
       } else {
         gathering.marks.push({ mark, at: Math.min(Math.max(0, mark.end - gathering.start), cursor - gathering.start) });
+      }
+
+      // A mark the host says the nonce vouched for is the shell proving itself; the page never decides what is vouched for. A start whose line was proved gives the command of the end mark that follows.
+      if (mark.trust === 'nonce' && !proven) {
+        proven = true;
+        provedNow = true;
+      }
+
+      if (mark.kind === 'command-start') {
+        lastStart = mark.id === undefined ? undefined : { id: mark.id, command: mark.trust === 'nonce' ? mark.command : undefined };
       }
 
       if (mark.kind === 'command-start' && mark.trust === 'nonce') {
         running = true;
       } else if (mark.kind === 'command-end' || mark.kind === 'prompt-start') {
         running = false;
+      }
+
+      // A command finished LIVE is news: the marks of a replay (a reload, a reconnect that lost bytes) are of commands that finished before the page came.
+      if (live && !(mark.end > historicalFrom && mark.end <= historicalEnd) && mark.kind === 'command-end' && mark.id !== undefined) {
+        const command = lastStart?.id === mark.id ? lastStart.command : undefined;
+        lastFinished = {
+          id: mark.id,
+          ...(mark.exit === undefined ? {} : { exit: mark.exit }),
+          ...(mark.durationMs === undefined ? {} : { durationMs: mark.durationMs }),
+          ...(command === undefined ? {} : { command }),
+          ...(mark.timeMs === undefined ? {} : { timeMs: mark.timeMs }),
+        };
+        // One completion, one telling: a frame may carry several, and the window hears each.
+        tell();
       }
     }
 
@@ -1188,6 +1274,11 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
 
     if (taken) {
       markList = undefined;
+    }
+
+    // What the marks said of the shell and of the commands is told once, after all of them were taken.
+    if (provedNow) {
+      tell();
     }
 
     // A mark whose bytes the reader has read already comes with its next read: it is woken for it.
@@ -1225,6 +1316,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     marks = [];
     markedEnd = from;
     running = false;
+    lastStart = undefined;
     markList = undefined;
   };
 
@@ -1562,7 +1654,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       };
     },
 
-    getSnapshot: () => status,
+    getSnapshot: snapshotOf,
 
     read: (max) => {
       woken = false;

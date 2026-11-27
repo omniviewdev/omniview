@@ -130,6 +130,14 @@ describe('each setting has the control its kind asks for', () => {
     expect(screen.getByRole('switch', { name: 'Cursor Blink' })).toHaveAccessibleDescription(/Whether the cursor should blink in the terminal/);
   });
 
+  it('draws the opt-out of the shell integration in the Terminal page: a switch that is on, and says that it applies to terminals opened after the change and that no startup file is edited', async () => {
+    const m = await mount();
+    await goTo(m, 'Terminal');
+    const row = screen.getByRole('switch', { name: 'Shell Integration' });
+    expect(row).toHaveAttribute('aria-checked', 'true');
+    expect(row).toHaveAccessibleDescription(/Applies to terminals opened after the change; the shell's startup files are never edited\./);
+  });
+
   it('a secret says whether the host holds one, never what it is', async () => {
     const m = await mount({ stored: { 'telemetry.auth_value': true } });
     await goTo(m, 'Telemetry');
@@ -149,6 +157,16 @@ describe('a change', () => {
     expect(m.host.calls.commit).toEqual([{ 'terminal.cursorBlink': false }]);
     expect(screen.getByRole('switch', { name: 'Cursor Blink' })).toHaveAttribute('aria-checked', 'false');
     expect(screen.getByRole('button', { name: 'Reset Cursor Blink to default' }).querySelector('svg')).toHaveAttribute('data-ov-glyph', 'rotate-ccw');
+  });
+
+  it('turns the shell integration off when its switch is pressed: the host is told the one setting', async () => {
+    const m = await mount();
+    await goTo(m, 'Terminal');
+    await m.user.click(screen.getByRole('switch', { name: 'Shell Integration' }));
+    await settle(m.clock);
+    expect(m.host.calls.commit).toEqual([{ 'terminal.shellIntegration': false }]);
+    expect(screen.getByRole('switch', { name: 'Shell Integration' })).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByRole('button', { name: 'Reset Shell Integration to default' })).toBeInTheDocument();
   });
 
   it('is undone by Reset, which then goes, and the keyboard is on the row\'s control', async () => {

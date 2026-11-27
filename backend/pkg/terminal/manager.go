@@ -1070,7 +1070,31 @@ func namesTheShellsDirectory(path string, info os.FileInfo, goos string, live fu
 	return err == nil && os.SameFile(cwd, info)
 }
 
+// directory is where the shell is: the directory it said it is in with the session's nonce, when its integration is on and that is a directory
+// here, and otherwise what the system says of the shell's process.
 func (s *session) directory() (string, UnknownReason) {
+	pulled, reason := s.pulledDirectory()
+	tracked, ok := s.trackedDirectory()
+	switch {
+	case !ok:
+		return pulled, reason
+	case reason == ReasonUnsupported:
+		// The system cannot say where the shell is: what the shell proved is all there is.
+		return tracked, ""
+	case pulled == "":
+		return pulled, reason
+	}
+	// The shell proved a directory; the system says where its process is. A shell that was replaced (`exec zsh` has no integration) or that moved
+	// while a command ran has left it: the proof is believed only where it names the very directory the process is in, in the shell's own spelling.
+	trackedInfo, trackedErr := os.Stat(tracked)
+	pulledInfo, pulledErr := os.Stat(pulled)
+	if trackedErr == nil && pulledErr == nil && os.SameFile(trackedInfo, pulledInfo) {
+		return tracked, ""
+	}
+	return pulled, reason
+}
+
+func (s *session) pulledDirectory() (string, UnknownReason) {
 	path, err := processCwd(s.cmd.Process.Pid)
 	switch {
 	case err == nil:

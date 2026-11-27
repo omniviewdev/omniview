@@ -1,6 +1,7 @@
 import { normaliseRoute } from '../../core/tabs';
 import type { PanelCard } from '../host';
 import type { TerminalSessionRecord } from './TerminalSessions';
+import { integrationWords } from './integration';
 import { stateWords } from './state';
 import { TERMINAL_ICON } from './tool';
 
@@ -16,6 +17,11 @@ export function terminalCardOf(record: TerminalSessionRecord | undefined): Panel
   const facts: Array<readonly [label: string, text: string]> = [];
   if (snapshot?.program !== undefined && snapshot.program.trim() !== '') {
     facts.push(['Shell', snapshot.program.trim()]);
+  }
+
+  const integration = snapshot === undefined ? undefined : integrationWords(snapshot);
+  if (integration !== undefined) {
+    facts.push(['Shell integration', integration.text]);
   }
 
   return {

@@ -3378,3 +3378,169 @@ describe('review of #791: the replacement of the shell is known before the ready
     expect(plain.feed.launch?.()).toEqual({ command: ['/bin/zsh', '-f'] });
   });
 });
+
+// THE INTEGRATION FACT, THE SHELL'S PROOF AND A COMMAND THAT FINISHED (issue #694 step 6). The host states the integration in the session of its `ready` (`on`, `off`, `skipped` with a reason, `failed`, `unconfirmed`); the page
+// reads it and never guesses one. A shell has PROVED itself when a mark the nonce vouched for came (a command line or a directory): the host says which marks those are (`trust: nonce`), the page does not decide. A command that
+// FINISHED is a command-end mark that arrived live, with the producer's duration: a replay brings back commands that finished before the page came, and those are no news.
+
+describe('the integration the host says (`session.integration`)', () => {
+  it('says it as the host does: on, and skipped with the host\'s reason', async () => {
+    const on = await running({ integration: { state: 'on' } });
+    expect(on.feed.getSnapshot().integration).toEqual({ state: 'on' });
+    const skipped = await running({ integration: { state: 'skipped', reason: 'powerlevel10k' } });
+    expect(skipped.feed.getSnapshot().integration).toEqual({ state: 'skipped', reason: 'powerlevel10k' });
+  });
+
+  it('says nothing when the host says nothing: a fact not told is not made up', async () => {
+    const r = await running();
+    expect(r.feed.getSnapshot().integration).toBeUndefined();
+    expect(Object.hasOwn(r.feed.getSnapshot(), 'integration')).toBe(false);
+  });
+
+  it('takes no word it cannot read: a state that is not one of the five, a member that is not text, a reason that is not text', async () => {
+    for (const bad of [{ state: 'maybe' }, { state: 5 }, { reason: 'x' }, 'on', 5, null, []]) {
+      const r = await running({ integration: bad as unknown as Readonly<Record<string, unknown>> });
+      expect(r.feed.getSnapshot().integration, JSON.stringify(bad)).toBeUndefined();
+    }
+
+    const odd = await running({ integration: { state: 'failed', reason: { nested: true } } });
+    expect(odd.feed.getSnapshot().integration, 'the state is told, the reason that is not text is not').toEqual({ state: 'failed' });
+  });
+
+  it('is told by a terminal the page attached to, and stays with the terminal after it ended', async () => {
+    const r = attaching();
+    r.stream().ready({ start: 0, end: 0, integration: { state: 'on' } });
+    expect(r.feed.getSnapshot().integration).toEqual({ state: 'on' });
+    r.stream().ended({ reason: 'exited', exit_code: 0, last_offset: 0 });
+    expect(r.feed.getSnapshot().state).toBe('ended');
+    expect(r.feed.getSnapshot().integration, 'the card of an ended terminal still says what it had').toEqual({ state: 'on' });
+  });
+});
+
+describe('a shell that proved itself (`proven`)', () => {
+  it('is proven by a mark the host says the nonce vouched for, once: the status is the same object after it', async () => {
+    const r = await running({ end: 0, integration: { state: 'on' } });
+    r.stream().output(0, 'x'.repeat(100));
+    expect(r.feed.getSnapshot().proven).toBeUndefined();
+    r.stream().marks(start(40));
+    const proven = r.feed.getSnapshot();
+    expect(proven.proven).toBe(true);
+    r.stream().marks(start(80, { id: 'c3' }));
+    expect(r.feed.getSnapshot(), 'a second proof is no change').toBe(proven);
+  });
+
+  it('is proven by a directory the shell vouched for, and by nothing any program could have printed', async () => {
+    const cwd = await running({ end: 0, integration: { state: 'on' } });
+    cwd.stream().output(0, 'x'.repeat(40));
+    cwd.stream().marks({ kind: 'cwd', at: 20, end: 40, trust: 'nonce', cwd: '/srv' });
+    expect(cwd.feed.getSnapshot().proven).toBe(true);
+    const forged = await running({ end: 0, integration: { state: 'on' } });
+    forged.stream().output(0, 'x'.repeat(120));
+    forged.stream().marks(prompt(8), start(40, { trust: 'unverified', command: undefined }), finish(60), prompt(100));
+    expect(forged.feed.getSnapshot().proven, 'prompt, an unproven start and an end are marks any program can print').toBeUndefined();
+  });
+
+  it('is proven by the marks of the replay of a terminal the page attached to, and stays proven when the screen is brought afresh', async () => {
+    const r = attaching();
+    r.stream().ready({ start: 100, end: 140, integration: { state: 'on' } });
+    r.stream().output(100, 'a'.repeat(40));
+    r.stream().marks(start(140, { id: 'c7' }));
+    expect(r.feed.getSnapshot().proven).toBe(true);
+    r.stream().gap(140, 900);
+    expect(r.feed.getSnapshot().proven, 'what the shell proved does not go with the lines of the screen').toBe(true);
+  });
+});
+
+describe('a command that finished while the page watched (`finished`)', () => {
+  it('is the end mark that came live, in the producer\'s words and times, with the line the shell proved', async () => {
+    const r = await running({ end: 0, integration: { state: 'on' } });
+    r.stream().output(0, 'x'.repeat(100));
+    expect(r.feed.getSnapshot().finished).toBeUndefined();
+    r.stream().marks(start(40));
+    expect(r.feed.getSnapshot().finished, 'a command that runs has not finished').toBeUndefined();
+    const before = r.wakes();
+    r.stream().marks(finish(60, { exit: 3 }));
+    expect(r.feed.getSnapshot().finished).toEqual({ id: 'c1', exit: 3, durationMs: 30_000, command: 'sleep 30', timeMs: 31_000 });
+    expect(r.wakes(), 'the listeners are told').toBeGreaterThan(before);
+  });
+
+  it('has no command line when the shell did not prove it, and no duration when the shell sent none', async () => {
+    const r = await running({ end: 0, integration: { state: 'on' } });
+    r.stream().output(0, 'x'.repeat(100));
+    // A start that anything could have printed, with a line in it: the page takes no line from it.
+    r.stream().marks(start(40, { trust: 'unverified', command: 'rm -rf /' }), finish(60, { duration_ms: undefined, time_ms: undefined, exit: undefined }));
+    const { finished } = r.feed.getSnapshot();
+    expect(finished).toEqual({ id: 'c1' });
+    expect(Object.hasOwn(finished ?? {}, 'command')).toBe(false);
+  });
+
+  it('is the next command\'s when another finishes, and is the same object when the same mark is sent again (a stream that came back)', async () => {
+    const r = await running({ end: 0, integration: { state: 'on' } });
+    r.stream().output(0, 'x'.repeat(200));
+    r.stream().marks(start(40), finish(60));
+    const first = r.feed.getSnapshot().finished;
+    r.stream().drop();
+    const again = reconnect(r);
+    again.ready({ start: 200, end: 200 });
+    again.marks(finish(60), start(80, { id: 'c2', command: 'make' }), finish(100, { id: 'c2', exit: 0, duration_ms: 12_000 }));
+    const second = r.feed.getSnapshot().finished;
+    expect(second).toEqual({ id: 'c2', exit: 0, durationMs: 12_000, command: 'make', timeMs: 31_000 });
+    expect(second).not.toBe(first);
+    again.marks(finish(100, { id: 'c2', exit: 0, duration_ms: 12_000 }));
+    expect(r.feed.getSnapshot().finished, 'a mark taken once is told once').toBe(second);
+  });
+
+  it('is not the end mark of a replay: the commands that finished before the page came are no news', async () => {
+    const r = attaching();
+    r.stream().ready({ start: 100, end: 160, integration: { state: 'on' } });
+    r.stream().output(100, 'a'.repeat(60));
+    r.stream().marks(start(120, { id: 'c7' }), finish(160, { id: 'c7' }));
+    expect(r.feed.getSnapshot().finished, 'the marks of a replay being gathered').toBeUndefined();
+    expect(replayOf(r.feed).marks).toHaveLength(2);
+    expect(r.feed.getSnapshot().finished, 'and of one that was complete and waited for the reader').toBeUndefined();
+    r.stream().output(160, 'b'.repeat(40));
+    r.stream().marks(start(180, { id: 'c8', command: 'make' }), finish(200, { id: 'c8', duration_ms: 20_000 }));
+    expect(r.feed.getSnapshot().finished).toMatchObject({ id: 'c8', durationMs: 20_000, command: 'make' });
+  });
+
+  it('is not the end mark of the bytes a reconnect continues from before the page came back: no replay is gathered, but the commands finished while it was away', async () => {
+    const r = await running({ end: 0, integration: { state: 'on' } });
+    r.stream().output(0, 'x'.repeat(100));
+    r.stream().marks(start(40));
+    r.stream().drop();
+    const again = reconnect(r);
+    again.ready({ start: 100, end: 160 });
+    again.output(100, 'y'.repeat(60));
+    again.marks(finish(160, { id: 'c1' }));
+    expect(r.feed.getSnapshot().finished, 'finished at or before the end the host advertised').toBeUndefined();
+    again.output(160, 'z'.repeat(60));
+    again.marks(start(180, { id: 'c2' }), finish(220, { id: 'c2' }));
+    expect(r.feed.getSnapshot().finished?.id, 'one beyond it is news').toBe('c2');
+  });
+
+  it('tells every command that finished in one frame of marks, one after the other', async () => {
+    const r = await running({ end: 0, integration: { state: 'on' } });
+    r.stream().output(0, 'x'.repeat(200));
+    const seen: string[] = [];
+    r.feed.subscribe(() => {
+      const id = r.feed.getSnapshot().finished?.id;
+      if (id !== undefined && seen.at(-1) !== id) {
+        seen.push(id);
+      }
+    });
+    r.stream().marks(start(40), finish(60), start(80, { id: 'c2' }), finish(100, { id: 'c2' }));
+    expect(seen).toEqual(['c1', 'c2']);
+  });
+
+  it('is not the end mark of a replay the host brings after a loss either (the page was away: no word of what finished then)', async () => {
+    const r = await running({ end: 0, integration: { state: 'on' } });
+    r.stream().output(0, 'x'.repeat(60));
+    r.stream().marks(start(40));
+    r.stream().drop();
+    const lost = reconnect(r);
+    lost.ready({ start: 100, end: 140, lost: 40 });
+    lost.output(100, 'y'.repeat(40));
+    lost.marks(finish(140));
+    expect(r.feed.getSnapshot().finished).toBeUndefined();
+  });
+});
