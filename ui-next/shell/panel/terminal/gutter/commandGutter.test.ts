@@ -685,3 +685,58 @@ describe('review of #791: an old command with a line break is not typed (#695 st
     expect(gutter.rerun()).toEqual({ text: 'echo a\necho b', enter: true });
   });
 });
+
+// REVEALING A COMMAND BY ITS ID (issue #694 step 6): a notice that says a command finished brings the person to it. It is the jump, to the command the producer named.
+
+describe('revealing a command by its id', () => {
+  async function three() {
+    const rig = setup({ rows: 6 });
+    for (let at = 1; at <= 3; at += 1) {
+      await rig.run(`cmd ${String(at)}`, 'o1\r\no2\r\no3\r\no4\r\n', { id: `c${String(at)}`, exit: at === 2 ? 1 : 0 });
+    }
+
+    await rig.prompt('c4');
+    return rig;
+  }
+
+  it('moves the view to the line of the command, makes it the target and says where it went', async () => {
+    const { gutter, engine, events } = await three();
+    expect(gutter.reveal('c2')?.id).toBe('c2');
+    expect(engine.viewport().top).toBe(5);
+    expect(gutter.target()?.id).toBe('c2');
+    expect(events.at(-1)).toEqual({ kind: 'said', words: 'Command 2 of 3, Failed, exit 1, took 1.5 s: cmd 2' });
+  });
+
+  it('is where the next jump goes on from: the previous command is the one before it', async () => {
+    const { gutter } = await three();
+    gutter.reveal('c3');
+    expect(gutter.jump('previous')?.id).toBe('c2');
+  });
+
+  it('says so, and moves nothing, for a command the gutter does not hold', async () => {
+    const { gutter, engine, events } = await three();
+    const before = engine.viewport().top;
+    expect(gutter.reveal('c99')).toBeUndefined();
+    expect(engine.viewport().top).toBe(before);
+    expect(events.at(-1)).toEqual({ kind: 'said', words: 'That command is no longer in the terminal' });
+  });
+
+  it('says so for a command whose line the scrollback dropped: the command went with its line', async () => {
+    const { gutter, run, events } = setup({ rows: 4, scrollback: 6 });
+    for (let at = 1; at <= 6; at += 1) {
+      await run(`cmd ${String(at)}`, 'a\r\nb\r\nc\r\n', { id: `c${String(at)}` });
+    }
+
+    expect(gutter.commands().some((one) => one.id === 'c1'), 'the first command is gone').toBe(false);
+    expect(gutter.reveal('c1')).toBeUndefined();
+    expect(events.at(-1)).toEqual({ kind: 'said', words: 'That command is no longer in the terminal' });
+  });
+
+  it('reveals a command that still runs, with its words', async () => {
+    const { gutter, prompt, feed, events } = setup({ rows: 6 });
+    await prompt('c1');
+    await feed('make\r\n', [C('make', 'c1')]);
+    expect(gutter.reveal('c1')?.state).toBe('running');
+    expect(events.at(-1)).toEqual({ kind: 'said', words: 'Command 1 of 1, Running: make' });
+  });
+});
