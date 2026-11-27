@@ -280,6 +280,17 @@ export const units = [
     seconds: 200,
   },
 
+  // The person's terminal settings (#697 step 1): a change reaches a terminal that is open in one event with no new emulator and the scrollback kept (settings.live), and a font that is not loaded when it is chosen is loaded before the
+  // emulator measures its cell, when the terminal is made and while it is open (settings.font-open, settings.font-live). The sections are in terminal-settings.mjs. WebKit and Chromium at both viewports. 60 s is an ESTIMATE from the laptop
+  // (the probe took 39 s with a build made before, load 11: a build of the fixture is 52 s more), to be set from the first nightly figure.
+  {
+    id: 'terminal-settings',
+    name: 'Probe that a change of the terminal settings reaches an open terminal without a new emulator or lost scrollback, and that a font is loaded before it is measured',
+    script: 'ui-next/shell/probes/terminal-settings-probe.mjs',
+    env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/terminal-settings-probe.json' },
+    seconds: 100,
+  },
+
   // T3a: find in the scrollback, the context menu of the terminal and the links in its output (the sections are in terminal-find.mjs, the fixture is terminal-fixture.tsx, the mock's bar is measured by
   // mock-terminal-find-measure.mjs), four probes of their own, WebKit and Chromium at both viewports. The seconds are the laptop's measure times 1.3: the sections wait on what the page shows and on counters, with no clock,
   // so they take 1 to 5 s each at each of the four sizes.
@@ -386,5 +397,16 @@ export const units = [
     plants: 'page',
     // An ESTIMATE from the laptop, to be set from the first nightly figure.
     seconds: 200,
+  },
+
+  {
+    id: 'terminal-controls-settings',
+    name: 'Probe that the settings probe sees a setting the terminal never hears, an emulator made for a change, a scrollback lost by it, and a font measured before it loaded (when the terminal is made and while it is open)',
+    script: 'ui-next/shell/probes/terminal-probe.mjs',
+    env: { FONT_DELAY_MS: '40' },
+    controls: ['settings-not-live', 'settings-recreate', 'settings-scrollback-lost', 'settings-font-unloaded-open', 'settings-font-unloaded-live'],
+    plants: 'page',
+    // An ESTIMATE from the laptop, to be set from the first nightly figure.
+    seconds: 100,
   },
 ];

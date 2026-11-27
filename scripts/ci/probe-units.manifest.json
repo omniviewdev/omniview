@@ -610,7 +610,12 @@
       "where-rename-unpinned",
       "where-restart-hidden",
       "where-restart-transcript-lost",
-      "where-axe"
+      "where-axe",
+      "settings-not-live",
+      "settings-recreate",
+      "settings-scrollback-lost",
+      "settings-font-unloaded-open",
+      "settings-font-unloaded-live"
     ]
   },
   "ui-next/shell/probes/terminal-reattach-b-probe.mjs": {
@@ -634,6 +639,10 @@
     "controls": []
   },
   "ui-next/shell/probes/terminal-reattach-probe.mjs": {
+    "probe": true,
+    "controls": []
+  },
+  "ui-next/shell/probes/terminal-settings-probe.mjs": {
     "probe": true,
     "controls": []
   },
