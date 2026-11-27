@@ -1,0 +1,81 @@
+.library-rail {
+  position: sticky;
+  top: 16px;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 32px);
+  padding-block: 24px 16px;
+}
+
+.library-finder { display: flex; flex-direction: column; min-height: 0; }
+.library-finder-status:empty { margin: 0; }
+.library-finder-results {
+  min-height: 0;
+  margin-top: 12px;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-color: var(--edge) var(--base);
+}
+.library-finder-group { padding: 6px 8px 10px 2px; }
+.library-finder-group + .library-finder-group { border-top: 1px solid var(--line); padding-top: 10px; }
+.library-finder-group .eyebrow { margin: 0 8px 4px; }
+.library-finder-links { margin: 0; padding: 0; list-style: none; }
+.library-finder-links a {
+  display: block;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--quiet);
+  font-size: .88rem;
+  overflow-wrap: anywhere;
+}
+.library-finder-links a:hover { color: var(--mint); }
+.library-finder-links a[aria-current='page'] {
+  border-color: #34503e;
+  background: var(--green);
+  color: var(--mint);
+  font-weight: 650;
+}
+.library-finder-links a:focus-visible { outline-offset: -2px; }
+
+.library-finder-trigger { display: none; }
+.library-finder-dialog {
+  position: fixed;
+  inset: 0 0 0 auto;
+  width: min(100%, 26rem);
+  max-width: none;
+  height: 100%;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-inline-start: 1px solid var(--edge);
+  background: var(--deep);
+  color: var(--ink);
+  overflow: hidden;
+}
+.library-finder-dialog::backdrop { background: rgb(0 0 0 / .6); }
+html:has(.library-finder-dialog[open]) { overflow: hidden; }
+.library-finder-drawer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+  padding: 16px;
+}
+.library-finder-heading { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.library-finder-heading h2 { margin: 0; font-size: 1.2rem; }
+.library-finder-drawer input { font-size: max(1rem, 16px); }
+.library-finder-heading button { min-width: 44px; min-height: 44px; }
+.library-finder-drawer .library-finder-links a { padding-block: 10px; }
+
+@media (max-width: 900px) {
+  .library-rail { display: none; }
+  .library-finder-trigger { display: inline-flex; flex: 0 0 auto; }
+  .library-finder-trigger button { min-width: 44px; min-height: 44px; }
+}
+
+@media (max-width: 560px) {
+  .header-inner .resource-links { flex-wrap: wrap; justify-content: flex-end; gap: 0 9px; }
+}

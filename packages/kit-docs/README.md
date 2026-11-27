@@ -12,7 +12,7 @@ pnpm --filter @omniviewdev/kit-docs build
 pnpm --filter @omniviewdev/kit-docs preview --host 127.0.0.1
 ```
 
-Open the URL printed by Vite. Select a component from the catalog or link directly, for example `./?component=DataTable`. Each page connects its live examples with their source, appearance controls, and Storybook stories. Preview token changes are local experiments, not a persisted Kit theme.
+Open the URL printed by Vite. Use the component finder (`⌘K` or `Ctrl+K`) to switch components. Open Source, Tokens, Props, or Usage directly from the component heading; these views are linkable, for example `./?component=DataTable#props`. The playground opens first when no section is specified. Preview token changes are local experiments, not a persisted Kit theme.
 
 For tools that do not render JavaScript, start at `./llms.txt`. Follow its pinned links to find component guidance, API declarations, examples, and token data for the same Kit revision.
 
