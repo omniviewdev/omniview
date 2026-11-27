@@ -1562,7 +1562,8 @@ async function checkPalette(page, base, engine) {
   assert.ok(tabLabels.includes(`Command: Next tab, Tabs, ${mac ? '⌃⌥→' : 'Ctrl+Alt+→'}`) && tabLabels.includes(`Command: Previous tab, Tabs, ${mac ? '⌃⌥←' : 'Ctrl+Alt+←'}`), `${engine}: Next and Previous tab carry the chord of a browser tab`);
   assert.deepEqual(
     labels.filter((label) => !tabLabels.includes(label)),
-    [`Command: Toggle panel, Panel, ${mac ? '⌃⌥J' : 'Ctrl+Alt+J'}`, 'Command: New terminal, Panel', 'Command: Terminal: Toggle Screen Reader Mode, Panel', `Command: Settings, Window, ${mac ? '⌃⌥,' : 'Ctrl+Alt+,'}`, 'Command: Plugins, Window', 'Command: Home, Window'],
+    // Written out, not imported: `commandsOf` (plugins/host/palette.ts) is not exported, and shell/panel/words.ts, which says the chords, imports a directory (`../core/panel`) that node does not resolve.
+    [`Command: Toggle maximized panel, Panel, ${mac ? '⌃⌥⇧J' : 'Ctrl+Alt+Shift+J'}`, `Command: Toggle panel, Panel, ${mac ? '⌃⌥J' : 'Ctrl+Alt+J'}`, 'Command: New terminal, Panel', 'Command: Terminal: Toggle Screen Reader Mode, Panel', `Command: Settings, Window, ${mac ? '⌃⌥,' : 'Ctrl+Alt+,'}`, 'Command: Plugins, Window', 'Command: Home, Window'],
     `${engine}: the other commands are the host's, and only those`,
   );
   await shot('commands');
@@ -6104,14 +6105,21 @@ async function checkToasts(page, base, engine) {
   assert.notEqual(await timeout.getAttribute('data-sticky'), null, `${engine}: and still sticky`);
   assert.deepEqual(await focused(), onRestart, `${engine}: and the focus never moved`);
 
-  // F6 reaches the toast (the first toast is its stop); Escape closes it and the focus goes back to Restart.
+  // F6 reaches the toast (the first toast is its stop); Escape closes it and the focus goes back to where F6 came from, the stop before the toast (S12, S13: the opener). Which stop that is depends on the regions that have one:
+  // with a path crumb to focus the status bar is a stop and the toast comes after it; with none the island is, and the stop is Restart. So the check reads the stop the last press left, never a fixed one.
   let presses = 0;
-  for (; presses < 10 && !(await focused()).toast; presses += 1) await page.keyboard.press('F6');
+  let left = await focused();
+  for (; presses < 10 && !(await focused()).toast; presses += 1) {
+    left = await focused();
+    await page.keyboard.press('F6');
+  }
   assert.equal((await focused()).toast, true, `${engine}: F6 reached the toast in ${String(presses)} presses`);
   assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label') ?? ''), 'Error: Timed out', `${engine}: the focus is on the first toast`);
+  assert.equal(left.toast, false, `${engine}: F6 came to the toast from a stop that is not a toast`);
+  assert.notEqual(left.tag, 'BODY', `${engine}: F6 came to the toast from a control`);
   await page.keyboard.press('Escape');
   await noToast();
-  assert.deepEqual(await focused(), onRestart, `${engine}: Escape closed the toast and the focus went back to the Restart button`);
+  assert.deepEqual(await focused(), left, `${engine}: Escape closed the toast and the focus went back to where F6 came from: ${JSON.stringify(left)}`);
 
   // Retry asks the same command again. A failure that comes back is the SAME record whether or not its toast was dismissed: the model folds the same notice inside a minute (core/notices/store.ts, post(); the mock's `foldTarget`,
   // shell-notify.js:315-324) and raises the toast again, because a failure must not vanish (S78; the mock's `decide`, :1062-1065). So the press after the Escape above is the second failure and the toast that comes back says `Timed out 2
