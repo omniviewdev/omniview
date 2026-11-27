@@ -285,7 +285,7 @@ describe('BottomDrawerProvider', () => {
     mocks.listExecSessions.mockResolvedValue([{ id: 'sess-1', labels: {} }, { id: 'sess-2', labels: {} }]);
     await renderRestoredDrawer();
 
-    mocks.closeSession.mockRejectedValueOnce(Object.assign(new Error('close timed out'), { type: 'omniview:terminal/close-timeout', status: 504, code: 'CLOSE_TIMEOUT' }));
+    mocks.closeSession.mockRejectedValueOnce(Object.assign(new Error('close timed out'), { type: 'omniview:terminal/close-timeout', title: 'Terminal close timed out', status: 504, code: 'CLOSE_TIMEOUT', detail: 'The terminal was ordered to close and was still ending.' }));
     await act(async () => {
       drawer.closeTab({ id: 'sess-1' });
     });
