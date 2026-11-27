@@ -2,7 +2,7 @@ import { sameItems } from '../tabs/json';
 import { SESSION_RULE, splitTitle } from '../title';
 import { heardAs, sameWords } from './names';
 import { effectiveSession, effectiveTool, isLive, own, sessionVisible, shownOf, visibleSessions, visibleTools } from './state';
-import type { PanelState, Selectors, Session, SessionId, SessionItem, Shown, Tool, ToolId, ToolItem } from './types';
+import type { PaneLayout, PanelState, Selectors, Session, SessionId, SessionItem, Shown, Tool, ToolId, ToolItem } from './types';
 
 // What the toggle, the tool strip, a session tab and a tool body each subscribe to. Every selector is a function of the snapshot. One that only reads a part of the state returns that
 // part, which is the same object while it did not change (the state is updated by structural sharing); one that derives a list or an object keeps its last answer and hands it back while
@@ -99,6 +99,40 @@ function itemOf(session: Session, face: Face): SessionItem {
 
 const EMPTY: readonly SessionId[] = Object.freeze([]);
 
+const SOLE_PANE = 'p1';
+
+/**
+ * What a tool draws: the panes of its group whose sessions are visible, with their shares in proportion (the stored shares are not touched: a pane whose plugin returns has its own back), the active one
+ * being the pane of the session the tool shows. A tool with no group, or with one visible pane left, draws one pane of the whole. A tool with no visible session draws nothing.
+ */
+function layoutOf(state: PanelState, tool: ToolId): PaneLayout | null {
+  const shown = effectiveSession(state, tool);
+  if (shown === null) {
+    return null;
+  }
+
+  const group = own(state.panes, tool);
+  const visible = group === undefined ? [] : group.panes.flatMap((pane, index) => (visibleSessions(state, tool).some((one) => one.id === pane.session) ? [index] : []));
+  if (group !== undefined && visible.length >= 2) {
+    const panes = visible.map((index) => group.panes[index]);
+    const whole = visible.length === group.panes.length;
+    const total = visible.reduce((sum, index) => sum + group.ratios[index], 0);
+    return { axis: group.axis, panes, ratios: whole ? group.ratios : visible.map((index) => group.ratios[index] / total), active: panes.find((pane) => pane.session === shown)?.id ?? panes[0].id };
+  }
+
+  return { axis: 'row', panes: [{ id: group?.panes.find((pane) => pane.session === shown)?.id ?? SOLE_PANE, session: shown }], ratios: [1], active: group?.panes.find((pane) => pane.session === shown)?.id ?? SOLE_PANE };
+}
+
+const sameLayout = (a: PaneLayout | null, b: PaneLayout | null): boolean =>
+  a === b ||
+  (a !== null &&
+    b !== null &&
+    a.axis === b.axis &&
+    a.active === b.active &&
+    a.panes.length === b.panes.length &&
+    a.panes.every((pane, index) => pane.id === b.panes[index].id && pane.session === b.panes[index].session) &&
+    a.ratios.every((ratio, index) => ratio === b.ratios[index]));
+
 /** Whether two items say the same: the old one is kept then, so the tab that shows it does not render. The tool is part of it: an id that is closed and opened again in another tool is another item. */
 const sameItem = (a: SessionItem, b: SessionItem): boolean =>
   a.tool === b.tool && a.title === b.title && a.head === b.head && a.tail === b.tail && a.scope === b.scope && a.name === b.name && a.state === b.state && a.since === b.since;
@@ -108,6 +142,7 @@ export function createSelectors(): Selectors {
   let derived: Derived | undefined;
   let mounted: { readonly source: PanelState['mounted']; readonly list: readonly SessionId[] } | undefined;
   let shown: Shown | null = null;
+  const layouts = new Map<ToolId, PaneLayout | null>();
 
   const derive = (state: PanelState): Derived => {
     if (derived?.tools === state.tools && derived.live === state.live && derived.sessions === state.sessions && derived.order === state.order) {
@@ -177,7 +212,16 @@ export function createSelectors(): Selectors {
 
       return shown;
     },
-    paneLayout: () => null,
+    paneLayout: (state, tool) => {
+      const next = layoutOf(state, tool);
+      const before = layouts.get(tool);
+      if (before !== undefined && sameLayout(before, next)) {
+        return before;
+      }
+
+      layouts.set(tool, next === null ? null : Object.freeze(next));
+      return layouts.get(tool) ?? null;
+    },
     isShown: (state, id) => shownOf(state)?.session === id,
     pluginOff: (state, id) => {
       const session = own(state.sessions, id);

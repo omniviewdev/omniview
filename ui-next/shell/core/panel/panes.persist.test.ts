@@ -212,7 +212,8 @@ describe('a layout that cannot be read', () => {
   });
 
   it('is read for a tool named like a member of every object, and for a tool the panel does not have', () => {
-    const layout = { version: 1, tools: { constructor: { axis: 'row', sessions: ['a', 'b'], ratios: [0.5, 0.5], active: 0 }, __proto__: { axis: 'row' }, nothing: { axis: 'row', sessions: ['a'], ratios: [1], active: 0 } } };
+    // JSON, so that `__proto__` is a key of the document and not the prototype of an object literal.
+    const layout: unknown = JSON.parse('{"version":1,"tools":{"constructor":{"axis":"row","sessions":["a","b"],"ratios":[0.5,0.5],"active":0},"__proto__":{"axis":"row"},"nothing":{"axis":"row","sessions":["a"],"ratios":[1],"active":0}}}');
     const restored = restore({ ...withLayout(layout, []), sessions: [entry('a', 'constructor'), entry('b', 'constructor')] });
     expect(restored).toMatchObject({ ok: true });
     if (restored.ok) {

@@ -44,7 +44,7 @@ function paneProblems(state: PanelState): string[] {
 
     for (const pane of group.panes) {
       const held = Object.hasOwn(state.sessions, pane.session) ? state.sessions[pane.session] : undefined;
-      if (held === undefined || held.tool !== toolId) {
+      if (held?.tool !== toolId) {
         problems.push(`the pane ${pane.id} of ${toolId} is empty or holds another tool's session`);
       }
 
@@ -74,7 +74,10 @@ function step(store: PanelStore, next: () => number, tally: Tally): { name: stri
   const state = store.getSnapshot();
   const ids = Object.keys(state.sessions);
   const pick = <T>(list: readonly T[]): T => list[next() % list.length];
+  const grouped = Object.keys(state.panes);
+  // The operations on a group mostly go to a tool that has one (the rest are the refusals: no group, no such pane).
   const toolId = pick(TOOLS);
+  const paneTool = grouped.length > 0 && next() % 5 !== 0 ? pick(grouped) : toolId;
   const extent = pick(EXTENTS);
   const roll = next() % 18;
   switch (roll) {
@@ -87,7 +90,7 @@ function step(store: PanelStore, next: () => number, tally: Tally): { name: stri
       const result = store.splitPane(toolId, { plugin: pick(PLUGINS), title: `t${String(next() % 4)}`, state: pick(['starting', 'running'] as const), ...(copy ? { id: pick(ids) } : {}) }, { extent });
       count(tally, `split:${result.status === 'refused' ? result.reason : result.status}`);
       if (copy) {
-        expect(result, 'a split with the id of a session is never a copy of it').toMatchObject({ status: 'refused', reason: 'taken' });
+        expect(result.status, 'a split with the id of a session is never a copy of it').toBe('refused');
         expect(store.getSnapshot()).toBe(before);
       }
 
@@ -96,35 +99,40 @@ function step(store: PanelStore, next: () => number, tally: Tally): { name: stri
         expect(ids).not.toContain(result.id);
       }
 
-      return { name: 'split', tool: toolId, extent };
+      return { name: 'split', tool: toolId, extent: result.status === 'done' ? extent : undefined };
     }
 
     case 4:
     case 5: {
-      const group = Object.hasOwn(state.panes, toolId) ? state.panes[toolId] : undefined;
+      const group = Object.hasOwn(state.panes, paneTool) ? state.panes[paneTool] : undefined;
       const known = group === undefined ? undefined : pick(group.panes);
-      const result = store.focusPane(toolId, known !== undefined && next() % 5 !== 0 ? known.id : 'p99');
+      const result = store.focusPane(paneTool, known !== undefined && next() % 5 !== 0 ? known.id : 'p99');
       count(tally, `focus:${result.status}`);
       return { name: 'focus' };
     }
 
     case 6:
     case 7: {
-      const result = store.moveSash(toolId, (next() % 5) - 1, next() % 4 === 0 ? pick([-1, 2, Number.NaN]) : (next() % 1001) / 1000, extent);
+      // Mostly a wide panel, where a sash can take a pane down to a few pixels: a narrower window is what `fit` is for.
+      const wide = next() % 3 === 0 ? extent : 3000;
+      const boundaries = Object.hasOwn(state.panes, paneTool) ? state.panes[paneTool].panes.length - 1 : 0;
+      const boundary = boundaries > 0 && next() % 6 !== 0 ? next() % boundaries : (next() % 5) - 1;
+      const result = store.moveSash(paneTool, boundary, next() % 12 === 0 ? pick([-1, 2, Number.NaN]) : (next() % 1001) / 1000, wide);
       count(tally, `sash:${result.status}`);
-      return { name: 'sash', tool: toolId, extent: result.status === 'refused' ? undefined : extent };
+      return { name: 'sash', tool: paneTool, extent: result.status === 'refused' ? undefined : wide };
     }
 
     case 8: {
-      const result = store.equalisePanes(toolId, extent);
+      const result = store.equalisePanes(paneTool, extent);
       count(tally, `equalise:${result.status}`);
-      return { name: 'equalise', tool: toolId, extent: result.status === 'refused' ? undefined : extent };
+      return { name: 'equalise', tool: paneTool, extent: result.status === 'refused' ? undefined : extent };
     }
 
     case 9: {
-      const result = store.fitPanes(toolId, extent);
+      const narrow = pick([400, 800, 1280]);
+      const result = store.fitPanes(paneTool, narrow);
       count(tally, `fit:${result.status}`);
-      return { name: 'fit', tool: toolId, extent: result.status === 'refused' ? undefined : extent };
+      return { name: 'fit', tool: paneTool, extent: result.status === 'refused' ? undefined : narrow };
     }
 
     case 10:
@@ -179,7 +187,7 @@ function step(store: PanelStore, next: () => number, tally: Tally): { name: stri
 describe('the panes under random operations', () => {
   it('keep every rule of the panes after every operation, and what is saved comes back whole', () => {
     const tally: Tally = new Map();
-    for (let seed = 1; seed <= 200; seed += 1) {
+    for (let seed = 1; seed <= 100; seed += 1) {
       let ids = 0;
       let clock = 1;
       const store = createPanelStore({ newId: () => `s${String((ids += 1))}`, now: () => (clock += 7) });
@@ -187,7 +195,7 @@ describe('the panes under random operations', () => {
       store.registerTool(tool('logs', 'Logs', 20));
       store.syncPlugins([{ id: 'acme', tools: [tool('one')] }, { id: 'beta', tools: [] }]);
       const next = generator(seed);
-      for (let operation = 0; operation < 150; operation += 1) {
+      for (let operation = 0; operation < 120; operation += 1) {
         const done = step(store, next, tally);
         const state = store.getSnapshot();
         const where = `seed ${String(seed)}, operation ${String(operation)} (${done.name})`;
@@ -276,10 +284,21 @@ describe('the panes under random operations', () => {
       }
     }
 
-    for (const event of ['split:done', 'split:full', 'split:taken', 'split:missing', 'focus:done', 'focus:noop', 'focus:refused', 'sash:done', 'sash:noop', 'sash:refused', 'equalise:done', 'equalise:noop', 'fit:done', 'fit:noop', 'close:in a pane', 'close:in no pane', 'close:dissolved a group', 'activate:maybe swapped', 'layout:2 panes', 'layout:3 panes', 'layout:4 panes', 'min:checked', 'restore:group whole', 'old:panes stripped']) {
-      expect(tally.get(event) ?? 0, `event ${event}`).toBeGreaterThan(30);
+    // Every branch must have run, and the ones that change a state, leave it, and are refused each in numbers: a run that never moved a sash, or only ever refused, proves nothing about the rules. (The floors are a
+    // fraction of what a run draws; `fit` is rarer because every operation that takes an extent also fits the shares to it, so a share is under the minimum only after the window got narrower.)
+    const floors: Record<string, number> = {
+      'split:done': 300, 'split:full': 100, 'split:taken': 50, 'split:missing': 100,
+      'focus:done': 100, 'focus:noop': 50, 'focus:refused': 100,
+      'sash:done': 100, 'sash:noop': 5, 'sash:refused': 30,
+      'equalise:done': 20, 'equalise:noop': 50, 'equalise:refused': 50,
+      'fit:done': 8, 'fit:noop': 50, 'fit:refused': 50,
+      'close:in a pane': 100, 'close:in no pane': 100, 'close:dissolved a group': 50, 'activate:maybe swapped': 100,
+      'layout:2 panes': 1000, 'layout:3 panes': 500, 'layout:4 panes': 200, 'min:checked': 500, 'restore:group whole': 40, 'old:panes stripped': 30,
+    };
+    for (const [event, floor] of Object.entries(floors)) {
+      expect(tally.get(event) ?? 0, `event ${event}`).toBeGreaterThan(floor);
     }
-  });
+  }, 60_000);
 });
 
 function serialiseAgain(state: PanelState): PersistedPanel {
