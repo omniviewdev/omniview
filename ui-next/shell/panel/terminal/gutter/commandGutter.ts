@@ -1,7 +1,7 @@
 import type { Engine, EngineDecoration, EngineMarker } from '../engine';
 import type { TerminalMark } from '../feed';
 import { paintGlyph } from './glyph';
-import { jumpWords, NO_COMMANDS, NO_NEXT, NO_OUTPUT, NO_PREVIOUS, SELECTED_OUTPUT, type CommandState } from './words';
+import { jumpWords, NO_COMMANDS, NO_NEXT, NO_OUTPUT, NO_PREVIOUS, NO_SUCH_COMMAND, SELECTED_OUTPUT, type CommandState } from './words';
 
 // THE COMMAND GUTTER's MODEL (issue #694 step 5). The host types the marks of the shell's integration and addresses them by offset in the output; the feed hands each over with the bytes that end at it, and the screen takes it in the
 // callback of the write that parses those bytes, so that a marker made here is on the line the parse left the cursor on (xterm.js #5214: a marker made before the parse reads line 0). From the marks the model keeps the commands:
@@ -378,6 +378,19 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
     return viewOf(chosen);
   };
 
+  const reveal = (id: string): GutterCommand | undefined => {
+    const entry = entries.find((one) => one.id === idOf(id));
+    if (entry === undefined) {
+      say(NO_SUCH_COMMAND);
+      return undefined;
+    }
+
+    engine.scrollTo(home(entry).marker.line());
+    focused = { entry, top: engine.viewport().top };
+    say(jumpWords(viewOf(entry), entries.indexOf(entry), entries.length));
+    return viewOf(entry);
+  };
+
   const output = (command?: GutterCommand): string | undefined => {
     const entry = entryOf(command);
     const range = entry === undefined ? undefined : rangeOf(entry);
@@ -484,7 +497,7 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
       return entry === undefined ? undefined : viewOf(entry);
     },
     jump,
-    reveal: () => undefined,
+    reveal,
     selectOutput: (command) => select(entryOf(command)),
     output,
     hasOutput,

@@ -256,6 +256,14 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
   const external = options.openExternal;
   const entries = new Map<SessionId, Entry>();
   const wanted = new Set<SessionId>();
+  /** The command each session's view is asked to move to, until its body takes the request; and who follows them. */
+  const jumps = new Map<SessionId, string>();
+  const jumpListeners = new Set<() => void>();
+  const tellJumps = (): void => {
+    for (const listener of [...jumpListeners]) {
+      listener();
+    }
+  };
   /** The feed each feed made for a restart continues: its screen keeps the transcript. */
   const continuations = new WeakMap<TerminalFeedHandle, TerminalFeedHandle>();
   const feedListeners = new Set<() => void>();
@@ -337,6 +345,9 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
   const release = (id: SessionId, how: 'close' | 'leave' = 'close'): void => {
     const entry = entries.get(id);
     wanted.delete(id);
+    if (jumps.delete(id)) {
+      tellJumps();
+    }
     if (entry === undefined) {
       return;
     }
@@ -446,9 +457,18 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
       return;
     }
 
+    const before = entry.last.finished;
     entry.last = snapshot;
     store.setSessionState(id, sessionStateOf(snapshot));
     retitle(id, entry, snapshot);
+    // A command that finished is told to the window once: the feed says a new object for each.
+    if (snapshot.finished !== undefined && snapshot.finished !== before && options.finished !== undefined) {
+      try {
+        options.finished(id, snapshot.finished);
+      } catch (error) {
+        warn('[panel] the window could not tell that a command finished', error);
+      }
+    }
   };
 
   /**
@@ -742,13 +762,34 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
 
     takeFocus: (session) => wanted.delete(session),
 
-    requestJump: () => false,
+    requestJump: (session, command) => {
+      if (!entries.has(session)) {
+        return false;
+      }
 
-    pendingJump: () => undefined,
+      jumps.set(session, command);
+      tellJumps();
+      return true;
+    },
 
-    takeJump: () => undefined,
+    pendingJump: (session) => jumps.get(session),
 
-    subscribeJumps: () => () => undefined,
+    takeJump: (session) => {
+      const command = jumps.get(session);
+      if (command !== undefined) {
+        jumps.delete(session);
+        tellJumps();
+      }
+
+      return command;
+    },
+
+    subscribeJumps: (listener) => {
+      jumpListeners.add(listener);
+      return () => {
+        jumpListeners.delete(listener);
+      };
+    },
 
     canTakeBack: (session) => lostEntry(session) !== undefined,
 

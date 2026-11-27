@@ -479,7 +479,7 @@ describe('review of #791: nothing with a line break reaches the new shell from a
 describe('revealing a command by its id (#694 step 6)', () => {
   async function withTwo() {
     const r = await rig();
-    r.feed.push('$ one\r\na\r\n$ two\r\nb\r\n', [placed(0, A()), placed(2, B()), placed(7, C('one')), placed(10, D(0)), placed(10, A('c2')), placed(12, B('c2')), placed(18, C('two', 'c2')), placed(22, D(3, 'c2'))]);
+    r.feed.push('$ one\r\na\r\n$ two\r\nb\r\n', [placed(0, A()), placed(2, B()), placed(7, C('one')), placed(10, D(0)), placed(10, A('c2')), placed(12, B('c2')), placed(17, C('two', 'c2')), placed(20, D(3, 'c2'))]);
     r.frame();
     return r;
   }

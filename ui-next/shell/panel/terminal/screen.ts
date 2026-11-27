@@ -4,7 +4,7 @@ import type { PlacedMark, TerminalFeedHandle, TerminalFeedSnapshot, TerminalRepl
 import { keyOf, sequenceOf } from './keys';
 import type { ScreenReaderSource } from './screenReader';
 import { createCommandGutter, type CommandGutter, type GutterEvent } from './gutter/commandGutter';
-import { COPIED_OUTPUT, COULD_NOT_COPY, INPUT_OFF, NO_COMMANDS, NO_LINE, NO_OUTPUT, RERUN_EARLIER, RERUN_RUNNING, RERUN_SENT, RERUN_TYPED } from './gutter/words';
+import { COPIED_OUTPUT, COULD_NOT_COPY, INPUT_OFF, NO_COMMANDS, NO_LINE, NO_OUTPUT, NO_SUCH_COMMAND, RERUN_EARLIER, RERUN_RUNNING, RERUN_SENT, RERUN_TYPED, SCREEN_TAKEN } from './gutter/words';
 import { drainLine, exitLine, failureLines } from './state';
 
 // The screen of a terminal session: the one object between a feed and an emulator (docs/ui-next/status/T1.md, "The screen"). It is framework-free and knows no xterm: it is written against `Engine`, and the body
@@ -986,7 +986,19 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
     jump: (direction, options) => {
       gutter?.jump(direction, options);
     },
-    reveal: () => false,
+    reveal: (command) => {
+      if (engine?.alternate() === true) {
+        sayCommands(SCREEN_TAKEN);
+        return false;
+      }
+
+      if (gutter === undefined) {
+        sayCommands(NO_SUCH_COMMAND);
+        return false;
+      }
+
+      return gutter.reveal(command) !== undefined;
+    },
     selectOutput: () => {
       if (engine?.alternate() === true) {
         sayCommands(NO_OUTPUT);
