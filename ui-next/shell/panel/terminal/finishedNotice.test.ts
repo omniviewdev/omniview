@@ -1,3 +1,4 @@
+import type { NoticesStore } from '../../core/notices';
 import { describe, expect, it, vi } from 'vitest';
 import { makeNotices } from '../../core/notices/testing';
 import type { TerminalFinished } from './feed';
@@ -114,13 +115,14 @@ describe('the notice of a command that finished', () => {
 
   it('bounds the words and keeps a command line\'s control characters out of them: it is the person\'s text, drawn as text (the notice is checked as it is handed to the shell\'s notices, which clean text themselves)', () => {
     const notify = vi.fn<(spec: { readonly title: string; readonly detail?: string | undefined }) => unknown>();
-    const notices = createFinishedNotices({ notices: { notify } as never, shown: () => false, show: () => undefined, nameOf: () => 'zsh' });
+    const sink: Pick<NoticesStore, 'notify'> = { notify: (spec) => (notify(spec), { id: '', refused: undefined } as unknown as ReturnType<NoticesStore['notify']>) };
+    const notices = createFinishedNotices({ notices: sink, shown: () => false, show: () => undefined, nameOf: () => 'zsh' });
     notices.finished('s1', { id: 'c1', durationMs: 20_000, command: `echo \u001b[31m${'x'.repeat(500)}\nrm -rf /`, timeMs: 1 });
     const spec = notify.mock.calls[0]?.[0];
     expect(spec, 'a notice was raised').toBeDefined();
     expect(spec?.title.length).toBeLessThanOrEqual(80);
     expect(spec?.detail?.length).toBeLessThanOrEqual(120);
-    // eslint-disable-next-line no-control-regex -- the point of the test
+     
     expect(spec?.detail).not.toMatch(/[\u0000-\u001f\u007f]/);
     expect(spec?.detail?.startsWith('echo ')).toBe(true);
     expect(spec?.detail?.endsWith('took 20 s')).toBe(true);

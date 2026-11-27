@@ -37,7 +37,7 @@ export type FinishedNotices = {
   readonly finished: (session: SessionId, finished: TerminalFinished) => void;
 };
 
-// eslint-disable-next-line no-control-regex -- a command line is the person's text: the control characters are what is dropped
+ 
 const CONTROL = /[\u0000-\u001f\u007f-\u009f]+/g;
 
 /** Text for a line of a notice: no control character, one space between words, at most `max` characters (the last is an ellipsis when it was cut). */

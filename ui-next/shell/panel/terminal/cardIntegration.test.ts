@@ -22,7 +22,7 @@ describe('the card of a terminal says its shell integration', () => {
 
   it('says None, and why, for a shell the host did not integrate', () => {
     expect(terminalCardOf(record({ state: 'running', integration: { state: 'off' } })).facts).toEqual([['Shell integration', 'None: shell integration is turned off in Settings.']]);
-    expect(terminalCardOf(record({ state: 'running', integration: { state: 'skipped', reason: 'posix' } })).facts[0]?.[0]).toBe('Shell integration');
+    expect(terminalCardOf(record({ state: 'running', integration: { state: 'skipped', reason: 'posix' } })).facts?.[0]?.[0]).toBe('Shell integration');
   });
 
   it('says nothing when the producer says nothing of the integration, and a terminal that ended keeps what it had', () => {

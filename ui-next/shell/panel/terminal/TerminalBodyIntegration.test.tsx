@@ -29,7 +29,7 @@ async function mount(snapshot: Partial<TerminalFeedSnapshot>) {
   feed.set(snapshot);
   const loader = fakeEngineLoader();
   const opened = sessions.open({ plugin: HOST, id: 'local', title: 'Terminal', open: () => feed });
-  render(<TerminalBody sessions={sessions} session={store.getSnapshot().sessions[opened?.id ?? '']!} visible load={loader.load} screenReader={createScreenReaderChoice(false)} />);
+  render(<TerminalBody sessions={sessions} session={store.getSnapshot().sessions[opened?.id ?? '']} visible load={loader.load} screenReader={createScreenReaderChoice(false)} />);
   await act(async () => {
     await vi.advanceTimersByTimeAsync(20);
   });

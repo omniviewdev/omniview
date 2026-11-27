@@ -264,6 +264,7 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
       listener();
     }
   };
+
   /** The feed each feed made for a restart continues: its screen keeps the transcript. */
   const continuations = new WeakMap<TerminalFeedHandle, TerminalFeedHandle>();
   const feedListeners = new Set<() => void>();
@@ -348,6 +349,7 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
     if (jumps.delete(id)) {
       tellJumps();
     }
+
     if (entry === undefined) {
       return;
     }

@@ -25,7 +25,7 @@ function mount(options: { readonly visible?: boolean } = {}) {
   const opened = sessions.open({ plugin: HOST, id: 'local', title: 'Terminal', open: () => feed }, { focus: false });
   const id = opened?.id ?? '';
   const reader = createScreenReaderChoice(false);
-  const body = (visible: boolean) => <TerminalBody sessions={sessions} session={store.getSnapshot().sessions[id]!} visible={visible} load={loader.load} screenReader={reader} />;
+  const body = (visible: boolean) => <TerminalBody sessions={sessions} session={store.getSnapshot().sessions[id]} visible={visible} load={loader.load} screenReader={reader} />;
   const view = render(body(options.visible ?? true));
   return {
     sessions,
