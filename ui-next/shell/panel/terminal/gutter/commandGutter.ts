@@ -51,8 +51,8 @@ export type CommandGutter = {
   readonly target: () => GutterCommand | undefined;
   /** Moves the view to the previous or the next command, and says where it went. `select` selects its output too. */
   readonly jump: (direction: 'previous' | 'next', options?: { readonly select?: boolean }) => GutterCommand | undefined;
-  /** Moves the view to the command with this id (a notice that says "this command finished" brings the person to it), makes it the target and says where it went; `undefined`, and says so, for a command the gutter does not hold (it scrolled out or the screen was cleared). */
-  readonly reveal: (id: string) => GutterCommand | undefined;
+  /** Moves the view to the command with this id of the terminal with this epoch (0 is the first terminal of the screen, each restart is the next; none: the newest) (a notice that says "this command finished" brings the person to it), makes it the target and says where it went; `undefined`, and says so, for a command the gutter does not hold (it scrolled out or the screen was cleared). */
+  readonly reveal: (id: string, epoch?: number) => GutterCommand | undefined;
   /** Selects the output of a command (the target by default); false, and says so, when there is none to select. */
   readonly selectOutput: (command?: GutterCommand) => boolean;
   /** The text of the output of a command (the target by default): `undefined` when it printed none or its lines are gone. */
@@ -378,8 +378,9 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
     return viewOf(chosen);
   };
 
-  const reveal = (id: string): GutterCommand | undefined => {
-    const entry = entries.find((one) => one.id === idOf(id));
+  const reveal = (id: string, of?: number): GutterCommand | undefined => {
+    const wanted = of === undefined || of === epoch ? idOf(id) : of === 0 ? id : `${String(of)}:${id}`;
+    const entry = entries.find((one) => one.id === wanted);
     if (entry === undefined) {
       say(NO_SUCH_COMMAND);
       return undefined;

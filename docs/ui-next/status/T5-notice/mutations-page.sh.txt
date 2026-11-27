@@ -90,4 +90,10 @@ TIERT=$DIR/integration.test.ts
 run proof-upgrades-none "$TIER" "$TIERT" 'the tier of a terminal|the words of the tier|shell integration' "if (state !== 'on' && state !== 'unconfirmed') {" "if (state === undefined) {"
 run basic-is-rich "$TIER" "$TIERT" 'the tier of a terminal|the words of the tier' "return status.proven === true ? 'rich' : 'basic';" "return 'rich';"
 
+GUT=$DIR/gutter/commandGutter.ts
+GUTT=$DIR/gutter/commandGutter.test.ts
+run reveal-ignores-epoch "$GUT" "$GUTT" 'revealing a command of an earlier terminal' "const wanted = of === undefined || of === epoch ? idOf(id) : of === 0 ? id : \`\${String(of)}:\${id}\`;" "const wanted = idOf(id);"
+run restart-is-not-counted "$SESSIONS" "$SESSIONST" 'which terminal of a session a command finished in' "generation: what === 'restart the terminal' ? old.generation + 1 : old.generation" "generation: old.generation"
+run closed-show-is-silent "$TOOL" "$TOOLT" 'says that the terminal was closed' "options.notices?.notify({ title: 'That terminal was closed'" "void ({ title: 'That terminal was closed'"
+
 exit $BAD

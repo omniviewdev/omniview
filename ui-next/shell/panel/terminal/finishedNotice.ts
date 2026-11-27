@@ -27,14 +27,14 @@ export type FinishedNoticeDeps = {
   /** Whether the person is looking at this session's terminal now: it is the one on screen in an open panel, in a window that is shown. */
   readonly shown: (session: SessionId) => boolean;
   /** The notice's action: bring the session's terminal forward, put the keyboard in it and move its view to the command. */
-  readonly show: (session: SessionId, command: string) => void;
+  readonly show: (session: SessionId, command: string, generation: number) => void;
   /** What the tab is called (`zsh (2)`); a session this does not name is "a terminal". */
   readonly nameOf?: ((session: SessionId) => string | undefined) | undefined;
 };
 
 export type FinishedNotices = {
   /** A command finished in a session. */
-  readonly finished: (session: SessionId, finished: TerminalFinished) => void;
+  readonly finished: (session: SessionId, finished: TerminalFinished, generation: number) => void;
 };
 
  
@@ -64,13 +64,13 @@ export function createFinishedNotices(deps: FinishedNoticeDeps): FinishedNotices
   };
 
   return {
-    finished: (session, finished) => {
+    finished: (session, finished, generation) => {
       const { durationMs } = finished;
       if (durationMs === undefined || !Number.isFinite(durationMs) || durationMs < LONG_COMMAND_MS) {
         return;
       }
 
-      const key = `${session}\u0000${finished.id}\u0000${String(finished.timeMs ?? '')}`;
+      const key = `${session}\u0000${String(generation)}\u0000${finished.id}\u0000${String(finished.timeMs ?? '')}`;
       if (told.has(key) || deps.shown(session)) {
         return;
       }
@@ -94,7 +94,7 @@ export function createFinishedNotices(deps: FinishedNoticeDeps): FinishedNotices
             label: 'Show',
             primary: true,
             run: () => {
-              deps.show(session, finished.id);
+              deps.show(session, finished.id, generation);
             },
           },
         ],

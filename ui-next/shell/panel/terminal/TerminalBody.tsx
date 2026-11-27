@@ -336,9 +336,10 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader, na
       return;
     }
 
+    const generation = sessions.jumpGeneration(session.id);
     const command = sessions.takeJump(session.id);
     if (command !== undefined) {
-      screen.commands.reveal(command);
+      screen.commands.reveal(command, generation);
       screen.focus();
     }
   }, [screen, sessions, session.id, jump, visible, view.ready]);

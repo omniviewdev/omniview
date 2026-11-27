@@ -177,9 +177,11 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
       : createFinishedNotices({
         notices: options.notices,
         shown: (session) => store.selectors.isShown(store.getSnapshot(), session) && (options.windowShown ?? documentIsVisible)(),
-        show: (session, command) => {
+        show: (session, command, generation) => {
           store.revealSession(session);
-          sessions.requestJump(session, command);
+          if (!sessions.requestJump(session, command, generation)) {
+            options.notices?.notify({ title: 'That terminal was closed', detail: 'The command is no longer in any terminal.', severity: 'info', initiator: 'system' });
+          }
         },
         nameOf: (session) => store.selectors.sessionItem(store.getSnapshot(), session)?.name,
       });

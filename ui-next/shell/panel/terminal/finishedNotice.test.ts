@@ -20,7 +20,7 @@ function rig(): Rig {
   const show = vi.fn<(session: string, command: string, generation: number) => void>();
   const front = new Set<string>();
   const notices = createFinishedNotices({ notices: fixture.store, shown: (session) => front.has(session), show, nameOf: (session) => (session === 's1' ? 'zsh' : session === 's2' ? 'zsh (2)' : undefined) });
-  return { fixture, show, front, finished: notices.finished, records: () => fixture.store.selectors.recent() };
+  return { fixture, show, front, finished: (session, finished, generation = 0) => { notices.finished(session, finished, generation); }, records: () => fixture.store.selectors.recent() };
 }
 
 describe('the notice of a command that finished', () => {
@@ -126,7 +126,7 @@ describe('the notice of a command that finished', () => {
     const notify = vi.fn<(spec: { readonly title: string; readonly detail?: string | undefined }) => unknown>();
     const sink: Pick<NoticesStore, 'notify'> = { notify: (spec) => (notify(spec), { id: '', refused: undefined } as unknown as ReturnType<NoticesStore['notify']>) };
     const notices = createFinishedNotices({ notices: sink, shown: () => false, show: () => undefined, nameOf: () => 'zsh' });
-    notices.finished('s1', { id: 'c1', durationMs: 20_000, command: `echo \u001b[31m${'x'.repeat(500)}\nrm -rf /`, timeMs: 1 });
+    notices.finished('s1', { id: 'c1', durationMs: 20_000, command: `echo \u001b[31m${'x'.repeat(500)}\nrm -rf /`, timeMs: 1 }, 0);
     const spec = notify.mock.calls[0]?.[0];
     expect(spec, 'a notice was raised').toBeDefined();
     expect(spec?.title.length).toBeLessThanOrEqual(80);

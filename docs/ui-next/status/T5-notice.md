@@ -13,9 +13,15 @@
 - **Notice** (`terminal/finishedNotice.ts`, wired in `terminals.ts` and `PluginHost.tsx`): on by default; only for a live command-end mark (replays are no news) with producer `durationMs >= 10 s`, in a terminal not in front (not the shown session of an open panel, or document hidden); once per (session, id, end time); severity success, or warning for exit != 0; action `Show` brings the session forward, the body moves to the command (`reveal` by id) and focuses the terminal. Identical text within 60 s folds in the shell's notices (count), the action then goes to the newest command. No Settings toggle for the notice (recorded: follow-up if wanted).
 - **Opt-out.** `terminal.shellIntegration` was already declared (`internal/settings/terminal.go`) and is drawn generically; the UI test fixture lacked it, now added, with a Go drift test tying the fixture to the declaration.
 
+## Review round
+
+- Tracked cwd is believed only where `os.SameFile(tracked, pulled)` (the system agrees the shell is there), in the shell's spelling; the pull otherwise; the tracked path alone only when the pull is unsupported. Stale after `exec zsh` or a `cd` inside a running command is fixed (tests `TestAProofThatTheSystemContradictsIsNotTheAnswer`, `TestTheShellsOwnSpelling...`, with a fake `sh` that can `cd`; a real `exec zsh` was not run). The guards for forged, missing, file and relative proofs are now subsumed by the SameFile rule, so they keep tests but no single-fault control.
+- Show names the terminal of the session (`generation` = restarts of the session) and `reveal(id, epoch)` on the gutter uses it; a closed terminal says so in a notice.
+- `proven` is NOT reset: after `exec zsh` the card may still say Rich until the page is reloaded. Dropping it needs the host to say the prompt stopped carrying the nonce; not done.
+
 ## Known limits
 
-- A notice clicked after a restart of the terminal reveals by id in the new shell's epoch. A command that finished while the page was disconnected gets no notice. The card shows no directory.
+- A command that finished while the page was disconnected gets no notice. The card shows no directory.
 
 ## Verification (what was run)
 

@@ -71,7 +71,7 @@ export type TerminalSessionsOptions = {
    * A command finished in a session's terminal (`TerminalFeedSnapshot.finished`: a live end mark, in the producer's times), told once for each, in the order the feed says them. What the host makes of it (a notice) is the window's: the registry
    * only passes it on. A listener that throws is one warning.
    */
-  readonly finished?: ((session: SessionId, finished: TerminalFinished) => void) | undefined;
+  readonly finished?: ((session: SessionId, finished: TerminalFinished, generation: number) => void) | undefined;
 };
 
 export type OpenTerminalOptions = {
@@ -157,7 +157,9 @@ export type TerminalSessions = {
    * Asks for the view of a session's terminal to be moved to a command and the keyboard put in it (a notice's Show): kept until the terminal's body takes it, and answered `false` for a session the registry does not hold. A later
    * request for the session replaces the earlier. The registry moves nothing itself: the body that shows the session does it, when its screen is there.
    */
-  readonly requestJump: (session: SessionId, command: string) => boolean;
+  readonly requestJump: (session: SessionId, command: string, generation?: number) => boolean;
+  /** Which terminal of the session the pending request is about: 0 is the first, each restart the next. `undefined` when none is pending. */
+  readonly jumpGeneration: (session: SessionId) => number | undefined;
   /** The command a session's view is asked to move to and nobody has taken: the same value until it is taken or replaced (an external store with `subscribeJumps`). */
   readonly pendingJump: (session: SessionId) => string | undefined;
   /** Takes the request of a session, once: the second call finds none. */
@@ -189,6 +191,8 @@ type Entry = {
   taking: boolean;
   /** A restart of the session is in flight (the target is being opened): a press that comes inside it does nothing. */
   restarting: boolean;
+  /** How many restarts the session has had: the terminal a restart makes counts its commands from c1 again, so a command is named by its id and this. */
+  generation: number;
   /** What the record says once the entry ended (A21: a kept session never changes again): the status at the unload, with a process that was starting or running as ended. A closed feed may say anything after. */
   final?: TerminalFeedSnapshot | undefined;
 };
@@ -257,7 +261,7 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
   const entries = new Map<SessionId, Entry>();
   const wanted = new Set<SessionId>();
   /** The command each session's view is asked to move to, until its body takes the request; and who follows them. */
-  const jumps = new Map<SessionId, string>();
+  const jumps = new Map<SessionId, { readonly command: string; readonly generation: number }>();
   const jumpListeners = new Set<() => void>();
   const tellJumps = (): void => {
     for (const listener of [...jumpListeners]) {
@@ -466,7 +470,7 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
     // A command that finished is told to the window once: the feed says a new object for each.
     if (snapshot.finished !== undefined && snapshot.finished !== before && options.finished !== undefined) {
       try {
-        options.finished(id, snapshot.finished);
+        options.finished(id, snapshot.finished, entry.generation);
       } catch (error) {
         warn('[panel] the window could not tell that a command finished', error);
       }
@@ -560,7 +564,7 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
 
     // The session is the same one: its entry is replaced, with what the tab was named and what the card knows, and the feed that was lost is let go of (it sends the host nothing for a terminal it lost, and nobody hears it
     // any more). The entry is the new one before the panel hears of the first status, as when a session opens.
-    const next: Entry = { plugin: old.plugin, target: old.target, resource: old.resource, feed, stop, retitle: old.retitle, title: old.title, named: old.named, last: old.last, ended: false, left: false, announced: true, taking: false, restarting: false };
+    const next: Entry = { plugin: old.plugin, target: old.target, resource: old.resource, feed, stop, retitle: old.retitle, title: old.title, named: old.named, last: old.last, ended: false, left: false, announced: true, taking: false, restarting: false, generation: what === 'restart the terminal' ? old.generation + 1 : old.generation };
     entries.set(session, next);
     if (what === 'restart the terminal') {
       continuations.set(feed, old.feed);
@@ -690,6 +694,7 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
         announced: false,
         taking: false,
         restarting: false,
+        generation: 0,
       };
       entries.set(id, entry);
       if (saved === undefined) {
@@ -764,26 +769,28 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
 
     takeFocus: (session) => wanted.delete(session),
 
-    requestJump: (session, command) => {
+    requestJump: (session, command, generation = 0) => {
       if (!entries.has(session)) {
         return false;
       }
 
-      jumps.set(session, command);
+      jumps.set(session, { command, generation });
       tellJumps();
       return true;
     },
 
-    pendingJump: (session) => jumps.get(session),
+    pendingJump: (session) => jumps.get(session)?.command,
+
+    jumpGeneration: (session) => jumps.get(session)?.generation,
 
     takeJump: (session) => {
-      const command = jumps.get(session);
-      if (command !== undefined) {
+      const request = jumps.get(session);
+      if (request !== undefined) {
         jumps.delete(session);
         tellJumps();
       }
 
-      return command;
+      return request?.command;
     },
 
     subscribeJumps: (listener) => {
