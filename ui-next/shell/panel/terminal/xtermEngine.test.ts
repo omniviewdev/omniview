@@ -27,7 +27,8 @@ vi.mock('@xterm/xterm', async (importOriginal) => {
 // The search addon as the module made it (T3a): how many times its code was asked for (the first find asks, nothing else does), and each addon the engine made, with what it was given and every step it was asked. The addon
 // underneath is the real one.
 const searched = vi.hoisted(() => ({ loads: 0, addons: [] as Array<{ readonly options: unknown; readonly steps: Array<{ readonly direction: 'next' | 'previous'; readonly term: string; readonly options: unknown }> }> }));
-vi.mock('@xterm/addon-search', async (importOriginal) => {
+/** The module the search addon is mocked as, one function so that a test that changes the mock can put it back: `vi.doUnmock` would take the `vi.mock` below away for every test that runs after it, and the order the tests run in would decide them. */
+async function recordedSearch(importOriginal: <T>() => Promise<T>): Promise<{ readonly SearchAddon: typeof SearchAddon }> {
   searched.loads += 1;
   const actual = await importOriginal<{ readonly SearchAddon: typeof SearchAddon }>();
   class Recording extends actual.SearchAddon {
@@ -51,7 +52,9 @@ vi.mock('@xterm/addon-search', async (importOriginal) => {
   }
 
   return { ...actual, SearchAddon: Recording };
-});
+}
+
+vi.mock('@xterm/addon-search', recordedSearch);
 
 // The GPU addon as the module made it (#698 item 15): each one the engine made, whether it was disposed, and a way to lose its context or to make the next one fail to be made. In 0.19.0 an addon's `dispose()` does not release
 // its GL context and WebKit allows 16 live ones in a page, so what counts is how many were made.
@@ -252,7 +255,22 @@ describe('what a real emulator says on its own while it is replayed', () => {
 // that is counted.
 describe('the search addon of a real emulator', () => {
   it('is loaded by the first find and not before: a terminal nobody searches costs none of it, and every later ask is given the same finder', async () => {
-    const { engine, close } = emulator();
+    // The search module is made once per registry, and an earlier test (this file runs shuffled) has made it in the one this file was imported into: the engine is the one of a registry of its own, where no find was asked yet.
+    vi.resetModules();
+    vi.doMock('@xterm/addon-search', recordedSearch);
+    searched.loads = 0;
+    searched.addons.length = 0;
+    const { createXtermEngine: createFresh } = await import('./xtermEngine');
+    const host = document.createElement('div');
+    document.body.append(host);
+    const engine = createFresh({ cols: 80, rows: 24, scrollback: 100, appearance: APPEARANCE, screenReaderMode: false });
+    engine.open(host);
+    const close = (): void => {
+      engine.dispose();
+      host.remove();
+      vi.resetModules();
+    };
+
     expect(searched.loads).toBe(0);
     const first = await engine.find();
     expect(searched.loads).toBe(1);
@@ -1747,7 +1765,7 @@ describe('the find of a real emulator', () => {
       engine.dispose();
       host.remove();
     } finally {
-      vi.doUnmock('@xterm/addon-search');
+      vi.doMock('@xterm/addon-search', recordedSearch);
       vi.resetModules();
     }
   });
