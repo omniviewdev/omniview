@@ -50,6 +50,7 @@ export const APPEARANCE = category('appearance', 'Appearance', 'Customize the lo
 export const TERMINAL = category('terminal', 'Terminal', 'Customize the behavior of the terminal', 'LuSquareTerminal', [
   setting('nativeApplication', 'text', 'Native Terminal Application', 'macOS application for a fresh external resource shell. Built-in terminals are unchanged.', 'terminal'),
   setting('defaultShell', 'text', 'Default Shell', 'The default shell to use when opening a terminal', '/bin/zsh'),
+  setting('shellIntegration', 'toggle', 'Shell Integration', 'Let the shell tell the terminal where each command starts and ends, and in which directory. Applies to terminals opened after the change; the shell\'s startup files are never edited.', true),
   setting('theme', 'text', 'Theme', 'The color theme for the terminal', 'application', {
     options: opts(['application', 'Application'], ['dracula', 'Dracula'], ['solarized-dark', 'Solarized Dark'], ['solarized-light', 'Solarized Light'], ['nord', 'Nord'], ['one-light', 'One Light']),
   }),

@@ -31,7 +31,7 @@ describe('the pages', () => {
   });
 
   it('draw the opt-out of the shell integration as a switch that is on until it is turned off: a toggle the host declares in the terminal category', () => {
-    expect(model.schema.sections.find((section) => section.id === 'terminal')?.fields.find((field) => field.id === 'terminal.shellIntegration')).toMatchObject({ kind: 'toggle', label: 'Shell Integration', default: true });
+    expect(model.schema.sections.find((section) => section.id === 'terminal')?.fields.find((field) => field.id === 'terminal.shellIntegration')).toMatchObject({ kind: 'boolean', label: 'Shell Integration', default: true });
     expect(model.initial['terminal.shellIntegration']).toBe(true);
   });
 
