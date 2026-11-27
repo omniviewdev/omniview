@@ -24,11 +24,13 @@ describe('native resource shell feed', () => {
     attach(); await ready;
     expect(service.read).toHaveBeenCalledTimes(1);
     expect(service.read.mock.calls[0].slice(0, 2)).toEqual(['id', 'native-lease']);
-    frames[0].resolve({ state: 'running', data: btoa('after') }); await Promise.resolve();
+    frames[0].resolve({ state: 'running', data: btoa('after') });
+    await service.read.mock.results[0].value;
     expect(feed.read().chunks.map(chunk => String.fromCharCode(...chunk))).toEqual(['before', 'after']);
     expect(await verify()).toBe(true); expect(service.check).toHaveBeenCalledWith('id', 'native-lease', '', expect.any(AbortSignal));
     expect(service.write).not.toHaveBeenCalled(); expect(service.resize).not.toHaveBeenCalled();
-    frames[1].resolve({ state: 'detached', data: '' }); await Promise.resolve();
+    frames[1].resolve({ state: 'detached', data: '' });
+    await service.read.mock.results[1].value;
     expect(await verify()).toBe(false); feed.write('never sent');
     expect(service.write).not.toHaveBeenCalled(); await feed.close(); expect(service.close).not.toHaveBeenCalled();
   });
@@ -43,7 +45,8 @@ describe('native resource shell feed', () => {
   it('cancels a blocked read, ignores an uncooperative late response and preserves already received output', async () => {
     const { service, open, attach, frames } = transport(); const { feed, ready } = open(); attach(); await ready;
     const signal = service.read.mock.calls[0][2]; await feed.close(); expect(signal.aborted).toBe(true);
-    frames[0].resolve({ data: btoa('late'), state: 'running' }); await Promise.resolve();
+    frames[0].resolve({ data: btoa('late'), state: 'running' });
+    await service.read.mock.results[0].value;
     expect(feed.read().chunks.map(chunk => String.fromCharCode(...chunk))).toEqual(['before']);
     expect(service.read).toHaveBeenCalledTimes(1); expect(service.close).toHaveBeenCalledTimes(1);
   });
