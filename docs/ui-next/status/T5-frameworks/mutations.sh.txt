@@ -17,7 +17,7 @@ export GOWORK=off GOTOOLCHAIN=local
 export OMNIVIEW_TEST_BASHES
 WT=$(git rev-parse --show-toplevel) || exit 2
 PKG=./backend/pkg/terminal/
-RUN='^(TestAFrameworksUserStillGetsTheGenuineMarksTrustedWithTheRightExitCodes|TestWhatAFrameworkPrintsOnItsOwnIsAcceptedAtLowTrustAndNeverAsACommandLine|TestAPowerlevel10kUserGetsNoHooksFromTheIntegrationAndKeepsTheirOwnMarks|TestTheStatusAFrameworksHookSeesIsTheUsersAndEveryCommandReachesTheFramework|TestAFrameworksPromptTextIsUnchangedAndNothingIsPrintedOutsideTheMarks|TestTheFilesOfAFrameworksUserAreByteIdenticalAfterASession|TestTheZDOTDIROfZimAndZsh4humansIsTheUsersOwn|TestADirectoryWhoseNameHoldsAnEscapeByteNeitherEndsTheCwdMarkEarlyNorGivesAWrongPath|TestBashPreexecOnBash53RecordsEveryCommandWithItsOwnLine|TestAUsersCommandNamedLikeBashPreexecsIsStillRecorded|TestFishGivesTheRightExitCodesOnEveryVersionUnderTest)$'
+RUN='^(TestAFrameworksUserStillGetsTheGenuineMarksTrustedWithTheRightExitCodes|TestWhatAFrameworkPrintsOnItsOwnIsAcceptedAtLowTrustAndNeverAsACommandLine|TestAPowerlevel10kUserGetsNoHooksFromTheIntegrationAndKeepsTheirOwnMarks|TestTheStatusAFrameworksHookSeesIsTheUsersAndEveryCommandReachesTheFramework|TestAFrameworksPromptTextIsUnchangedAndNothingIsPrintedOutsideTheMarks|TestTheFilesOfAFrameworksUserAreByteIdenticalAfterASession|TestTheZDOTDIROfZimAndZsh4humansIsTheUsersOwn|TestADirectoryWhoseNameHoldsAnEscapeByteNeitherEndsTheCwdMarkEarlyNorGivesAWrongPath|TestBashPreexecOnBash53RecordsEveryCommandWithItsOwnLine|TestAUsersCommandNamedLikeBashPreexecsIsStillRecorded|TestFishGivesTheRightExitCodesOnEveryVersionUnderTest|TestBashPreexecWithExtdebugOrFunctraceRecordsEachCommandOnceWithItsOwnLine)$'
 M=$(mktemp -d "${TMPDIR:-/tmp}/t5fw-mut.XXXXXX") || { echo "no scratch directory" >&2; exit 2; }
 trap 'rm -rf -- "$M"' EXIT
 cd "$WT" || exit 2
@@ -82,7 +82,16 @@ run bash-preexec-first-command "$B" 's|\*__bp_precmd_invoke_cmd\*) __bp_preexec_
 # bash: the first prompt command returns 0, not the status: the framework's hook (starship's $?) sees 0 after `false`. (zsh hands
 # every hook the status of the command whatever a hook before it returns, so there the fault is to read $? late, below.)
 # bash 5.3: bash-preexec's PS0 hook and the epilogue of the prompt commands are taken for the user's command.
-run bash-preexec-ps0-not-ignored "$B" 's#^    case $BASH_COMMAND in .__bp_precmd_invoke_cmd.*#    :#; s#^    case ${FUNCNAME\[1\]-} in __bp_invoke.*#    :#' "$T1 $T9" "TestAUsersCommandNamedLikeBashPreexecsIsStillRecorded"
+run bash-preexec-ps0-not-ignored "$B" 's#^    case $BASH_COMMAND in .__bp_precmd_invoke_cmd.*#    :#; s#^      case $__omniview_fn in .*#      :#' "$T1 $T9" "TestAUsersCommandNamedLikeBashPreexecsIsStillRecorded TestBashPreexecWithExtdebugOrFunctraceRecordsEachCommandOnceWithItsOwnLine"
+
+# bash-preexec's own mode is left on by our last hook: its trap then fires on our function's next commands (extdebug, set -T): the
+# user's preexec runs twice per command.
+run bash-preexec-inside-guard-removed "$B" 's#local __bp_inside_preexec=1; ##' "TestBashPreexecWithExtdebugOrFunctraceRecordsEachCommandOnceWithItsOwnLine" "$T1"
+
+# Only the first function of the stack is looked at, not the whole stack: with extdebug or set -T the commands deeper inside
+# bash-preexec's functions are taken for the user's.
+run bash-preexec-stack-not-walked "$B" 's#for __omniview_fn in "${FUNCNAME\[@\]:1}"; do#for __omniview_fn in "${FUNCNAME[1]-}"; do#' "TestBashPreexecWithExtdebugOrFunctraceRecordsEachCommandOnceWithItsOwnLine" "$T1 $T9"
+
 
 # The match on bash-preexec's commands is too broad (every __bp_*): a user's command of that name is no record.
 run bash-preexec-match-too-broad "$B" 's#^    case $BASH_COMMAND in .__bp_precmd_invoke_cmd.*#    case $BASH_COMMAND in __bp_*) return "$__omniview_ret" ;; esac#' "TestAUsersCommandNamedLikeBashPreexecsIsStillRecorded"
