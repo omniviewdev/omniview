@@ -72,6 +72,12 @@ if [ -n "${__omniview_nonce+set}" ] && [ "${#__omniview_nonce}" -gt 0 ]; then
     case ${FUNCNAME[1]-} in
       __omniview_escape|__omniview_debug|__omniview_precmd_first|__omniview_precmd_last|__omniview_hup_look|__omniview_hup_on|__omniview_hup_off|__omniview_hup) return 0 ;;
     esac
+    # bash-preexec's own commands are none of the user's. On bash 5.3 (0.7.0) it runs its preexec hook from PS0, in the shell, before
+    # the user's command (__bp_invoke_preexec_from_ps0, and the history it reads then is the previous command's), and its epilogue
+    # of the prompt commands (__bp_interactive_mode) runs after our last hook, when the trap is armed: either would be taken for the
+    # command. On older bash it calls this trap itself and never lets these reach it.
+    case $BASH_COMMAND in __bp_*) return "$__omniview_ret" ;; esac
+    case ${FUNCNAME[1]-} in __bp_invoke_preexec_from_ps0|__bp_load_this_command_from_history) return "$__omniview_ret" ;; esac
     # extdebug and `set -T` make subshells, command substitutions and the parts of a pipeline inherit the trap: what it prints
     # there would land in the user's data (a file, a variable), and a command would be recorded twice. They are not the shell.
     [ "${BASH_SUBSHELL:-0}" = 0 ] || return "$__omniview_ret"

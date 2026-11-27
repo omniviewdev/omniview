@@ -211,3 +211,25 @@ func TestAVerifiedLineBeforeAnyPromptBelongsToTheNextCommand(t *testing.T) {
 		t.Fatalf("a line in a running command was kept: %v", recs)
 	}
 }
+
+// Any program can print an OSC 7 whose path holds a control byte. It must not take away the directory the shell proved with the
+// nonce: an OSC 7 touches only the directory it could have set.
+func TestAForgedOSC7WithAControlByteLeavesTheDirectoryTheShellProved(t *testing.T) {
+	s := newTestScanner(t, newClock(), 0)
+	sameKinds(t, feedAll(s, osc(`633;P;Cwd=/tmp/proved;`+testNonce)), KindCwd)
+	for _, body := range []string{"7;file://h/a%1bb", "7;file://h/a%07b", "7;file://h/a%00b"} {
+		if ms := feedAll(s, osc(body)); len(ms) != 0 {
+			t.Fatalf("%q gives marks %v", body, ms)
+		}
+		if dir, trust := s.Log().Cwd(); dir != "/tmp/proved" || trust != TrustNonce {
+			t.Fatalf("%q takes the proved directory away: %q (%v)", body, dir, trust)
+		}
+	}
+	// And it does clear what OSC 7 itself said: no stale loose path.
+	s = newTestScanner(t, newClock(), 0)
+	sameKinds(t, feedAll(s, osc("7;file://h/tmp/loose")), KindCwd)
+	feedAll(s, osc("7;file://h/a%1bb"))
+	if dir, _ := s.Log().Cwd(); dir != "" {
+		t.Fatalf("the loose directory is %q after an OSC 7 that could not be read, want unknown", dir)
+	}
+}
