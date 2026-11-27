@@ -25,6 +25,8 @@ export const units = [
   // The Terminal tool's cuts of the page's two sockets (r6) and the isolation of two pages (r7): the phases' own seconds as the check prints them (`SEAM-PHASE`: 19.9 and 9.7 on the laptop, chromium; the first CI run of #716 printed the older, shorter versions of the two at 17 s and 5 s), rounded up together.
   { id: 'terminal-channel', phases: ['terminal-reconnect', 'terminal-isolation'], seconds: 30 },
   { id: 'terminal-find', phases: ['terminal-find'], seconds: 35 },
+  // Scenario r9, where a terminal opens and what it is called (#695 step 6): the shells of the `+` menu, a start in /tmp with an environment, New terminal here, a program's title and a rename, and Restart, with the machine's real bash and zsh. 30 s is an ESTIMATE from the laptop (the phase took 21 s in Chromium with bash and zsh, load average 3; WebKit not yet measured), to be set from the first nightly figure.
+  { id: 'terminal-where', phases: ['terminal-where'], seconds: 30 },
   { id: 'session', phases: ['session'], seconds: 15 },
   // The scenarios that start a plugin's process (the Go fixture is built once for the run).
   { id: 'plugin-process', phases: ['process', 'failed-load', 'plugins-page'], seconds: 135 },
@@ -64,4 +66,6 @@ export const units = [
   { id: 'controls-terminal-channel', runs: ['terminal-reconnect', 'terminal-isolation'], seconds: 76 },
   // The control of the profile assertion of scenario r2: one run of r2. 65 s is an ESTIMATE (the phase's figure of the runner, 50 s in the CI run of #716, and the host's start of about 15 s), to be set from the first CI or nightly figure.
   { id: 'controls-terminal-profile', runs: ['terminal-profile'], seconds: 65 },
+  // The controls of r9: one run of the whole table (17 controls). 70 s is an ESTIMATE from the laptop (the run took 51 s of phase in Chromium, and the host's start of about 15 s is added), to be set from the first nightly figure.
+  { id: 'controls-terminal-where', runs: ['terminal-where'], seconds: 70 },
 ];

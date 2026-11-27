@@ -504,6 +504,28 @@ const ISOLATION_CONTROLS = {
   'payload-cleanup': /the cleanup of the planted hits keeps the real foreign hit/,
   'cap-in-window-state': /no call of the window's state \(SaveState, GetState\) carries a terminal's capability/,
 };
+const WHERE_GROUP = 'terminal-where';
+// The negative controls of scenario r9, where a terminal opens and what it is called. Each is a premise broken before the act it is named for (the assertion is tried before the page has done what it says) or a fault planted in the shell or the host while the
+// assertion is tried, and the assertion must fail with ITS words and no other. One run serves them all (SEAM_CONTROL=terminal-where); SEAM_CONTROL=<name> makes that one only; SEAM_REMOVE=<name> leaves that assertion out, and the fault must then pass undetected.
+const WHERE_CONTROLS = {
+  'where-tab-name': /the tab of a shell chosen in the menu is named after it/,
+  'where-shell-zero': /the shell chosen in the menu says its own name in echo \$0 and to ps/,
+  'where-env-refused': /a refused env name is refused with the typed error that names launch\.env and shows no value/,
+  'where-cwd': /a terminal started in \/tmp is in \/tmp/,
+  'where-env': /an env entry of the launch is visible to the shell/,
+  'where-here': /New terminal here starts a shell in the directory the terminal it was opened from is in/,
+  'where-title-shown': /a program's title is on the tab while it runs/,
+  'where-title-ended': /the tab says the shell's name again once the program has ended/,
+  'where-title-bound': /a title of 100,000 characters is bounded on the tab and has no control character/,
+  'where-rename': /a renamed tab shows the name the person gave it/,
+  'where-rename-programs': /a renamed tab keeps its name while a program sets a title/,
+  'where-rename-reload': /a renamed tab keeps its name after a reload/,
+  'where-restart-transcript': /the ended terminal's transcript is kept above the restarted shell/,
+  'where-restart-id': /a restart is a new terminal in the same tab, under a different id/,
+  'where-restart-shell': /a restarted terminal runs the same shell/,
+  'where-restart-dir': /a restarted terminal starts in the directory the ended one started in/,
+  'where-restart-env': /a restarted terminal has the environment the ended one was asked to start with/,
+};
 /** The second page of scenario r7: the 404s of its own calls are what the scenario asks for (RUNTIME_ALLOW). */
 const ISOLATION_PAGES = new WeakSet();
 /** The tab that holds the terminal in the displaced-close control of scenario r7, while the control ends the terminal by a call: its lane says the terminal ended, what the check types there is an Enter on that lane, which restarts it (#695 step 5) and lets the ended feed go, and the close of that feed dismisses a terminal the host no longer holds. */
@@ -519,11 +541,11 @@ const ONLY = process.env.SEAM_ONLY ?? '';
 if (ONLY !== '' && ONLY !== PAGE_GROUP && ONLY !== CONNECTIONS_GROUP && ONLY !== PT_GROUP && ONLY !== PORTS_GROUP && ONLY !== SETTINGS_SLOTS) {
   throw new Error(`SEAM_ONLY must be ${PAGE_GROUP}, ${CONNECTIONS_GROUP}, ${PT_GROUP}, ${PORTS_GROUP} or ${SETTINGS_SLOTS}`);
 }
-if (CONTROL !== '' && CONTROL !== 'process' && CONTROL !== FAILED_GROUP && CONTROL !== SETTINGS_GROUP && CONTROL !== PAGE_GROUP && CONTROL !== CONNECTIONS_GROUP && CONTROL !== RECONNECT_GROUP && CONTROL !== ISOLATION_GROUP && CONTROL !== PROFILE_GROUP && PROFILE_CONTROLS[CONTROL] === undefined && CONTROL !== PT_GROUP && CONTROL !== PORTS_GROUP && CONTROLS[CONTROL] === undefined && PROCESS_CONTROLS[CONTROL] === undefined && FAILED_CONTROLS[CONTROL] === undefined && PAGE_CONTROLS[CONTROL] === undefined && CONNECTIONS_CONTROLS[CONTROL] === undefined && RECONNECT_CONTROLS[CONTROL] === undefined && ISOLATION_CONTROLS[CONTROL] === undefined && PT_CONTROLS[CONTROL] === undefined && PORTS_CONTROLS[CONTROL] === undefined) {
-  throw new Error(`SEAM_CONTROL must be one of ${[...Object.keys(CONTROLS), 'process', ...Object.keys(PROCESS_CONTROLS), FAILED_GROUP, ...Object.keys(FAILED_CONTROLS), PAGE_GROUP, ...Object.keys(PAGE_CONTROLS), CONNECTIONS_GROUP, ...Object.keys(CONNECTIONS_CONTROLS), PROFILE_GROUP, ...Object.keys(PROFILE_CONTROLS), RECONNECT_GROUP, ...Object.keys(RECONNECT_CONTROLS), ISOLATION_GROUP, ...Object.keys(ISOLATION_CONTROLS), PT_GROUP, ...Object.keys(PT_CONTROLS), PORTS_GROUP, ...Object.keys(PORTS_CONTROLS), SETTINGS_GROUP].join(', ')}`);
+if (CONTROL !== '' && CONTROL !== 'process' && CONTROL !== FAILED_GROUP && CONTROL !== SETTINGS_GROUP && CONTROL !== PAGE_GROUP && CONTROL !== CONNECTIONS_GROUP && CONTROL !== RECONNECT_GROUP && CONTROL !== ISOLATION_GROUP && CONTROL !== PROFILE_GROUP && PROFILE_CONTROLS[CONTROL] === undefined && CONTROL !== PT_GROUP && CONTROL !== PORTS_GROUP && CONTROL !== WHERE_GROUP && WHERE_CONTROLS[CONTROL] === undefined && CONTROLS[CONTROL] === undefined && PROCESS_CONTROLS[CONTROL] === undefined && FAILED_CONTROLS[CONTROL] === undefined && PAGE_CONTROLS[CONTROL] === undefined && CONNECTIONS_CONTROLS[CONTROL] === undefined && RECONNECT_CONTROLS[CONTROL] === undefined && ISOLATION_CONTROLS[CONTROL] === undefined && PT_CONTROLS[CONTROL] === undefined && PORTS_CONTROLS[CONTROL] === undefined) {
+  throw new Error(`SEAM_CONTROL must be one of ${[...Object.keys(CONTROLS), 'process', ...Object.keys(PROCESS_CONTROLS), FAILED_GROUP, ...Object.keys(FAILED_CONTROLS), PAGE_GROUP, ...Object.keys(PAGE_CONTROLS), CONNECTIONS_GROUP, ...Object.keys(CONNECTIONS_CONTROLS), PROFILE_GROUP, ...Object.keys(PROFILE_CONTROLS), RECONNECT_GROUP, ...Object.keys(RECONNECT_CONTROLS), ISOLATION_GROUP, ...Object.keys(ISOLATION_CONTROLS), WHERE_GROUP, ...Object.keys(WHERE_CONTROLS), PT_GROUP, ...Object.keys(PT_CONTROLS), PORTS_GROUP, ...Object.keys(PORTS_CONTROLS), SETTINGS_GROUP].join(', ')}`);
 }
-if (REMOVE !== '' && PROFILE_CONTROLS[REMOVE] === undefined && FAILED_CONTROLS[REMOVE] === undefined && PROCESS_CONTROLS[REMOVE] === undefined && PAGE_CONTROLS[REMOVE] === undefined && CONNECTIONS_CONTROLS[REMOVE] === undefined && RECONNECT_CONTROLS[REMOVE] === undefined && ISOLATION_CONTROLS[REMOVE] === undefined && PT_CONTROLS[REMOVE] === undefined && PORTS_CONTROLS[REMOVE] === undefined && SETTINGS_PARTS[REMOVE] === undefined && REMOVE !== RUNTIME_CONTROL) {
-  throw new Error(`SEAM_REMOVE must be one of ${[...Object.keys(PROFILE_CONTROLS), ...Object.keys(PROCESS_CONTROLS), ...Object.keys(FAILED_CONTROLS), ...Object.keys(PAGE_CONTROLS), ...Object.keys(CONNECTIONS_CONTROLS), ...Object.keys(RECONNECT_CONTROLS), ...Object.keys(ISOLATION_CONTROLS), ...Object.keys(PT_CONTROLS), ...Object.keys(PORTS_CONTROLS), ...Object.keys(SETTINGS_PARTS), RUNTIME_CONTROL].join(', ')}`);
+if (REMOVE !== '' && PROFILE_CONTROLS[REMOVE] === undefined && FAILED_CONTROLS[REMOVE] === undefined && PROCESS_CONTROLS[REMOVE] === undefined && PAGE_CONTROLS[REMOVE] === undefined && CONNECTIONS_CONTROLS[REMOVE] === undefined && RECONNECT_CONTROLS[REMOVE] === undefined && ISOLATION_CONTROLS[REMOVE] === undefined && WHERE_CONTROLS[REMOVE] === undefined && PT_CONTROLS[REMOVE] === undefined && PORTS_CONTROLS[REMOVE] === undefined && SETTINGS_PARTS[REMOVE] === undefined && REMOVE !== RUNTIME_CONTROL) {
+  throw new Error(`SEAM_REMOVE must be one of ${[...Object.keys(PROFILE_CONTROLS), ...Object.keys(PROCESS_CONTROLS), ...Object.keys(FAILED_CONTROLS), ...Object.keys(PAGE_CONTROLS), ...Object.keys(CONNECTIONS_CONTROLS), ...Object.keys(RECONNECT_CONTROLS), ...Object.keys(ISOLATION_CONTROLS), ...Object.keys(WHERE_CONTROLS), ...Object.keys(PT_CONTROLS), ...Object.keys(PORTS_CONTROLS), ...Object.keys(SETTINGS_PARTS), RUNTIME_CONTROL].join(', ')}`);
 }
 
 // A control's name belongs to one table. The dispatch at the end of this file runs the scenario of the first group that holds the name, so a name that two tables held would run one scenario and never the other: `page-error` was the control of the Logs scenari
@@ -537,12 +559,13 @@ for (const [table, names] of [
   ['CONNECTIONS_CONTROLS', Object.keys(CONNECTIONS_CONTROLS)],
   ['PROFILE_CONTROLS', Object.keys(PROFILE_CONTROLS)],
   ['RECONNECT_CONTROLS', Object.keys(RECONNECT_CONTROLS)],
+  ['WHERE_CONTROLS', Object.keys(WHERE_CONTROLS)],
   ['ISOLATION_CONTROLS', Object.keys(ISOLATION_CONTROLS)],
   ['PT_CONTROLS', Object.keys(PT_CONTROLS)],
   ['PORTS_CONTROLS', Object.keys(PORTS_CONTROLS)],
   ['SETTINGS_PARTS', Object.keys(SETTINGS_PARTS)],
   ['the watch over failed requests', [RUNTIME_CONTROL]],
-  ['the groups', ['process', FAILED_GROUP, SETTINGS_GROUP, PAGE_GROUP, CONNECTIONS_GROUP, PROFILE_GROUP, RECONNECT_GROUP, ISOLATION_GROUP, PT_GROUP, PORTS_GROUP]],
+  ['the groups', ['process', FAILED_GROUP, SETTINGS_GROUP, PAGE_GROUP, CONNECTIONS_GROUP, PROFILE_GROUP, RECONNECT_GROUP, ISOLATION_GROUP, WHERE_GROUP, PT_GROUP, PORTS_GROUP]],
 ]) {
   for (const name of names) NAMED_ONCE.set(name, [...(NAMED_ONCE.get(name) ?? []), table]);
 }
@@ -578,6 +601,7 @@ const PHASE_IDS = [
   'terminal-reconnect',
   'terminal-isolation',
   'terminal-find',
+  'terminal-where',
   'session',
   'process',
   'failed-load',
@@ -610,6 +634,7 @@ if (process.env.SEAM_LIST !== undefined) {
     { run: RECONNECT_GROUP, proves: Object.keys(RECONNECT_CONTROLS) },
     { run: ISOLATION_GROUP, proves: Object.keys(ISOLATION_CONTROLS) },
     { run: PROFILE_GROUP, proves: Object.keys(PROFILE_CONTROLS) },
+    { run: WHERE_GROUP, proves: Object.keys(WHERE_CONTROLS) },
   ];
   console.log(JSON.stringify({ phases: PHASE_IDS, controls }));
   process.exit(0);
@@ -7523,6 +7548,8 @@ function watchStreams(page) {
         note({ dir: 'host', type, v: json()?.v });
       } else if (type === 'gap' && payload.length === 17) {
         note({ dir: 'host', type, from: Number(payload.readBigUInt64BE(1)), to: Number(payload.readBigUInt64BE(9)) });
+      } else if (type === 'title') {
+        note({ dir: 'host', type, title: json() });
       } else if (type === 'ended') {
         socket.ended = json();
         note({ dir: 'host', type });
@@ -11602,6 +11629,462 @@ async function checkTerminalFindMenu(page, base, engine) {
   console.log(`terminal-find ${engine}:\n${observed.map((line) => `  ${line}`).join('\n')}`);
 }
 
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// r9: where a terminal opens and what it is called (issue #695 step 6): the shell a person chooses, the directory and the environment it starts with, New terminal here, the title a program sets, a name the person gives, and Restart.
+
+const WHERE_TITLE = 'seam program title';
+const WHERE_NAME = 'where name';
+const WHERE_ENV = { SEAM_WHERE_ENV: 'seam-env-value' };
+/** A value that must never come back in a refusal. */
+const WHERE_CANARY = 'seam-where-canary-value';
+
+/**
+ * Puts the directory and the environment of a launch into the NEXT `CreateTerminal` the page makes, and gives back a function that takes the route away and says whether the call was made. The page has no gesture for either yet (a profile with
+ * a directory or an environment is for a later step: the host's list of shells names a shell and a path), so the check says what a profile would. `asked` puts the environment in what the page records of what it asked (`params.launch`, which the host
+ * lists back with the terminal): that record is how a page that reloaded learns what to restart a terminal with, and with no gesture that asks, it is the part of the wire the check writes.
+ */
+async function addToNextCreate(page, { cwd, env, asked = false }) {
+  let done = false;
+  const handler = async (route) => {
+    let body;
+    try {
+      body = JSON.parse(route.request().postData() ?? '{}');
+    } catch {
+      return route.fallback();
+    }
+
+    if (done || body?.args?.methodID !== methodIdOf(EXEC_SERVICE, 'CreateTerminal') || String(body.args?.['call-id'] ?? '').startsWith('seam-')) return route.fallback();
+    done = true;
+    const [options, launch] = body.args.args;
+    launch.cwd = cwd;
+    launch.env = env;
+    if (asked) {
+      const recorded = JSON.parse(options.params?.launch ?? '{}');
+      options.params = { ...options.params, launch: JSON.stringify({ ...recorded, env }) };
+    }
+
+    return route.fallback({ postData: JSON.stringify(body) });
+  };
+  await page.route('**/wails/runtime', handler);
+  return async () => {
+    await page.unroute('**/wails/runtime', handler);
+    return done;
+  };
+}
+
+/**
+ * r9. Where a terminal opens and what it is called (issue #695 steps 1 to 5, over the real host and the real shells of this machine). A shell chosen in the menu of the `+` (`Choose a shell`: bash and zsh, each that the host lists) is
+ * named on its tab and says its own name to `echo $0` and to `ps`. A terminal started in /tmp with an entry in `launch.env` has `pwd` equal to /tmp, and equal to the host's own fact (`ChannelTerminalCwd`, read the moment `pwd` has
+ * answered: no wait for time), and the entry is in the shell's environment; a name the host refuses (`WAILS_MCP_TOKEN`, a name with `=`) is refused with the typed error that names `launch.env` and never shows the value, and starts no terminal.
+ * New terminal here (the context menu of the screen) after `cd /usr` starts a shell whose `pwd` is /usr, the directory the host says the first is in, which the page sent as the new terminal's `cwd`. A program that prints `ESC ] 0 ; title BEL` shows
+ * the title on the tab while it runs and the shell's name after it ends; a title of 100,000 characters with a control character in it is bounded and has none. A renamed tab keeps its name while programs set titles (the host's frame that says
+ * the title reached the page and the name stayed) and after a reload. Restart: the shell, the directory it STARTED in (not the one it was left in), a different id in the same tab, and the ended terminal's transcript above the new shell's; and, for
+ * a terminal that a reloaded page restarts, the environment it was asked to start with. Every assertion has a negative control (WHERE_CONTROLS): a premise broken before the act, or a fault planted in the shell or in the host. Zsh is run when the
+ * host lists it; a machine with no zsh runs bash alone and says so.
+ */
+async function checkTerminalOpenWhere(page, base, engine) {
+  const { afterwards, asserting, verdict } = withPremises(WHERE_GROUP, WHERE_CONTROLS);
+  const errors = [];
+  const observed = [];
+  const note = (name, text) => observed.push(`${name}: ${text}`);
+  page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));
+  const wire = watchExecCalls(page);
+  const streams = watchStreams(page);
+  await spoofPlatform(page);
+  await keepCopiesOnEveryLoad(page);
+  await open(page, base);
+  await page.getByRole('region', { name: 'Plugins you can open' }).waitFor({ timeout: 30_000 });
+  const mac = await page.evaluate(() => /Mac/.test(navigator.platform));
+  await page.locator('[data-shell-part="panelToggle"]').click();
+  const TMP = await realpath('/tmp');
+  const USR = await realpath('/usr');
+
+  const ids = async () => terminalIds(base);
+  const labels = async () => tabLabelsOf(page);
+  /** Types a line into the terminal the keyboard is in and waits for a pattern in what that terminal's shell printed after it (the text a person reads); the match. */
+  const say = async (id, line, pattern, what, ms = 30_000) => {
+    const from = outputEnd(id);
+    await typeLine(page, line);
+    let found = null;
+    await waitUntil(what, async () => {
+      found = pattern.exec(plain(outputSince(id, from)));
+      return found !== null;
+    }, ms);
+    return found;
+  };
+  const pwdOf = async (id) => (await say(id, 'printf \'WHERE_PWD|%s|\\n\' "$(pwd -P)"', /\nWHERE_PWD\|([^|\r\n%]*)\|\r?\n/, 'the shell to say where it is'))[1];
+  const factOf = async (id) => callBound(base, EXEC_SERVICE, 'ChannelTerminalCwd', capOf(id));
+  const envOf = async (id) => (await say(id, 'echo "WHERE_ENV=${SEAM_WHERE_ENV-unset}"', /\nWHERE_ENV=([^\r\n]*)\r?\n/, 'the shell to say its environment entry'))[1];
+  /** What the shell says it is called, asked of the shell each time (`askShellName` reads the first answer in the transcript, which is the answer of the first time): the name of its process from `ps` and the name it was started under (`$0`), a login shell's dash and a directory taken off. */
+  const nameOf = async (id) => {
+    const found = await say(id, 'printf \'WHERE_SHELL|%s|%s\\n\' "$(ps -p $$ -o comm= | sed \'s,.*/,,; s/^-//\')" "$(n=${0##*/}; echo ${n#-})"', /\nWHERE_SHELL\|([^|\r\n%]*)\|([^|\r\n%]*)\r?\n/, 'the shell to say its name');
+    return { ps: found[1].trim(), zero: found[2].trim() };
+  };
+  /** Makes a thing true or false in the shell, quietly: a line with a marker that only its output carries. */
+  const doIt = async (id, line) => say(id, `${line}; echo WHERE_DONE`, /\nWHERE_DONE\r?\n/, 'the shell to run a line of the check');
+  /** The words of a refusal: the `detail` of the typed error the host answered with. */
+  const detailOf = (text) => {
+    try {
+      return JSON.parse(text)?.cause?.detail ?? text;
+    } catch {
+      return text;
+    }
+  };
+  const focusTab = async (index) => {
+    await sessionTabsOf(page).nth(index).click();
+    await takeKeyboard(page);
+  };
+  /** The terminal that a click made: the host lists one more, the emulator has the keyboard and the host says that the shell is at its prompt. */
+  const arrive = async (before) => {
+    await waitUntil('the host to list the new shell', async () => (await ids()).length === before.length + 1, 30_000);
+    const id = (await ids()).find((one) => !before.includes(one));
+    await takeKeyboard(page);
+    await waitUntil('the shell to say its prompt', async () => (await transcriptOf(base, id)).trim() !== '', 20_000);
+    await waitUntil('the host to say the shell is at its prompt', async () => (await busyOf(base, id)).state === 'idle', 15_000);
+    return id;
+  };
+  const chooseShell = async (name) => {
+    await page.locator('[data-shell-part="sessionAddChoice"]').click();
+    await page.getByRole('menuitem', { name: new RegExp(`^${name}\\b`) }).click();
+  };
+  const isBusy = async (id) => (await busyOf(base, id)).state === 'busy';
+  const isIdle = async (id) => (await busyOf(base, id)).state === 'idle';
+  /** The line that runs a program which sets a title and goes on running (the shell's own `printf` would be the shell's title). */
+  const titled = (setting) => `sh -c "printf '\\033]0;${setting}\\007'; sleep 600"`;
+
+  await startTerminal(page, base, page.locator('[data-shell-part="panelEmpty"]').getByRole('button', { name: 'New terminal', exact: true }));
+  const shells = await callBound(base, EXEC_SERVICE, 'ListTerminalShells');
+  const chosen = ['bash', 'zsh'].filter((name) => shells.some((shell) => shell.name === name));
+  assert.ok(chosen.includes('bash'), `${engine}: the host lists bash (it lists ${JSON.stringify(shells.map((shell) => shell.name))})`);
+  note('shells', `the host lists ${JSON.stringify(shells.map((shell) => shell.name))}; the menu is chosen from for ${JSON.stringify(chosen)}${chosen.includes('zsh') ? '' : ' (no zsh on this machine: NOT RUN)'}; the first terminal is the default, ${JSON.stringify((await labels())[0])}`);
+
+  // 1. A shell chosen in the menu: its name on the tab and in `echo $0`.
+  const named = [];
+  for (const name of ['zsh', 'bash'].filter((one) => chosen.includes(one))) {
+    const before = await ids();
+    const tabsBefore = await labels();
+    let id;
+    await afterwards(
+      async () => {
+        await chooseShell(name);
+        id = await arrive(before);
+      },
+      [
+        'where-tab-name',
+        async () => {
+          const now = await labels();
+          assert.ok(now.length === tabsBefore.length + 1 && new RegExp(`^${name}( \\(\\d+\\))?$`).test(now.at(-1) ?? ''), `${engine}: the tab of a shell chosen in the menu is named after it (${name}; a second tab of the same name says so): the tabs were ${JSON.stringify(tabsBefore)} and are ${JSON.stringify(now)}`);
+        },
+      ],
+    );
+    await asserting(
+      'where-shell-zero',
+      async () => doIt(id, 'ps() { echo fish; }'),
+      async () => doIt(id, 'unset -f ps'),
+      async () => {
+        const said = await nameOf(id);
+        assert.deepEqual(said, { ps: name, zero: name }, `${engine}: the shell chosen in the menu says its own name in echo $0 and to ps (${name})`);
+      },
+    );
+    named.push(`${name}: tab ${JSON.stringify(name)}, $0 and ps say ${name}`);
+  }
+
+  note('a chosen shell', named.join('; '));
+
+  // 2. A refused env name: the typed error that names `launch.env`, no value in it, no terminal made. (Made by the check straight at the host: the page has no gesture that sends an environment.)
+  const refused = [['WAILS_MCP_TOKEN', 'launch.env.WAILS_MCP_TOKEN'], ['A=B', 'launch.env']];
+  const create = async (env) =>
+    tryBound(base, EXEC_SERVICE, 'CreateTerminal', { id: `seam-where-${Date.now().toString(36)}`, tty: true, command: [], labels: {}, params: {}, resource_plugin: '', resource_key: '' }, { channel: true, cols: 80, rows: 24, env });
+  const refusals = [];
+  let baseline = [];
+  await asserting(
+    'where-env-refused',
+    async () => {
+      // A name the host takes: the call is answered with a terminal.
+      refused[0] = ['SEAM_ALLOWED', 'launch.env.SEAM_ALLOWED'];
+    },
+    async () => {
+      refused[0] = ['WAILS_MCP_TOKEN', 'launch.env.WAILS_MCP_TOKEN'];
+      for (const id of (await ids()).filter((one) => !baseline.includes(one))) await tryBound(base, EXEC_SERVICE, 'CloseChannelTerminal', capOf(id));
+      await waitUntil('the host to list the terminals it had', async () => (await ids()).length === baseline.length, 20_000);
+    },
+    async () => {
+      baseline = await ids();
+      refusals.length = 0;
+      for (const [name, naming] of refused) {
+        const answer = await create({ [name]: WHERE_CANARY });
+        const made = answer.status === 200 ? JSON.parse(answer.text) : undefined;
+        if (made?.id !== undefined && made.cap !== undefined) learnCap(made.id, made.cap);
+        refusals.push({ name, words: answer.status === 200 ? 'a terminal' : `${String(answer.status)} ${JSON.stringify(detailOf(answer.text))}` });
+        assert.ok(answer.status !== 200 && /INVALID_REQUEST/.test(answer.text) && answer.text.includes(naming) && !answer.text.includes(WHERE_CANARY), `${engine}: a refused env name is refused with the typed error that names launch.env and shows no value: ${name} was answered ${String(answer.status)} ${answer.status === 200 ? 'with a terminal' : JSON.stringify(answer.text)}`);
+      }
+
+      assert.deepEqual(await ids(), baseline, `${engine}: a refused env name starts no terminal`);
+    },
+  );
+  note('a refused env', refusals.map((one) => `${one.name} -> ${one.words}`).join('; '));
+
+  // 3. A terminal started in /tmp with an env entry, chosen in the menu.
+  const subject = chosen.includes('zsh') ? 'zsh' : 'bash';
+  const launched = { cwd: '/tmp', env: WHERE_ENV };
+  const beforeTw1 = await ids();
+  const stopTw1 = await addToNextCreate(page, launched);
+  await chooseShell(subject);
+  const tw1Id = await arrive(beforeTw1);
+  assert.equal(await stopTw1(), true, `${engine}: the check's launch reached the page's create call`);
+  const tw1Index = (await labels()).length - 1;
+  await asserting(
+    'where-cwd',
+    async () => doIt(tw1Id, 'cd /'),
+    async () => doIt(tw1Id, 'cd /tmp'),
+    async () => {
+      const pwd = await pwdOf(tw1Id);
+      const fact = await factOf(tw1Id);
+      assert.deepEqual([pwd, fact.path], [TMP, TMP], `${engine}: a terminal started in /tmp is in /tmp: pwd says ${JSON.stringify(pwd)} and the host's cwd fact says ${JSON.stringify(fact)}`);
+    },
+  );
+  await asserting(
+    'where-env',
+    async () => doIt(tw1Id, 'unset SEAM_WHERE_ENV'),
+    async () => doIt(tw1Id, `export SEAM_WHERE_ENV=${WHERE_ENV.SEAM_WHERE_ENV}`),
+    async () => assert.equal(await envOf(tw1Id), WHERE_ENV.SEAM_WHERE_ENV, `${engine}: an env entry of the launch is visible to the shell`),
+  );
+  note('started in /tmp', `${subject} chosen in the menu: pwd ${TMP}, the host's cwd fact ${TMP}, SEAM_WHERE_ENV=${WHERE_ENV.SEAM_WHERE_ENV} in its environment (no wait for time)`);
+
+  // A second terminal that a page that reloads will restart: its environment is in what the page recorded of the terminal.
+  const beforeTw2 = await ids();
+  const stopTw2 = await addToNextCreate(page, { ...launched, asked: true });
+  await chooseShell(subject);
+  const tw2Id = await arrive(beforeTw2);
+  assert.equal(await stopTw2(), true, `${engine}: the check's launch reached the page's second create call`);
+  const tw2Index = (await labels()).length - 1;
+
+  // 4. New terminal here, from the first of the two, after `cd /usr`.
+  await focusTab(tw1Index);
+  await doIt(tw1Id, 'cd /usr');
+  await waitUntil('the host to say the shell is in /usr', async () => (await factOf(tw1Id)).path === USR, 15_000);
+  const beforeHere = await ids();
+  const tabsBeforeHere = await labels();
+  await afterwards(
+    async () => {
+      const box = await page.locator('.xterm-screen:visible').boundingBox();
+      await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5, { button: 'right' });
+      await page.getByRole('menu').getByRole('menuitem', { name: 'New terminal here', exact: true }).click();
+      await arrive(beforeHere);
+    },
+    [
+      'where-here',
+      async () => {
+        const now = await ids();
+        const fresh = now.filter((one) => !beforeHere.includes(one));
+        assert.equal(fresh.length, 1, `${engine}: New terminal here starts a shell in the directory the terminal it was opened from is in: ${String(fresh.length)} new terminals`);
+        const [hereId] = fresh;
+        const pwd = await pwdOf(hereId);
+        const fact = await factOf(hereId);
+        const sent = wire.of('CreateTerminal').at(-1)?.args?.[1]?.cwd;
+        assert.deepEqual([pwd, fact.path, sent], [USR, USR, USR], `${engine}: New terminal here starts a shell in the directory the terminal it was opened from is in: pwd says ${JSON.stringify(pwd)}, the host's fact says ${JSON.stringify(fact)} and the page asked for ${JSON.stringify(sent)} (the first terminal's fact was /usr)`);
+      },
+    ],
+  );
+  note('New terminal here', `after cd /usr the new shell's pwd is ${USR}, the host's fact for it is ${USR} and the page's create call asked for ${USR}; the tabs went from ${JSON.stringify(tabsBeforeHere)} to ${JSON.stringify(await labels())}`);
+
+  // 5. The title of a program, on the first terminal's tab, and the shell's name after the program.
+  await focusTab(tw1Index);
+  const tw1Name = (await labels())[tw1Index];
+  assert.match(tw1Name, new RegExp(`^${subject}( \\(\\d+\\))?$`), `${engine}: the tab of the terminal at the prompt is named after its shell`);
+  const tabIs = async (text) => holdsWithin(async () => (await labels())[tw1Index] === text, 15_000);
+  await afterwards(
+    async () => {
+      await typeLine(page, titled(WHERE_TITLE));
+      await waitUntil('the host to say that a program runs', async () => isBusy(tw1Id), 20_000);
+    },
+    ['where-title-shown', async () => assert.ok((await isBusy(tw1Id)) && (await tabIs(WHERE_TITLE)), `${engine}: a program's title is on the tab while it runs: the host says ${(await busyOf(base, tw1Id)).state} and the tab says ${JSON.stringify((await labels())[tw1Index])}`)],
+  );
+  await afterwards(
+    async () => {
+      await page.keyboard.press('Control+c');
+      await waitUntil('the host to say that the shell is at its prompt', async () => isIdle(tw1Id), 20_000);
+    },
+    ['where-title-ended', async () => assert.ok((await isIdle(tw1Id)) && (await tabIs(tw1Name)), `${engine}: the tab says the shell's name again once the program has ended: the host says ${(await busyOf(base, tw1Id)).state} and the tab says ${JSON.stringify((await labels())[tw1Index])}`)],
+  );
+  note('a program title', `while a program ran the tab said ${JSON.stringify(WHERE_TITLE)}; after Control C it said ${JSON.stringify(subject)} again`);
+  await afterwards(
+    async () => {
+      // 100,000 characters after a control character (0x01) in the title.
+      await typeLine(page, 'sh -c "printf \'\\033]0;ab\\001cd\'; head -c 100000 /dev/zero | tr \'\\0\' x; printf \'\\007\'; sleep 600"');
+      await waitUntil('the host to say that a program runs', async () => isBusy(tw1Id), 20_000);
+    },
+    [
+      'where-title-bound',
+      async () => {
+        assert.ok(await isBusy(tw1Id), `${engine}: a title of 100,000 characters is bounded on the tab and has no control character: no program runs`);
+        await holdsWithin(async () => ((await labels())[tw1Index] ?? '').startsWith('abcd'), 15_000);
+        const label = (await labels())[tw1Index] ?? '';
+        assert.ok(label.startsWith('abcdxxxx') && label.length <= 256 && !/[\u0000-\u001f\u007f-\u009f]/.test(label), `${engine}: a title of 100,000 characters is bounded on the tab and has no control character: the tab says ${JSON.stringify(label.slice(0, 40))} (${String(label.length)} characters)`);
+      },
+    ],
+  );
+  await page.keyboard.press('Control+c');
+  await waitUntil('the host to say that the shell is at its prompt', async () => isIdle(tw1Id), 20_000);
+  assert.equal(await tabIs(tw1Name), true, `${engine}: the tab says the shell's name again after the program with the long title`);
+  note('a hostile title', 'a title of 100,000 characters with a control character in it was cut to at most 256 and had no control character');
+
+  // 6. A rename: the tab keeps its name while programs set titles, and after a reload.
+  await afterwards(
+    async () => {
+      await sessionTabsOf(page).nth(tw1Index).dblclick();
+      const field = page.getByRole('textbox', { name: 'Session name' });
+      await field.fill(WHERE_NAME);
+      await field.press('Enter');
+    },
+    ['where-rename', async () => assert.ok(await tabIs(WHERE_NAME), `${engine}: a renamed tab shows the name the person gave it: the tab says ${JSON.stringify((await labels())[tw1Index])}`)],
+  );
+  await takeKeyboard(page);
+  /** A program sets a title while the tab has a name the person gave: the host says the title (its frame reached the page), a program runs, and the tab still has the name. */
+  const titleSaid = (mark, id) => streams.of(id).some((socket) => socket.frames.some((frame) => frame.n > mark && frame.dir === 'host' && frame.type === 'title' && frame.title?.title === WHERE_TITLE && frame.title?.program === true));
+  const renamedWhileTitled = async (when, id) => {
+    const mark = nextOrder();
+    await afterwards(
+      async () => {
+        await typeLine(page, titled(WHERE_TITLE));
+        await waitUntil('the host to say the title of the program', async () => titleSaid(mark, id), 20_000);
+        await afterFrames(page);
+      },
+      [
+        'where-rename-programs',
+        async () => {
+          const said = titleSaid(mark, id);
+          assert.ok(said && (await isBusy(id)) && (await labels())[tw1Index] === WHERE_NAME, `${engine}: a renamed tab keeps its name while a program sets a title (${when}): the host said the title ${String(said)}, the tab says ${JSON.stringify((await labels())[tw1Index])}`);
+        },
+      ],
+    );
+    await page.keyboard.press('Control+c');
+    await waitUntil('the host to say that the shell is at its prompt', async () => isIdle(id), 20_000);
+  };
+  await renamedWhileTitled('before a reload', tw1Id);
+  note('a rename', `the tab says ${JSON.stringify(WHERE_NAME)}, and a program's title ${JSON.stringify(WHERE_TITLE)} (the host's frame reached the page) did not take it`);
+
+  // 7. Restart of the first terminal (no reload): the shell, the directory it STARTED in, another id in the same tab, the transcript above the new shell.
+  /** What the restart of an ended terminal made: the id, once the new shell is at its prompt and has the keyboard. */
+  const restart = async (endedId, index) => {
+    const others = (await ids()).filter((one) => one !== endedId);
+    await page.locator('[data-shell-part="terminalRestart"]:visible').click();
+    await waitUntil('the host to list the restarted shell', async () => (await ids()).filter((one) => !others.includes(one) && one !== endedId).length === 1, 30_000);
+    const id = (await ids()).find((one) => !others.includes(one) && one !== endedId);
+    await takeKeyboard(page);
+    await waitUntil('the restarted shell to say its prompt', async () => (await transcriptOf(base, id)).trim() !== '', 20_000);
+    await waitUntil('the host to say the restarted shell is at its prompt', async () => isIdle(id), 15_000);
+    return { id, others, index };
+  };
+  /** Ends the shell of a terminal by `exit`, as a person does, and waits until the page offers Restart. */
+  const endIt = async (id) => {
+    await typeLine(page, 'exit');
+    await page.locator('[data-shell-part="terminalRestart"]:visible').waitFor({ timeout: 30_000 });
+    await waitUntil('the host to keep the end of the shell', async () => (await listedTerminals(base, { ended: true })).some((entry) => entry.id === id && entry.ended != null), 20_000);
+  };
+  /** The facts of a restart that every one of them has: another id in the same tab (with the name the tab had), the same shell, the directory it started in; and the environment where the page knows it. */
+  const restartedFacts = async (ended, made, labelBefore, withEnv) => {
+    await asserting(
+      'where-restart-id',
+      async () => {
+        // A host that holds a terminal under the ended id again: the restart reused the id.
+        const reused = await tryBound(base, EXEC_SERVICE, 'CreateTerminal', { id: ended, tty: true, command: [], labels: {}, params: {}, resource_plugin: '', resource_key: '' }, { channel: true, cols: 80, rows: 24 });
+        const answered = reused.status === 200 ? JSON.parse(reused.text) : undefined;
+        if (answered?.id !== undefined) learnCap(answered.id, answered.cap);
+      },
+      async () => {
+        for (const id of (await ids()).filter((one) => one !== made.id && !made.others.includes(one))) await tryBound(base, EXEC_SERVICE, 'CloseChannelTerminal', capOf(id));
+        await waitUntil('the host to list the terminals it had', async () => (await ids()).length === made.others.length + 1, 20_000);
+      },
+      async () => {
+        const now = await ids();
+        const fresh = now.filter((one) => !made.others.includes(one));
+        const label = (await labels())[made.index];
+        assert.ok(made.id !== ended && fresh.length === 1 && fresh[0] === made.id && !now.includes(ended) && label === labelBefore, `${engine}: a restart is a new terminal in the same tab, under a different id: the ended was ${ended}, the host lists ${JSON.stringify(now)} and the tab says ${JSON.stringify(label)} (it said ${JSON.stringify(labelBefore)})`);
+      },
+    );
+    await asserting(
+      'where-restart-shell',
+      async () => doIt(made.id, 'ps() { echo fish; }'),
+      async () => doIt(made.id, 'unset -f ps'),
+      async () => {
+        const said = await nameOf(made.id);
+        assert.deepEqual(said, { ps: subject, zero: subject }, `${engine}: a restarted terminal runs the same shell (${subject})`);
+      },
+    );
+    await asserting(
+      'where-restart-dir',
+      async () => doIt(made.id, 'cd /'),
+      async () => doIt(made.id, 'cd /tmp'),
+      async () => assert.equal(await pwdOf(made.id), TMP, `${engine}: a restarted terminal starts in the directory the ended one started in (/tmp), not where it was left`),
+    );
+    if (withEnv) {
+      await asserting(
+        'where-restart-env',
+        async () => doIt(made.id, 'unset SEAM_WHERE_ENV'),
+        async () => doIt(made.id, `export SEAM_WHERE_ENV=${WHERE_ENV.SEAM_WHERE_ENV}`),
+        async () => assert.equal(await envOf(made.id), WHERE_ENV.SEAM_WHERE_ENV, `${engine}: a restarted terminal has the environment the ended one was asked to start with`),
+      );
+    }
+  };
+
+  await focusTab(tw1Index);
+  const marker = 'WHERE_BEFORE_RESTART';
+  await say(tw1Id, `echo ${marker}`, /\nWHERE_BEFORE_RESTART\r?\n/, 'the shell to print what the transcript must keep');
+  const labelBeforeRestart = (await labels())[tw1Index];
+  await endIt(tw1Id);
+  let restartedOne;
+  await afterwards(
+    async () => {
+      restartedOne = await restart(tw1Id, tw1Index);
+    },
+    [
+      'where-restart-transcript',
+      async () => {
+        const buffer = await bufferOf(page, mac, 'the transcript of the restarted terminal');
+        const at = { before: buffer.indexOf(marker), line: buffer.indexOf('Restarted') };
+        assert.ok(at.before >= 0 && at.line > at.before, `${engine}: the ended terminal's transcript is kept above the restarted shell: what the ended shell printed is at ${String(at.before)} and the restart's line at ${String(at.line)} of ${JSON.stringify(buffer.slice(-200))}`);
+      },
+    ],
+  );
+  await restartedFacts(tw1Id, restartedOne, labelBeforeRestart, false);
+  note('Restart', `${subject}: the ended ${tw1Id} went, ${restartedOne.id} took its tab (${JSON.stringify(labelBeforeRestart)} before, ${JSON.stringify((await labels())[tw1Index])} after), started in ${TMP} (not /usr), says ${subject} to $0 and ps, and the transcript with ${marker} is above the restart line`);
+
+  // 8. A reload: the name stays, a program's title does not take it, and the second terminal (restarted after the reload) has its environment.
+  await waitUntil('the window to have saved the name', async () => String((await callHost(base, 'GetState', 'main')).session ?? '').includes(WHERE_NAME), 30_000);
+  const expectedTabs = await labels();
+  await page.evaluate(() => {
+    window.__seamBeforeReload = true;
+  });
+  await afterwards(
+    async () => {
+      const reloaded = await reloadUntil(page, (state) => state.tabs.length === expectedTabs.length && state.tabs.every((tab, at) => tab === expectedTabs[at]) && state.lane.every((words) => words === ''));
+      assert.equal(reloaded.ok, true, `${engine}: the panel came back with its tabs as they were: ${timelineOf(reloaded.seen)}`);
+    },
+    [
+      'where-rename-reload',
+      async () => {
+        const gone = await page.evaluate(() => window.__seamBeforeReload === undefined);
+        assert.ok(gone && (await labels())[tw1Index] === WHERE_NAME, `${engine}: a renamed tab keeps its name after a reload: the page is ${gone ? 'a new document' : 'the old document'} and the tab says ${JSON.stringify((await labels())[tw1Index])}`);
+      },
+    ],
+  );
+  await focusTab(tw1Index);
+  await renamedWhileTitled('after a reload', restartedOne.id);
+  note('after a reload', `the tab still says ${JSON.stringify(WHERE_NAME)} and a program's title did not take it`);
+
+  await focusTab(tw2Index);
+  const labelBeforeRestartB = (await labels())[tw2Index];
+  await endIt(tw2Id);
+  const madeB = await restart(tw2Id, tw2Index);
+  await restartedFacts(tw2Id, madeB, labelBeforeRestartB, true);
+  note('Restart after a reload', `${subject}: the page that reloaded restarted ${tw2Id} as ${madeB.id}, started in ${TMP} with SEAM_WHERE_ENV=${WHERE_ENV.SEAM_WHERE_ENV}, the same shell, a different id (its environment is what the page kept of what it asked: with no gesture that asks, the check wrote it)`);
+
+  assert.deepEqual(errors.filter((message) => !CUT_BY_A_RELOAD.test(message)), [], `${engine}: the page raised no error but the calls a reload cut`);
+  verdict(engine);
+  console.log(`terminal-open-where ${engine}:\n${observed.map((line) => `  ${line}`).join('\n')}`);
+}
+
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // w: the Ports tool (PF1). The real host, a plugin whose PROCESS forwards a local port to a TCP server of its own, and clients of the check's own that connect to what the forward listens on.
 
@@ -13346,6 +13829,18 @@ try {
         continue;
       }
 
+      if (CONTROL === WHERE_GROUP || WHERE_CONTROLS[CONTROL] !== undefined) {
+        // Scenario r9 alone with the faults of the controls asked for, saying for each whether its own assertion saw it (`checkTerminalOpenWhere`). It runs as a phase, so the requests that fail are held to the allow-list as in a full run.
+        try {
+          await phase(WHERE_GROUP, name, async () => onTerminalPage(browser, host.base, (page) => checkTerminalOpenWhere(page, host.base, name)));
+        } catch (error) {
+          console.error(String(error?.message ?? error));
+          process.exitCode = 1;
+        }
+
+        continue;
+      }
+
       if (CONTROL === RECONNECT_GROUP || RECONNECT_CONTROLS[CONTROL] !== undefined || CONTROL === ISOLATION_GROUP || ISOLATION_CONTROLS[CONTROL] !== undefined) {
         // Scenario r6 or r7 alone with the perturbations of the controls asked for, saying for each whether its own assertion saw it (`checkTerminalReconnect`, `checkTerminalIsolation`). It runs as a phase, so the requests that fail are held to the allow-list as in a full run.
         const reconnect = CONTROL === RECONNECT_GROUP || RECONNECT_CONTROLS[CONTROL] !== undefined;
@@ -13386,8 +13881,8 @@ try {
       // SEAM_TERMINAL_REPEAT=<n> runs the terminal scenarios (r, r2, r3, r4, r5, r6 the cuts of the page's sockets, r7 the isolation of two pages, r8 find, the menu and the links) alone, n times in a row (once when only SEAM_TERMINAL_ONLY is set), for a developer who works on the Terminal tool (each run starts several shells of this
       // machine and ends them). SEAM_TERMINAL_ONLY=r3,r5 narrows it to the scenarios it names.
       if (process.env.SEAM_TERMINAL_REPEAT !== undefined || process.env.SEAM_TERMINAL_ONLY !== undefined) {
-        const terminalOnly = (process.env.SEAM_TERMINAL_ONLY ?? 'r,r2,r3,r4,r5,r6,r7,r8').split(',');
-        const unknown = terminalOnly.filter((id) => !['r', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8'].includes(id));
+        const terminalOnly = (process.env.SEAM_TERMINAL_ONLY ?? 'r,r2,r3,r4,r5,r6,r7,r8,r9').split(',');
+        const unknown = terminalOnly.filter((id) => !['r', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8', 'r9'].includes(id));
         if (unknown.length > 0) throw new Error(`SEAM_TERMINAL_ONLY names scenarios that are not terminal scenarios: ${unknown.join(', ')}`);
         const repeats = Number(process.env.SEAM_TERMINAL_REPEAT ?? '1');
         if (!Number.isSafeInteger(repeats) || repeats < 1) {
@@ -13403,6 +13898,7 @@ try {
           if (terminalOnly.includes('r6')) await phase(RECONNECT_GROUP, name, async () => checkTerminalReconnect(browser, () => host, name).finally(() => endTerminals(host.base)));
           if (terminalOnly.includes('r7')) await phase(ISOLATION_GROUP, name, async () => checkTerminalIsolation(browser, () => host, name).finally(() => endTerminals(host.base)));
           if (terminalOnly.includes('r8')) await phase('terminal-find', name, async () => onTerminalPage(browser, host.base, (page) => checkTerminalFindMenu(page, host.base, name)));
+          if (terminalOnly.includes('r9')) await phase(WHERE_GROUP, name, async () => onTerminalPage(browser, host.base, (page) => checkTerminalOpenWhere(page, host.base, name)));
           console.log(`terminal ${name} run ${String(run)} ok`);
         }
 
@@ -13492,6 +13988,7 @@ try {
         [RECONNECT_GROUP]: async () => checkTerminalReconnect(browser, () => host, name).finally(() => endTerminals(host.base)),
         [ISOLATION_GROUP]: async () => checkTerminalIsolation(browser, () => host, name).finally(() => endTerminals(host.base)),
         'terminal-find': async () => onTerminalPage(browser, host.base, (page) => checkTerminalFindMenu(page, host.base, name)),
+        [WHERE_GROUP]: async () => onTerminalPage(browser, host.base, (page) => checkTerminalOpenWhere(page, host.base, name)),
         session: async () => checkSession(browser, () => host, restart, name),
         process: async () => checkProcess(browser, name, await processFixture(), work),
         'failed-load': async () => checkFailedLoad(browser, name, await processFixture(), work),
