@@ -352,9 +352,11 @@ describe('the files that read a route\'s connection parameter', () => {
     'plugins/host/connections/reach.ts': 'counts the tabs and the live sessions of the bottom panel that are in one connection, for the question a disconnect asks: the number is drawn, never the key',
     'plugins/host/connections/recents.ts': 'remembers which connection a tab was in: the list of connections used last (Home\'s Recent, and the connection a plugin opens in when none is named) is made from the routes of the tabs the window came back with and of the tab on screen; it is never drawn',
     'plugins/host/contributions.ts': 'makes a face from a route: the key is the scope\'s id and never a label; `complete` opens a page in the connection of the tab it is opened from; `panelConnectionOf` says the connection a page is read in for the bottom panel',
+    'plugins/host/extensionMenuNavigation.ts': 'checks that a terminal menu opens or selects the detail in the originating connection; the key is compared, never displayed',
     'plugins/host/PluginHost.tsx': 'tells a page\'s hook the connection it is read in, opens a link, and carries the connection of the plugin a sidebar was last shown for',
     'plugins/host/palette.ts': 'opens a place in the connection it was last used in, and compares a chip\'s id with the key: what is drawn is the name',
     'plugins/host/panel.ts': 'addresses a route a session of the bottom panel can open again',
+    'plugins/host/sidebarMount.ts': 'checks an owner sidebar against the connected inventory; a view face shows the connection name if known, never the route key',
   };
 
   function sources(directory: string, out: string[] = []): string[] {

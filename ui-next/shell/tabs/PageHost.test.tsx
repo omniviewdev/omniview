@@ -272,6 +272,16 @@ describe('keeping a page alive', () => {
 });
 
 describe('the scroll offset of the region', () => {
+  it('restores a saved document offset on the first commit', () => {
+    const h = boot({ home: false });
+    const [id] = h.openAll(['alpha']);
+    h.store.setPageState(id, { scroll: { top: 174, left: 8 } });
+    render(<Shell registration={{ plugin: { name: 'Cloud' } }} tabs={h.store} renderPage={({ location }) => <Page name={pageName(location.route)} />} empty={null} />);
+    const region = screen.getByRole('tabpanel');
+    expect(region.scrollTop).toBe(174);
+    expect(region.scrollLeft).toBe(8);
+  });
+
   it('is kept for each tab: switch away and back, and the region is where it was left; a tab not shown before starts at the top', () => {
     const { h, ids } = mount(['alpha', 'beta']);
     const region = document.querySelector<HTMLElement>('[data-shell-part="page"]')!;

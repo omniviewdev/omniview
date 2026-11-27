@@ -1,7 +1,7 @@
 import { webcrypto } from 'node:crypto';
 import { TextEncoder } from 'node:util';
 import { MenuHost } from '@omniviewdev/kit';
-import type * as RuntimeApi from '@omniviewdev/runtime/api';
+import { PluginManager } from '@omniviewdev/runtime/api';
 import type { ExtensionEdge, ExtensionOffer, ExtensionPoint } from '@omniviewdev/runtime/internal/extensions-v1';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -22,11 +22,9 @@ import { PluginHost } from './PluginHost';
 import { NO_ROUTE } from './route';
 
 // Everything from manifest decoding through named System.register dispatch and the real page/kit is live.
-const readAsset = vi.hoisted(() => vi.fn());
-vi.mock('@omniviewdev/runtime/api', async load => {
-  const api = await load<typeof RuntimeApi>();
-  return { ...api, PluginManager: { ...api.PluginManager, ReadExtensionAsset: readAsset } };
-});
+const readAsset = vi.fn();
+// A leaked desktop call (including a late cancellation) must fail this native-free fixture, never reach localhost.
+const network = vi.fn<typeof fetch>().mockRejectedValue(new Error('Unexpected transport outside the detail fixture'));
 const views = `System.register(['react/jsx-runtime'],function(ex){var jsx;return {setters:[function(m){jsx=m.jsx;}],execute:function(){
   ex('inspect',function Inspect(p){return jsx('button',{children:'Inspect '+JSON.stringify(p)});});
   ex('notes',function Notes(p){return jsx('p',{children:'Peer notes: '+p.related.state});});
@@ -64,10 +62,11 @@ const route = { plugin: 'owner', contribution: 'item', params: { name: 'wheel', 
 const origin = { owner: 'owner', connection: 'west', extensionScopeKey: 'first', route: { page: 'item', params: { name: 'wheel' } } };
 const tab = (name: string) => screen.getByRole('tab', { name });
 const scope = { tag: 'enabled' };
-function view(key = 'first', context: Readonly<Record<string, string>> = scope, overview = false): DetailView {
+function view(key = 'first', context: Readonly<Record<string, string>> = scope, overview: boolean | 'duplicate' = false): DetailView {
   return { extensionScopeKey: key, tabOutlet: { point: 'panels', context }, tabs: {
     main: { kind: 'overview', sections: [{ kind: 'kv', id: 'info', title: 'Owner facts', rows: [{ label: 'Type', value: 'Wheel' }] }],
-      ...(overview ? { outlets: [{ point: 'facts', context: { used: 0, capacity: 3 } }, { point: 'facts', context: { used: 9, capacity: 10 } }], menuOutlet: { point: 'actions', context } } : {}) },
+      ...(overview ? { outlets: [{ point: 'facts', context: { used: 0, capacity: 3 } },
+        ...(overview === 'duplicate' ? [{ point: 'facts', context: { used: 9, capacity: 10 } }] : [])], menuOutlet: { point: 'actions', context } } : {}) },
     activity: { kind: 'custom', content: 'Owner activity' },
   } };
 }
@@ -133,6 +132,7 @@ async function mount(initial = view()) {
 
 beforeAll(() => {
   installDialog(); installPopover(); vi.stubGlobal('crypto', webcrypto); vi.stubGlobal('TextEncoder', TextEncoder);
+  vi.stubGlobal('fetch', network);
 });
 afterAll(() => {
   teardown(); vi.unstubAllGlobals();
@@ -142,9 +142,15 @@ function assetRead(text: string | Promise<string>, cancel: () => Promise<void> =
 }
 
 beforeEach(() => {
+  network.mockClear();
+  vi.spyOn(PluginManager, 'ReadExtensionAsset').mockImplementation(readAsset);
   readAsset.mockReset().mockImplementation((_id, _pin, _generation, role) => assetRead(role === 'features' ? features : views));
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  expect(network).not.toHaveBeenCalled();
+});
 
 it('lists ordered rich tabs without code, avoids owner IDs and mounts only on selection inside the existing document', async () => {
   const { tabs, authority, policy } = await mount();
@@ -232,9 +238,12 @@ it('rejects hidden, retained, malformed and replacement contexts without reselec
 });
 
 it('puts only the first section after owner sections, runs info on choice, and rechecks an independent menu destination', async () => {
-  const { set, authority, policy } = await mount(view('first', scope, true));
+  const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  const { set, authority, policy } = await mount(view('first', scope, 'duplicate'));
   expect(await screen.findByText('0/3')).toBeVisible();
   expect(screen.queryByText('9/10')).toBeNull();
+  expect(warning.mock.calls).toEqual([['[extensions] Ignored repeated Overview outlet owner/facts.']]);
+  warning.mockRestore();
   const ownerHeading = screen.getByRole('heading', { name: 'Owner facts' });
   const usage = screen.getByRole('heading', { name: 'Usage' });
   expect(ownerHeading.compareDocumentPosition(usage) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -263,6 +272,7 @@ it('puts only the first section after owner sections, runs info on choice, and r
   expect(await screen.findByText(/^Inspect /)).toBeVisible();
   expect(screen.getByRole('tabpanel', { name: /peer\/inspect/ })).toHaveFocus();
   set(ready(view('replacement', {}, true)));
+  expect(await screen.findByText('0/3')).toBeVisible();
   expect(screen.queryByText('About enabled')).toBeNull();
   expect(tab('Overview')).toHaveAttribute('aria-selected', 'true');
 });
@@ -307,11 +317,13 @@ it('caps visible cards across points in owner order without displacing surviving
   const ownerHeading = screen.getByRole('heading', { name: 'Owner facts' });
   set(ready({ ...normal, tabs: { ...normal.tabs, main: { ...main, outlets: [{ point: 'facts', context: { used: 0, capacity: 3 } }, { point: 'a-facts', context: {} }] } } }));
   expect(await screen.findByText('Answer y')).toBeVisible();
-  expect(screen.getByRole('status', { name: 'Extra (w/fact)' })).toHaveTextContent('Information unavailable.');
+  await waitFor(() => {
+    expect(screen.getByRole('status', { name: 'Extra (w/fact)' })).toHaveTextContent('Information unavailable.');
+  });
   const headings = screen.getAllByRole('heading', { level: 2 }).map(h => h.textContent);
   expect(headings.slice(headings.indexOf('Owner facts'))).toEqual(['Owner facts', 'Usage', 'Extra (w/fact)', 'Extra (x/fact)', 'Extra (y/fact)']);
   expect(readAsset.mock.calls.some(([id]) => id === 'z')).toBe(false);
-  const survivor = screen.getByText('Answer x');
+  const survivor = await screen.findByText('Answer x');
   act(() => {
     authority.replacePolicy({ ...policy, grants: [...grants.filter(g => g.offer !== 'w/fact'), ...policy.grants] });
   });

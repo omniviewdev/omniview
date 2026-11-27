@@ -183,11 +183,13 @@ func channelBindingKinds() ([]string, []string, []string) {
 	byID := []string{
 		"GetSession", "AttachSession", "DetachSession", "WriteSession", "CloseSession", "ResizeSession", "WriteTerminal",
 		"ResizeTerminal", "IsBusy", "GetCwd", "AckTerminal", "AttachTerminal", "DetachTerminal",
+		"CheckResourceShell", "ReadResourceShell", "WriteResourceShell", "ResizeResourceShell", "CloseResourceShell",
 	}
 	byCapability := []string{"CloseChannelTerminal", "ChannelTerminalBusy", "ChannelTerminalCwd", "ChannelTerminalCommands", "ListChannelTerminals", "DismissChannelTerminal"}
 	unrelated := []string{
 		"ServiceStartup", "ServiceShutdown", "CreateSession", "OpenNativeSession", "GetNativeTerminalSupport", "GetNativeTerminalApplications",
 		"CreateTerminal", "ListTerminalShells", "ListSessions", "ListTerminals", "GetHandler", "GetHandlers", "GetPluginHandlers", "ListPlugins", "HasPlugin",
+		"CreateResourceShell", // Reserves a new ID; it cannot open the terminal already holding that ID.
 	}
 	return byID, byCapability, unrelated
 }
@@ -251,9 +253,33 @@ func TestAChannelTerminalIsInvisibleToEveryBindingThatNamesATerminalByItsId(t *t
 			_, err := fx.wrapper.DetachTerminal(ctx, id, terminal.DetachRequest{PageKey: keyA})
 			return err
 		},
+		"WriteResourceShell": func(ctx context.Context, id string) error {
+			return fx.wrapper.WriteResourceShell(ctx, id, info.Cap, []byte("x\n"))
+		},
+		"ResizeResourceShell": func(ctx context.Context, id string) error {
+			return fx.wrapper.ResizeResourceShell(ctx, id, info.Cap, 30, 90)
+		},
+		"CloseResourceShell": func(ctx context.Context, id string) error {
+			return fx.wrapper.CloseResourceShell(ctx, id, info.Cap)
+		},
+	}
+	// These two lookups report absence as data, not an error. Even a valid channel
+	// capability cannot be used as a resource shell attachment.
+	queries := map[string]func(context.Context, string){
+		"CheckResourceShell": func(ctx context.Context, id string) {
+			require.False(t, fx.wrapper.CheckResourceShell(ctx, id, info.Cap, ""))
+		},
+		"ReadResourceShell": func(ctx context.Context, id string) {
+			frame, err := fx.wrapper.ReadResourceShell(ctx, id, info.Cap)
+			require.NoError(t, err)
+			require.Equal(t, &ResourceShellRead{Data: []byte{}, State: shellDetached}, frame)
+		},
 	}
 	byID, _, _ := channelBindingKinds()
-	names := make([]string, 0, len(calls))
+	names := make([]string, 0, len(calls)+len(queries))
+	for name := range queries {
+		names = append(names, name)
+	}
 	for name := range calls {
 		names = append(names, name)
 	}
@@ -274,6 +300,10 @@ func TestAChannelTerminalIsInvisibleToEveryBindingThatNamesATerminalByItsId(t *t
 				require.Error(t, got, "%s, %s", name, who)
 				require.Error(t, ghost, "%s, %s", name, who)
 				assert.Equal(t, strings.ReplaceAll(ghost.Error(), "ghost", id), got.Error(), "%s, %s: the words of an id that never was", name, who)
+			}
+			for _, check := range queries {
+				check(ctx, id)
+				check(ctx, "ghost")
 			}
 		}
 	})
@@ -321,6 +351,25 @@ func TestACreateThatNamesTheIdOfAChannelTerminalIsRefusedAndTheFirstShellIsUntou
 	require.NoError(t, err)
 	require.Len(t, listed, 1)
 	assert.Equal(t, info.PID, listed[0].PID, "the channel terminal is the first shell")
+}
+
+func TestCreateResourceShellCannotClaimAChannelTerminalID(t *testing.T) {
+	s := newShellTest(t)
+	channel, err := s.w.CreateTerminal(s.ctx, execsdk.SessionOptions{ID: s.id, Command: append(shell(t), "-c", "exec sleep 60")}, terminal.Launch{Channel: true})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.w.CloseChannelTerminal(channel.Cap) })
+
+	attachment, err := s.w.CreateResourceShell(s.ctx, endedFixturePlugin, s.encoded(map[string]string{"target": "a"}))
+	require.Nil(t, attachment)
+	var app *apperror.AppError
+	require.ErrorAs(t, err, &app)
+	require.Equal(t, apperror.TypeResourceConflict, app.Type)
+	require.Zero(t, s.p.creates)
+	listed, err := s.w.ListChannelTerminals([]string{channel.Cap})
+	require.NoError(t, err)
+	require.Len(t, listed, 1)
+	require.Equal(t, channel.PID, listed[0].PID)
+	require.Nil(t, listed[0].Ended)
 }
 
 // The five calls of the lane: each answers its terminal for the capability that opens it, and the one not-found for any that opens
