@@ -113,6 +113,27 @@ export type TerminalDetached = {
 /** Whether the way back is offered: the taker has gone (`free`), or the page can no longer be told (`unwatched`): then the button stays whatever the host last said, because nothing will tell the page when the holder leaves; the press asks the host anew and attaches only when it says nobody holds the terminal. */
 export const offersTakeBack = (detached: TerminalDetached | undefined): boolean => detached?.free === true || detached?.unwatched === true;
 
+/** The host's word on a terminal's shell integration (`terminal.Session.integration`): `on` (the shell loaded it), `off` (the user turned it off in Settings), `skipped` (the host did not try; `reason` says why), `failed` (it tried and the shell came up without), `unconfirmed` (started with it, no word that it loaded). */
+export type TerminalIntegrationState = 'on' | 'off' | 'skipped' | 'failed' | 'unconfirmed';
+
+/** The producer's fact about a terminal's shell integration, as it said it. `reason` is the host's token for a `skipped` or `failed` integration, shown in words and never branched on. */
+export type TerminalIntegration = { readonly state: TerminalIntegrationState; readonly reason?: string | undefined };
+
+/**
+ * The last command that finished while this page watched, in the producer's words and times: `durationMs` and `timeMs` are the host's clock at the shell's marks, never the page's. Taken only from a mark that arrived live (a replay brings
+ * back commands that finished before the page came, and those are no news), once for each command.
+ */
+export type TerminalFinished = {
+  /** The command the end mark belongs to (`c1`, `c2`, ...). */
+  readonly id: string;
+  readonly exit?: number | undefined;
+  readonly durationMs?: number | undefined;
+  /** The command line, only when the shell proved it with the nonce. */
+  readonly command?: string | undefined;
+  /** When the command ended, in Unix milliseconds. */
+  readonly timeMs?: number | undefined;
+};
+
 /** The status of a feed: the same object until something in it changes. */
 export type TerminalFeedSnapshot = {
   readonly state: TerminalFeedState;
@@ -133,6 +154,12 @@ export type TerminalFeedSnapshot = {
    * never infers it. Absent when no program runs, when none set a title, and once the terminal is over: the tab then shows the shell's name. Untrusted text, bounded and with no control character; the page draws it as text only.
    */
   readonly title?: string | undefined;
+  /** What the host says of the terminal's shell integration. Absent when the producer says nothing (a host that does not know it, a producer with no shell integration at all): a fact not told is not guessed. */
+  readonly integration?: TerminalIntegration | undefined;
+  /** A mark the shell's nonce vouched for (a command line or a directory) has come: the shell proved it is the one talking. Never set by what any program could have printed. */
+  readonly proven?: true | undefined;
+  /** The last command that finished live in this terminal. The same object until another finishes. */
+  readonly finished?: TerminalFinished | undefined;
 };
 
 /** What a mark of the shell's integration marks (the host's words, `docs/ui-next/terminal-channel-protocol.md` section 4a). */
