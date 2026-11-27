@@ -42,16 +42,16 @@ func TestTheDirectoryIsTheOneTheShellProvedWithTheNonceAndFollowsIt(t *testing.T
 
 func TestADirectoryNoNonceVouchedForIsNeverTheAnswer(t *testing.T) {
 	k := newMarked(t)
-	real, forged := t.TempDir(), t.TempDir()
+	genuine, forged := t.TempDir(), t.TempDir()
 	wrong := strings.Repeat("f", len(k.nonce))
 	k.print(osc("633;P;Cwd="+forged+";"+wrong) + osc("633;P;Cwd="+forged) + osc("7;file://host"+forged))
 	guarded(t, "forged-ignored", func() {
 		assert.Equal(t, Directory{Path: k.f.home}, cwdOf(t, k), "a wrong nonce, no nonce and OSC 7 (anything can print it) change nothing")
 	})
 	// The other half: the same mark with the nonce is believed.
-	k.print(osc("633;P;Cwd=" + real + ";" + k.nonce))
+	k.print(osc("633;P;Cwd=" + genuine + ";" + k.nonce))
 	guarded(t, "genuine-believed", func() {
-		assert.Equal(t, Directory{Path: real}, cwdOf(t, k))
+		assert.Equal(t, Directory{Path: genuine}, cwdOf(t, k))
 	})
 }
 

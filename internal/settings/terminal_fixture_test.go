@@ -28,7 +28,7 @@ func TestTheUIsCopyOfTheTerminalCategoryHasEverySettingTheHostDeclares(t *testin
 	start := strings.Index(text, "export const TERMINAL = category('terminal'")
 	require.GreaterOrEqual(t, start, 0, "the fixture has the terminal category")
 	end := strings.Index(text[start:], "\n]);")
-	require.Greater(t, end, 0)
+	require.Positive(t, end)
 
 	copied := map[string][3]string{}
 	for _, match := range fixtureSetting.FindAllStringSubmatch(text[start:start+end], -1) {
