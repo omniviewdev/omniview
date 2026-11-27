@@ -178,6 +178,22 @@ describe('a group of panes', () => {
   });
 });
 
+describe('which pane is the active one', () => {
+  it('is marked on its body alone, follows a click, and no body of a tool with one session is marked', () => {
+    const h = mount();
+    expect(slots()[0]).not.toHaveAttribute('data-pane-active');
+    split(h, 3);
+    const marked = (): (string | null)[] => slots().filter((slot) => slot.hasAttribute('data-pane-active')).map((slot) => slot.getAttribute('data-pane'));
+    expect(marked()).toEqual(['p3']);
+    fireEvent.pointerDown(slots()[0]);
+    expect(marked()).toEqual(['p1']);
+    act(() => {
+      h.store.closeSession(h.store.getSnapshot().order[0]);
+    });
+    expect(marked()).toEqual(['p2']);
+  });
+});
+
 describe('the sash\'s keys', () => {
   const ratios = (h: ReturnType<typeof mount>): readonly number[] => h.store.getSnapshot().panes.terminal?.ratios ?? [];
   const EXTENT = DECK - SASH;
