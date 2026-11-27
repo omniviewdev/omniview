@@ -570,3 +570,39 @@ func TestAUsersCommandNamedLikeBashPreexecsIsStillRecorded(t *testing.T) {
 		assert.Equal(t, []int32{0, 5, 0}, exitCodes(ran))
 	})
 }
+
+// testFishes are the fish binaries under test, chosen explicitly: OMNIVIEW_TEST_FISHES is a colon-separated list of fish paths (the
+// CI image has 3.7, which prints no marks of its own; 4.x prints C and D itself). With none, the fish on PATH.
+func testFishes(t *testing.T) []string {
+	t.Helper()
+	if list := os.Getenv("OMNIVIEW_TEST_FISHES"); list != "" {
+		return strings.Split(list, ":")
+	}
+	path, err := exec.LookPath("fish")
+	if err != nil {
+		t.Skip("NOT RUN: no fish on this machine")
+	}
+	return []string{path}
+}
+
+// Every fish gives the exit codes of `true`, `false` and a command that ends with 3 on its end marks, with the trusted line.
+func TestFishGivesTheRightExitCodesOnEveryVersionUnderTest(t *testing.T) {
+	for _, path := range testFishes(t) {
+		out, err := exec.Command(path, "--version").Output()
+		require.NoError(t, err)
+		t.Run("fish-"+strings.TrimSpace(strings.TrimPrefix(string(out), "fish, version ")), func(t *testing.T) {
+			f := newIntegrationFixture(t, "fish", path)
+			info := f.started()
+			require.Equal(t, IntegrationOn, info.Integration.State)
+			for _, c := range []string{"true", "false", "sh -c 'exit 3'"} {
+				f.run(info.ID, c)
+			}
+			ran := f.ranRecords(info.ID, 3)
+			require.Len(t, ran, 3)
+			assert.Equal(t, []int32{0, 1, 3}, exitCodes(ran))
+			for _, r := range ran {
+				assert.Equal(t, marks.TrustNonce, r.Trust, "the line of %q", r.CommandLine)
+			}
+		})
+	}
+}
