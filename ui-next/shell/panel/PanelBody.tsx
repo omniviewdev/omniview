@@ -2,7 +2,7 @@ import { isIconName } from '@omniviewdev/kit';
 import { useRef } from 'react';
 import type { SessionId } from '../core/panel';
 import { usePanel } from './context';
-import { useActiveSession, useActiveTool, useIsShown, useMounted, useOpen, usePaneId, usePaneIndex, usePaneLayout, usePaneShare, useSession, useToolItem } from './hooks';
+import { useActiveSession, useActiveTool, useIsShown, useMounted, useOpen, usePaneActive, usePaneId, usePaneIndex, usePaneLayout, usePaneShare, useSession, useToolItem } from './hooks';
 import { PaneRoomProvider } from './panes/room';
 import { PaneSash } from './panes/PaneSash';
 import { usePaneDeck } from './panes/usePaneDeck';
@@ -27,6 +27,7 @@ function BodySlot({ id, prefix }: SlotProps) {
   const index = usePaneIndex(id);
   const share = usePaneShare(id);
   const pane = usePaneId(id);
+  const active = usePaneActive(id);
   if (session === undefined) {
     return null;
   }
@@ -41,6 +42,7 @@ function BodySlot({ id, prefix }: SlotProps) {
       data-shell-part="panelBody"
       data-session-id={id}
       data-pane={placed ? pane : undefined}
+      data-pane-active={placed && active ? '' : undefined}
       onFocus={
         placed
           ? () => {

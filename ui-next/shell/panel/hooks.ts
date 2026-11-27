@@ -130,3 +130,12 @@ export function usePaneLayout(tool: ToolId | null): PaneLayout | null {
   const { store } = usePanel();
   return usePanelSelector((state) => (tool === null ? null : store.selectors.paneLayout(state, tool)));
 }
+
+/** Whether this session's pane is its group's active one: the pane the keyboard last went into, which the layout marks so that a person can see where it is. */
+export function usePaneActive(id: SessionId): boolean {
+  return usePanelSelector((state) => {
+    const tool = Object.hasOwn(state.sessions, id) ? state.sessions[id].tool : undefined;
+    const group = tool !== undefined && Object.hasOwn(state.panes, tool) ? state.panes[tool] : undefined;
+    return group !== undefined && group.panes.some((pane) => pane.session === id && pane.id === group.active);
+  });
+}

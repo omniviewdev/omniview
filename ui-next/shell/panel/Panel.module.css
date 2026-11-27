@@ -115,6 +115,21 @@
     min-block-size: 0;
   }
 
+  /* The active pane of a group: a 2 px accent line along its top edge, so that a person can see which pane the keyboard is in (the cursor alone is a hollow block in the others). Drawn over the body, and it takes no room and no pointer. */
+  .slot[data-pane-active] {
+    position: relative;
+  }
+
+  .slot[data-pane-active]::after {
+    content: '';
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline: 0;
+    block-size: 2px;
+    background-color: var(--ov-accent);
+    pointer-events: none;
+  }
+
   .slot[hidden] {
     display: none;
   }
