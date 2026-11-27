@@ -62,7 +62,7 @@ func TestAProvedDirectoryThatIsNotADirectoryHereFallsBackToTheSystemsAnswer(t *t
 	for name, claimed := range map[string]string{
 		"missing":  filepath.Join(t.TempDir(), "gone"),
 		"a file":   file,
-		"relative": "relative/dir",
+		"relative": ".",
 	} {
 		k.print(osc("633;P;Cwd=" + claimed + ";" + k.nonce))
 		guarded(t, "fallback-"+strings.ReplaceAll(name, " ", "-"), func() {

@@ -1070,7 +1070,16 @@ func namesTheShellsDirectory(path string, info os.FileInfo, goos string, live fu
 	return err == nil && os.SameFile(cwd, info)
 }
 
+// directory is where the shell is: the directory it said it is in with the session's nonce, when its integration is on and that is a directory
+// here, and otherwise what the system says of the shell's process.
 func (s *session) directory() (string, UnknownReason) {
+	if path, ok := s.trackedDirectory(); ok {
+		return path, ""
+	}
+	return s.pulledDirectory()
+}
+
+func (s *session) pulledDirectory() (string, UnknownReason) {
 	path, err := processCwd(s.cmd.Process.Pid)
 	switch {
 	case err == nil:

@@ -1,0 +1,46 @@
+#!/bin/bash
+# Negative controls of the tracked directory (issue #694 step 6). Each control puts ONE fault in a scratch copy of one source file and runs
+# the tests with `go test -overlay`, the worktree untouched. A control is good when (1) the run FAILS in the assertion it is named for (the guard of
+# cwd_tracked_test.go, `guarded(t, "<name>", ...)`) and (2) the same fault PASSES with that guard switched off
+# (TERMINAL_CHANNEL_CONTROL_OFF=<name>): a fault that a guard catches for another reason proves nothing.
+#
+# usage: bash mutations.sh.txt            (from the worktree root; Go 1.27 on PATH, GOWORK=off GOTOOLCHAIN=local)
+set -u
+ROOT=$(pwd)
+PKG=./backend/pkg/terminal
+TESTS='TestTheDirectoryIsTheOneTheShell|TestADirectoryNoNonce|TestAProvedDirectory|TestTheEventsLanes|TestATerminalWithoutIntegrationAnswers'
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+
+# control name | file | python expression that makes the fault: (old, new)
+BAD=0
+run() {
+  name=$1 file=$2 old=$3 new=$4
+  # ONLY="name name" runs those controls alone.
+  if [ -n "${ONLY:-}" ] && [[ " $ONLY " != *" $name "* ]]; then return; fi
+  cp "$ROOT/$file" "$WORK/mut.go"
+  python3 - "$WORK/mut.go" "$old" "$new" <<'PY'
+import sys
+p, old, new = sys.argv[1:4]
+s = open(p).read()
+assert old in s, "the fault does not apply: " + old
+open(p, 'w').write(s.replace(old, new, 1))
+PY
+  [ $? -eq 0 ] || { echo "CONTROL $name: DOES NOT APPLY"; BAD=1; return; }
+  printf '{"Replace":{"%s":"%s"}}' "$ROOT/$file" "$WORK/mut.go" > "$WORK/overlay.json"
+  # With the guard: the run must FAIL, in a test (not in the build). Guard off: the same fault must PASS.
+  caught=$(go test -overlay="$WORK/overlay.json" "$PKG" -run "$TESTS" 2>&1); s1=$?
+  off=$(TERMINAL_CHANNEL_CONTROL_OFF=$name go test -overlay="$WORK/overlay.json" "$PKG" -run "$TESTS" 2>&1); s2=$?
+  if [ $s1 -ne 0 ] && echo "$caught" | grep -q '^--- FAIL'; then c1=RED; else c1=GREEN-OR-BROKEN; fi
+  if [ $s2 -eq 0 ]; then c2=GREEN; else c2=RED-OR-BROKEN; fi
+  echo "CONTROL $name: with the guard $c1 (want RED), guard off $c2 (want GREEN)"
+  if [ "$c1" != RED ] || [ "$c2" != GREEN ]; then BAD=1; fi
+}
+
+run no-tracking,tracked,follows,genuine-believed,events-tracked backend/pkg/terminal/manager.go 'if path, ok := s.trackedDirectory(); ok {' 'if path, ok := s.trackedDirectory(); ok && false {'
+run forged-ignored backend/pkg/terminal/channel_marks.go 'trust != marks.TrustNonce {
+			dir = ""' 'trust != marks.TrustNonce && false {
+			dir = ""'
+run fallback-missing,fallback-a-file backend/pkg/terminal/channel_marks.go 'if info, err := os.Stat(dir); err != nil || !info.IsDir() {' 'if info, err := os.Stat(dir); false && (err != nil || !info.IsDir()) {'
+run fallback-relative backend/pkg/terminal/channel_marks.go 'if dir == "" || !filepath.IsAbs(dir) {' 'if dir == "" {'
+exit $BAD

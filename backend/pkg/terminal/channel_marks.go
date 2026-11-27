@@ -4,6 +4,8 @@ package terminal
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 
 	"github.com/omniviewdev/omniview/backend/pkg/terminal/marks"
 )
@@ -166,4 +168,26 @@ func (m *Manager) ChannelCommands(presented string) (Commands, error) {
 		return Commands{}, ChannelNotFound()
 	}
 	return out, nil
+}
+
+// trackedDirectory is the directory the shell last said it is in with the session's nonce (a 633;P;Cwd mark: a directory a program printed with no
+// nonce, OSC 7 included, is never believed), when that names an existing directory here. A shell that said a path this machine lacks (an ssh session
+// inside it names a remote one) is not followed there: the caller asks the system instead.
+func (s *session) trackedDirectory() (string, bool) {
+	s.outMu.Lock()
+	var dir string
+	if s.ring.marks != nil {
+		var trust marks.Trust
+		if dir, trust = s.ring.marks.log().Cwd(); trust != marks.TrustNonce {
+			dir = ""
+		}
+	}
+	s.outMu.Unlock()
+	if dir == "" || !filepath.IsAbs(dir) {
+		return "", false
+	}
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		return "", false
+	}
+	return dir, true
 }
