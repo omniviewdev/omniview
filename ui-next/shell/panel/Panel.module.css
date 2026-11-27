@@ -76,6 +76,11 @@
     background-color: var(--ov-surface-content);
   }
 
+  .panel[data-maximized] {
+    grid-row: 2 / 5;
+    block-size: auto;
+  }
+
   .panel[hidden] {
     display: none;
   }

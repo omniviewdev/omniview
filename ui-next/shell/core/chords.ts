@@ -83,12 +83,12 @@ export function chordOf(event: KeyLike, platform: Platform, appWindow = false): 
   return n === 9 ? { action: 'last' } : { action: 'jump', n };
 }
 
-export type PanelChord = { readonly action: 'toggle' } | { readonly action: 'close-session' };
+export type PanelChord = { readonly action: 'toggle' | 'maximize' } | { readonly action: 'close-session' };
 
 /**
  * The panel's chords (ch16 S106, S118) as a function from a key event to what it asks. Toggle is Command J on a Mac and Control J elsewhere, and Control Option J where a browser keeps the
  * first for itself, from anywhere in the window. Close session is Command W on a Mac and Control Shift W elsewhere (Control W stays Close tab: the page's chord applies outside the panel),
- * and Control Option W for the web, and only while the focus is in the panel: `inPanel`. Shift with Command J would maximize the panel, which is not built. A key something else already took,
+ * and Control Option W for the web, and only while the focus is in the panel: `inPanel`. Shift with Command J maximizes or restores the panel. A key something else already took,
  * a composition and AltGr are not chords.
  */
 export function panelChordOf(event: KeyLike, platform: Platform, inPanel: boolean): PanelChord | undefined {
@@ -99,6 +99,11 @@ export function panelChordOf(event: KeyLike, platform: Platform, inPanel: boolea
   const web = event.ctrlKey && event.altKey && !event.metaKey && !event.shiftKey && event.getModifierState?.('AltGraph') !== true;
   const native = platform === 'mac' ? event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey : event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey;
   if (event.code === 'KeyJ') {
+    if (event.shiftKey && ((platform === 'mac' && event.metaKey && !event.ctrlKey && !event.altKey) ||
+      (event.ctrlKey && event.altKey && !event.metaKey && event.getModifierState?.('AltGraph') !== true))) {
+      return { action: 'maximize' };
+    }
+
     return native || web ? { action: 'toggle' } : undefined;
   }
 

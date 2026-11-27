@@ -155,7 +155,8 @@ describe('the panel chords', () => {
   it('are not the other platform\'s modifier, not Shift (Command Shift J maximizes: not built), not a bare key', () => {
     expect(at('KeyJ', 'mac', { ctrlKey: true })).toBeUndefined();
     expect(at('KeyJ', 'other', { metaKey: true })).toBeUndefined();
-    expect(at('KeyJ', 'mac', { metaKey: true, shiftKey: true })).toBeUndefined();
+    expect(at('KeyJ', 'mac', { metaKey: true, shiftKey: true })).toEqual({ action: 'maximize' });
+    expect(at('KeyJ', 'other', { ctrlKey: true, altKey: true, shiftKey: true })).toEqual({ action: 'maximize' });
     expect(at('KeyJ', 'other', { ctrlKey: true, shiftKey: true })).toBeUndefined();
     expect(at('KeyJ', 'mac', { metaKey: true, altKey: true })).toBeUndefined();
     expect(at('KeyJ', 'mac')).toBeUndefined();

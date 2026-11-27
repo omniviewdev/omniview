@@ -1,4 +1,4 @@
-import { activateSession, activateTool, fitHeight, hide, reorderSession, resize, revealSession, setHeight, show, type ShowOptions } from './arrange';
+import { activateSession, activateTool, fitHeight, hide, reorderSession, resize, revealSession, setHeight, show, toggleMaximized, type ShowOptions } from './arrange';
 import { serialise } from './persist';
 import { createSelectors } from './selectors';
 import { closeSession, openSession, renameSession, retitleSession, setSessionState, type OpenOptions, type StateChange } from './sessions';
@@ -30,6 +30,7 @@ export type PanelStore = {
   readonly show: (options?: ShowOptions) => PanelResult;
   readonly hide: () => PanelResult;
   readonly toggle: () => PanelResult;
+  readonly toggleMaximized: () => PanelResult;
   /** The splitter's release or key: a new height, or hide. */
   readonly resize: (change: Resize) => PanelResult;
   /** Back to the default height. */
@@ -140,6 +141,7 @@ export function createPanelStore(options: PanelStoreOptions = {}): PanelStore {
     show: (showOptions) => run(show(state, showOptions)),
     hide: () => run(hide(state)),
     toggle: () => run(state.open ? hide(state) : show(state)),
+    toggleMaximized: () => run(toggleMaximized(state)),
     resize: (change) => run(resize(state, change)),
     resetHeight: () => run(setHeight(state, null)),
     fitHeight: (viewport) => run(fitHeight(state, viewport)),

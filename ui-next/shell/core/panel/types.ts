@@ -98,6 +98,7 @@ export type PanelState = {
   readonly version: typeof PANEL_VERSION;
   /** The panel is shown (the status bar's toggle is pressed). A hidden panel is 0 px, never an empty strip (A2). */
   readonly open: boolean;
+  readonly maximized: boolean;
   /**
    * The height the user chose, in pixels: remembered across hiding and showing, saved with the session. `null`: the default. What is drawn is this one within the window's limits
    * (`resolveHeight`, the twin of the stylesheet's `clamp()`), and a size that no longer fits the window is brought within it and kept so (`fitHeight`: the mock re-clamps on load and on resize).

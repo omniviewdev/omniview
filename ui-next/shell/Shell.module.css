@@ -33,6 +33,10 @@
     min-block-size: 0;
   }
 
+  .window:has(> [data-maximized]) > .frame {
+    display: none;
+  }
+
   .frame[data-rail] {
     --_rail: 40px;
   }

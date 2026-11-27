@@ -76,6 +76,7 @@ func viewCommands() []commandRow {
 	return []commandRow{
 		{label: "Search…", mac: "", other: "", shown: "Ctrl+K", id: "host.search", legacy: ""},
 		{label: "Toggle Panel", mac: "Cmd+J", other: "", shown: "Ctrl+J", id: "host.panel.toggle", legacy: EventBottomDrawerMinimize},
+		{label: "Toggle Maximized Panel", mac: "Cmd+Shift+J", other: "Ctrl+Alt+Shift+J", shown: "", id: "host.panel.maximize", legacy: ""},
 		{label: "New Terminal", mac: "Ctrl+Shift+`", other: "Ctrl+Shift+T", shown: "", id: "host.terminal.new", legacy: EventTerminalCreate},
 		{label: "Next Tab", mac: "Cmd+Shift+]", other: "", shown: "Ctrl+Tab", id: "host.tab.next", legacy: ""},
 		{label: "Previous Tab", mac: "Cmd+Shift+[", other: "", shown: "Ctrl+Shift+Tab", id: "host.tab.previous", legacy: ""},

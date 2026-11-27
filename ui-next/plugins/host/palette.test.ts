@@ -1157,7 +1157,7 @@ describe('the host\'s sources', () => {
     w.open(at('delta', HOME_PAGE));
 
     // Each kind lists whole what its source offers, so the model reads every candidate.
-    for (const [kind, section, count] of [['goto', 'goto', 7], ['tabs', 'tabs', 3], ['commands', 'commands', 11]] as const) {
+    for (const [kind, section, count] of [['goto', 'goto', 7], ['tabs', 'tabs', 3], ['commands', 'commands', 12]] as const) {
       w.store.open({ kind });
       expect(rowsOf(w, section)).toHaveLength(count);
       expect(w.store.getSnapshot().sources).toEqual([]);
@@ -1201,6 +1201,7 @@ describe('the commands', () => {
 
     const rows = rowsOf(w, 'commands').map((row) => ({ title: row.title.text, context: row.context.text, icon: row.tile?.icon, shortcut: row.shortcut, command: row.action.type === 'run' ? row.action.command.id : row.action.type, kind: row.kind, state: row.availability.state }));
     expect(rows.filter((row) => row.context !== 'Tabs')).toEqual([
+      { title: 'Toggle maximized panel', context: 'Panel', icon: 'external-link', shortcut: '⌘⇧J', command: 'host.panel.maximize', kind: 'command', state: 'available' },
       { title: 'Toggle panel', context: 'Panel', icon: 'panel-bottom', shortcut: '⌘J', command: 'host.panel.toggle', kind: 'command', state: 'available' },
       { title: 'Close window', context: 'Window', icon: 'close', shortcut: '⌘⇧W', command: 'host.window.close', kind: 'command', state: 'available' },
     ]);
@@ -1251,7 +1252,7 @@ describe('the commands', () => {
     panel.open(at('acme', 'widgets'));
     panel.open(at('beta', 'items'));
     panel.store.open({ kind: 'commands' });
-    expect(titlesOf(panel, 'commands')).toEqual([...TWO_TABS, 'Toggle panel']);
+    expect(titlesOf(panel, 'commands')).toEqual([...TWO_TABS, 'Toggle maximized panel', 'Toggle panel']);
 
     const window = build({ platform: 'mac', onCloseWindow: vi.fn() });
     window.open(at('acme', 'widgets'));
@@ -1296,7 +1297,7 @@ describe('the commands', () => {
     w.open(at('acme', 'widgets'));
     w.store.open({ kind: 'commands', scope: seedChips({ plugin: 'acme', pluginName: 'Acme', scope: { id: 'north', label: 'north' } }) });
 
-    expect(titlesOf(w, 'commands')).toEqual([...ONE_TAB, 'Toggle panel']);
+    expect(titlesOf(w, 'commands')).toEqual([...ONE_TAB, 'Toggle maximized panel', 'Toggle panel']);
   });
 
   it('finds a command by the words of its title', () => {
@@ -1305,9 +1306,9 @@ describe('the commands', () => {
     w.store.open();
 
     w.store.setQuery('toggle');
-    expect(titlesOf(w, 'commands')).toEqual(['Toggle panel']);
+    expect(titlesOf(w, 'commands').sort()).toEqual(['Toggle maximized panel', 'Toggle panel']);
     w.store.setQuery('panel');
-    expect(titlesOf(w, 'commands')).toEqual(['Toggle panel']);
+    expect(titlesOf(w, 'commands').sort()).toEqual(['Toggle maximized panel', 'Toggle panel']);
   });
 
   it('draws every glyph it chooses from the kit\'s own', () => {
@@ -1316,7 +1317,7 @@ describe('the commands', () => {
     w.open(at('beta', 'items'));
     w.store.open({ kind: 'commands' });
 
-    expect(rowsOf(w, 'commands')).toHaveLength(TWO_TABS.length + 2);
+    expect(rowsOf(w, 'commands')).toHaveLength(TWO_TABS.length + 3);
     for (const row of rowsOf(w, 'commands')) {
       expect(isIconName(row.tile?.icon ?? '')).toBe(true);
     }
@@ -1326,13 +1327,13 @@ describe('the commands', () => {
     const without = build({ platform: 'mac', panel: createPanelStore() });
     without.open(at('acme', 'widgets'));
     without.store.open({ kind: 'commands' });
-    expect(titlesOf(without, 'commands')).toEqual([...ONE_TAB, 'Toggle panel']);
+    expect(titlesOf(without, 'commands')).toEqual([...ONE_TAB, 'Toggle maximized panel', 'Toggle panel']);
 
     const w = build({ platform: 'mac', panel: createPanelStore(), terminalScreenReader: { toggle: () => true, say: vi.fn() } });
     w.open(at('acme', 'widgets'));
     w.open(at('beta', 'items'));
     w.store.open({ kind: 'commands' });
-    expect(titlesOf(w, 'commands')).toEqual([...TWO_TABS, 'Toggle panel', 'Terminal: Toggle Screen Reader Mode']);
+    expect(titlesOf(w, 'commands')).toEqual([...TWO_TABS, 'Toggle maximized panel', 'Toggle panel', 'Terminal: Toggle Screen Reader Mode']);
     expect(SCREEN_READER_COMMAND).toBe('Terminal: Toggle Screen Reader Mode');
     const row = rowTitled(w, SCREEN_READER_COMMAND);
     expect({ context: row.context.text, icon: row.tile?.icon, shortcut: row.shortcut, kind: row.kind, state: row.availability.state, command: row.action.type === 'run' ? row.action.command.id : row.action.type }).toEqual({

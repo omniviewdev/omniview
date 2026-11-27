@@ -24,6 +24,9 @@ export const bodyId = (prefix: string, session: string): string => `${prefix}-bo
 /** The text of the toggle chord: Command J on a Mac, Control J elsewhere. */
 export const toggleChordText = (platform: Platform): string => (platform === 'mac' ? '⌘J' : 'Ctrl+J');
 
+export const maximizeChordText = (platform: Platform, native = true): string =>
+  platform === 'mac' ? (native ? '⌘⇧J' : '⌃⌥⇧J') : 'Ctrl+Alt+Shift+J';
+
 /** The chord as `aria-keyshortcuts` writes it. */
 export const toggleChordKeys = (platform: Platform): string => (platform === 'mac' ? 'Meta+J' : 'Control+J');
 

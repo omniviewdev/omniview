@@ -72,6 +72,20 @@ describe('a shell with no panel', () => {
   });
 });
 
+it('maximizes from hidden and restores the chosen height without replacing the panel', async () => {
+  const { user, store } = mount();
+  act(() => {
+    store.resize({ size: 310 });
+  });
+  const original = region();
+  await user.keyboard('{Control>}{Alt>}{Shift>}j{/Shift}{/Alt}{/Control}');
+  const maximize = screen.getByRole('button', { name: 'Maximize panel', pressed: true });
+  expect(screen.queryByRole('separator', { name: 'Resize panel' })).toBeNull();
+  await user.click(maximize);
+  expect(region()).toBe(original);
+  expect(screen.getByRole('separator', { name: 'Resize panel' })).toHaveAttribute('aria-valuenow', '310');
+});
+
 describe('the toggle and the focus (ch16 S105, S116)', () => {
   it('is pressed while the panel is open: the region is hidden, and there is no separator, until it is opened', async () => {
     const { user } = mount();
