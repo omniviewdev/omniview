@@ -8,7 +8,7 @@
 set -u
 ROOT=$(pwd)
 PKG=./backend/pkg/terminal
-TESTS='TestTheDirectoryIsTheOneTheShell|TestADirectoryNoNonce|TestAProvedDirectory|TestTheEventsLanes|TestATerminalWithoutIntegrationAnswers'
+TESTS='TestTheDirectoryIsTheOne|TestADirectoryNoNonce|TestAProvedDirectory|TestTheEventsLanes|TestATerminalWithoutIntegrationAnswers|TestAProofThat|TestTheShellsOwn'
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
@@ -43,4 +43,8 @@ run forged-ignored backend/pkg/terminal/channel_marks.go 'trust != marks.TrustNo
 			dir = ""'
 run fallback-missing,fallback-a-file backend/pkg/terminal/channel_marks.go 'if info, err := os.Stat(dir); err != nil || !info.IsDir() {' 'if info, err := os.Stat(dir); false && (err != nil || !info.IsDir()) {'
 run fallback-relative backend/pkg/terminal/channel_marks.go 'if dir == "" || !filepath.IsAbs(dir) {' 'if dir == "" || (!filepath.IsAbs(dir) && false) {'
+run stale-proof,events-stale-proof backend/pkg/terminal/manager.go 'os.SameFile(trackedInfo, pulledInfo) {' 'os.SameFile(trackedInfo, pulledInfo) || true {'
+run logical-spelling backend/pkg/terminal/manager.go 'os.SameFile(trackedInfo, pulledInfo) {
+		return tracked, ""' 'os.SameFile(trackedInfo, pulledInfo) {
+		return pulled, ""'
 exit $BAD
