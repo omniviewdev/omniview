@@ -27,7 +27,12 @@ describe('the pages', () => {
   });
 
   it('list the settings of a category by id, as the host sends them and the old window drew them', () => {
-    expect(model.pages.find((page) => page.id === 'terminal')?.fields).toEqual(['terminal.cursorBlink', 'terminal.cursorStyle', 'terminal.defaultShell', 'terminal.fontSize', 'terminal.theme']);
+    expect(model.pages.find((page) => page.id === 'terminal')?.fields).toEqual(['terminal.cursorBlink', 'terminal.cursorStyle', 'terminal.defaultShell', 'terminal.fontSize', 'terminal.shellIntegration', 'terminal.theme']);
+  });
+
+  it('draw the opt-out of the shell integration as a switch that is on until it is turned off: a toggle the host declares in the terminal category', () => {
+    expect(model.schema.sections.find((section) => section.id === 'terminal')?.fields.find((field) => field.id === 'terminal.shellIntegration')).toMatchObject({ kind: 'toggle', label: 'Shell Integration', default: true });
+    expect(model.initial['terminal.shellIntegration']).toBe(true);
   });
 
   it('are sections of one schema, and the schema compiles with nothing left out', () => {
