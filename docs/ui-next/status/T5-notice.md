@@ -15,7 +15,7 @@
 
 ## Review round
 
-- Tracked cwd is believed only where `os.SameFile(tracked, pulled)` (the system agrees the shell is there), in the shell's spelling; the pull otherwise; the tracked path alone only when the pull is unsupported. Stale after `exec zsh` or a `cd` inside a running command is fixed (tests `TestAProofThatTheSystemContradictsIsNotTheAnswer`, `TestTheShellsOwnSpelling...`, with a fake `sh` that can `cd`; a real `exec zsh` was not run). The guards for forged, missing, file and relative proofs are now subsumed by the SameFile rule, so they keep tests but no single-fault control.
+- Tracked cwd is believed only where `os.SameFile(tracked, pulled)` (the system agrees the shell is there), in the shell's spelling; the pull otherwise; the tracked path alone only when the pull is unsupported. Stale after `exec zsh` or a `cd` inside a running command is fixed (tests `TestAProofThatTheSystemContradictsIsNotTheAnswer`, `TestTheShellsOwnSpelling...` with a fake `sh` that can `cd`, and `cwd_real_shell_test.go` with real bash and zsh: exec into a shell with no integration then `cd`, a symlink, a `/var`-shaped symlinked directory, a removed directory). The real-shell exec test is red with the pre-fix `manager.go`. The guards for forged, missing, file and relative proofs are now subsumed by the SameFile rule, so they keep tests but no single-fault control.
 - Show names the terminal of the session (`generation` = restarts of the session) and `reveal(id, epoch)` on the gutter uses it; a closed terminal says so in a notice.
 - `proven` is NOT reset: after `exec zsh` the card may still say Rich until the page is reloaded. Dropping it needs the host to say the prompt stopped carrying the nonce; not done.
 
@@ -27,6 +27,9 @@
 
 ## Verification (what was run)
 
-- vitest `ui-next/shell/panel/terminal`, `ui-next/shell/settings`, `ui-next/plugins`: passed on the last runs (real xterm for gutter tests, fake emulator for the rest); one unload test timed out under load and passed alone.
-- Go: new tests red then green; negative controls `T5-notice/mutations.sh.txt` (all 5 groups RED/GREEN as wanted) and `mutations-page.sh.txt` (result not read).
-- NOT run: Go `-race`, golangci-lint, `task bindings` check, tsc (app, test, kit), eslint, kit verify, `pnpm run build`, ui-flavour and ci node tests, probes, seam. No real-browser look at the card or the toast.
+- vitest `ui-next/shell/panel/terminal`, `ui-next/shell/settings`, `ui-next/plugins`: passed (real xterm for the gutter and Show-after-restart tests, fake emulator for the rest); timeouts under load in the unload, saved-session, panel fuzz and notices tests are the ones main shares here.
+- Go: new tests red then green; `-race` on `backend/pkg/terminal`, `internal/settings`, `backend/pkg/plugin/exec` (plain and `-tags server`); real-shell tests `-race -count=5`; vet linux and darwin; golangci-lint (CI form) 0 issues; `task check:bindings-check` exit 0.
+- Controls: `T5-notice/mutations.sh.txt` and `mutations-page.sh.txt`, each run whole: every control RED, every removal GREEN.
+- tsc (app, test, kit), eslint `ui-next` and `packages/kit`: clean. `pnpm run build` (stable), `node --test scripts/ui-flavour.test.mjs` 7/7; `node --test scripts/ci/*.test.mjs` fails only the 9 that fail on main here.
+- Seam `terminal-core,terminal-restart,terminal-channel,terminal-find` on `e9ec90f84`: exit 0, both engines.
+- NOT run: kit verify; no real-browser look at the card or the toast; the take-back count above.
