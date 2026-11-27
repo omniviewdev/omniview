@@ -3,7 +3,7 @@ import type { ISearchOptions, SearchAddon } from '@xterm/addon-search';
 import { Terminal, type IBuffer, type IDecoration, type ILink, type ILinkProvider } from '@xterm/xterm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FIND_LIMIT, FULL_RESET, modesPrologue, type Engine, type EngineAppearance, type EngineLoader, type FindOptions, type FindState, type Finder, type LinkHandler, type LinkHover } from './engine';
-import type { TerminalModes, TerminalReplay } from './feed';
+import type { TerminalMark, TerminalModes, TerminalReplay } from './feed';
 import { findDecorations } from './findColours';
 import { createScreen, SCROLLBACK, type ScreenDeps, type TerminalScreen } from './screen';
 import { createScreenReaderChoice } from './screenReader';
@@ -888,6 +888,55 @@ describe('the screen over a real emulator', () => {
       next.set({ state: 'running' });
       await settle();
       expect(next.replies()).toEqual([]);
+    });
+  });
+
+  describe('an old multi-line command after a restart, on the real emulator with bracketed paste off (review of #791)', () => {
+    it('types nothing into the new shell: the emulator\'s paste turns the line feed into a carriage return, which would run the first line', async () => {
+      const at = (kind: TerminalMark['kind'], extra: Partial<TerminalMark>, offset: number) => ({ mark: { kind, at: 0, end: 1, trust: 'unverified' as const, ...extra }, at: offset });
+      const host = document.createElement('div');
+      document.body.append(host);
+      const feed = fakeTerminalFeed();
+      const { screen, terminal } = await showOver(feed, host);
+      feed.push('$ a\r\n', [at('prompt-start', { id: 'c1' }, 0), at('input-start', { id: 'c1' }, 2), at('command-start', { id: 'c1', trust: 'nonce', command: 'touch /tmp/x\necho b' }, 5), at('command-end', { id: 'c1', exit: 0, durationMs: 5 }, 5)]);
+      await settle();
+      feed.set({ state: 'ended', exit: { code: 0 } });
+      await settle();
+      const next = fakeTerminalFeed({ state: 'starting' });
+      screen.continueWith(next);
+      next.set({ state: 'running' });
+      next.push('$ ');
+      await settle();
+      expect(terminal.modes.bracketedPasteMode).toBe(false);
+      screen.commands.rerun();
+      await settle();
+      expect(next.typed()).toEqual([]);
+      host.remove();
+    });
+  });
+
+  describe('two restarts before the middle feed\'s bytes are parsed, on the real emulator (review of #791)', () => {
+    it('sends nothing the middle feed\'s queued bytes make the emulator answer to the third feed: only the barrier of the LAST restart ends the muting', async () => {
+      const frames: Array<() => void> = [];
+      const feed = fakeTerminalFeed();
+      const { screen } = await showOver(feed, undefined, frames);
+      const run = (): void => {
+        for (const callback of frames.splice(0)) {
+          callback();
+        }
+      };
+
+      feed.set({ state: 'ended', exit: { code: 0 } });
+      const second = fakeTerminalFeed({ state: 'running' });
+      screen.continueWith(second);
+      second.push(`\u001b[6n\u001b[5n${'y'.repeat(2_000)}`);
+      run();
+      second.set({ state: 'ended', exit: { code: 0 } });
+      const third = fakeTerminalFeed({ state: 'running' });
+      screen.continueWith(third);
+      await settle();
+      expect(second.replies(), 'the middle feed ended').toEqual([]);
+      expect(third.replies(), 'what the middle feed\'s bytes drew is not for the third shell').toEqual([]);
     });
   });
 

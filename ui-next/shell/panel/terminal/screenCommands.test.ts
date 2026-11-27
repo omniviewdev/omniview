@@ -463,7 +463,7 @@ describe('what a restart must not lose of the gutter (#695 step 5)', () => {
 });
 
 describe('review of #791: nothing with a line break reaches the new shell from an old command (#695 step 5)', () => {
-  it('types nothing of an earlier terminal\'s multi-line command, with bracketed paste off or on', async () => {
+  it('types nothing of an earlier terminal\'s multi-line command (on the fake emulator; the real one, with bracketed paste off, is in xtermEngine.test.ts)', async () => {
     const { feed, frame, screen, engine } = await rig();
     feed.push('$ a\r\n', [placed(0, A()), placed(2, B()), placed(5, C('touch /tmp/x\necho b')), placed(5, D(0))]);
     frame();
