@@ -382,6 +382,20 @@ export type ExpandState = {
 export function Field(input: FieldProps): JSX.Element;
 
 // @public
+export type FieldContextValue = {
+    readonly controlId: string;
+    readonly labelId: string;
+    readonly label: string;
+    readonly describedBy: string | undefined;
+    readonly invalid: boolean;
+    readonly warning: boolean;
+    readonly required: boolean;
+    readonly disabledReason: string | undefined;
+    readonly reasonShown: boolean;
+    readonly readOnly: boolean;
+};
+
+// @public
 export type FieldLayout = 'aligned' | 'stacked' | 'row';
 
 // @public (undocumented)
@@ -1216,6 +1230,7 @@ export type SliderProps = {
     readonly max?: number | undefined;
     readonly step?: number | undefined;
     readonly unit?: string | undefined;
+    readonly stopLabels?: readonly string[] | undefined;
     readonly label?: string | undefined;
     readonly invalid?: boolean | undefined;
     readonly readOnly?: boolean | undefined;
@@ -1552,6 +1567,9 @@ export function TooltipHost(): JSX.Element;
 
 // @public
 export function useAge(value: string | number | Date | null | undefined, formatter: AgeFormatter): string;
+
+// @public
+export const useField: () => FieldContextValue | undefined;
 
 // @public
 export function useMenu(definition: MenuDefinition, revision?: unknown): string;

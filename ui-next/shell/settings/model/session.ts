@@ -1,15 +1,21 @@
 import { compileSchema, createFormStore, sameValue, type FormStore, type Json, type RemoteValidator, type Scheduler, type SubmitOutcome, type SubmitPayload } from '../../core/fields';
 import { modelOf, type SettingsModel } from './adapter';
 import { MATERIAL_FIELDS, materialResetBlock, RESETTING_MATERIAL } from './material';
-import type { HostSnapshot, SettingsClient } from './types';
+import { createPluginPages, type SettingsPlugins } from './pluginPages';
+import { HOST_SCOPE, type HostSnapshot, type SettingsClient, type SettingsScope } from './types';
+
+export type { PluginPage, PluginInventory } from './pluginPages';
 
 // The session is Settings' whole dealing with the host: it reads the snapshot, makes the form from it (the model of ../../core/fields, in the mode of a setting: a value applies the moment it is chosen or committed),
 // sends what the person changes one setting at a time, asks the host about a typed value, and follows what changes elsewhere. Plain TypeScript over the `SettingsClient` seam: no React, no DOM; its only timers are the form's own,
 // on the scheduler it is given. One session lives from the opening of Settings (the sheet's, or the window's load) to its closing, and `dispose` leaves nothing behind.
 
+type Loading = { readonly phase: 'loading'; readonly warning?: string };
+type Replacement = { readonly model: SettingsModel; readonly key: string } | Loading;
+
 export type SessionState =
-  | { readonly phase: 'loading' }
-  | { readonly phase: 'failed' }
+  | Loading
+  | { readonly phase: 'failed'; readonly warning?: string }
   | { readonly phase: 'ready'; readonly model: SettingsModel; readonly form: FormStore };
 
 /** The settings that were changed elsewhere while the person has a draft of them: the id and the value the host holds now. Gone with the draft. */
@@ -26,7 +32,7 @@ export type Announcements = {
   readonly subscribe: (listener: () => void) => () => void;
 };
 
-export type SettingsSession = {
+export type ScopeSession = {
   readonly getState: () => SessionState;
   readonly subscribe: (listener: () => void) => () => void;
   /** Asks the host again after a failed load. */
@@ -42,13 +48,15 @@ export type SettingsSession = {
   readonly dispose: () => void;
 };
 
+export type SettingsSession = ScopeSession & { readonly plugins: SettingsPlugins };
+
 export type SessionOptions = {
   readonly client: SettingsClient;
   /** The clock the session and its form run on: the page's in a page (`clock.ts`), a manual one in a test. The session waits before it asks the host again when a question was lost, and the form debounces and times its checks. */
   readonly scheduler: Scheduler;
 };
 
-const LOADING: SessionState = Object.freeze({ phase: 'loading' });
+const LOADING: Loading = Object.freeze({ phase: 'loading' });
 const FAILED: SessionState = Object.freeze({ phase: 'failed' });
 const NONE: Readonly<Record<string, Json>> = Object.freeze({});
 
@@ -62,8 +70,10 @@ const ASK_DEADLINE = 10_000;
 const RETRY_WAITS = [500, 1000, 2000, 4000, 8000] as const;
 
 
-export function createSettingsSession({ client, scheduler }: SessionOptions): SettingsSession {
+function createScopeSession({ client, scheduler }: SessionOptions, scope: SettingsScope): ScopeSession & { changed: () => void } {
   let state: SessionState = LOADING;
+  // A stale form can be hidden before its in-flight writes have finished. Keep ownership until their results settle.
+  let ownedForm: FormStore | undefined;
   let disposed = false;
   let generation = 0;
   let wantsRefresh = false;
@@ -81,6 +91,8 @@ export function createSettingsSession({ client, scheduler }: SessionOptions): Se
   // Settings the host saved and could not apply, and the ones it says wait for a restart.
   const unapplied = new Set<string>();
   let hostWaiting: readonly string[] = [];
+  let schemaKey = '';
+  let replacement: Replacement | undefined;
   let notes: Readonly<Record<string, Json>> = NONE;
   let said: Announcement = Object.freeze({ text: '', serial: 0 });
   const listeners = new Set<() => void>();
@@ -130,53 +142,115 @@ export function createSettingsSession({ client, scheduler }: SessionOptions): Se
   const waiting = (): readonly string[] => [...new Set([...hostWaiting, ...unapplied])];
 
   const check: RemoteValidator = async ({ id, value }) => {
-    const answer = await client.validate(id, value);
+    if (disposed || state.phase !== 'ready') {
+      throw new Error('Settings unavailable.');
+    }
+
+    const answer = await client.validate(scope, state.model.wireKeys[id] ?? id, value);
     return { valid: answer.valid, ...(answer.message === undefined || answer.message === '' ? {} : { message: answer.message }), ...(answer.code === undefined || answer.code === '' ? {} : { code: answer.code }) };
   };
 
-  const commitPatch = async (values: Readonly<Record<string, Json>>): Promise<Record<string, Json>> => {
+  const schemaKeyOf = (model: SettingsModel): string => scope.kind === 'plugin' ? JSON.stringify([model.schema, model.wireKeys]) : '';
+
+  const replaceAfterSave = (form: FormStore, next: Replacement): void => {
+    replacement = next;
+    const loading = 'model' in next ? LOADING : next;
+    form.setFormLock({ source: 'store', readonly: false, reason: loading.warning ?? 'The plugin settings have changed.' });
+    if (!disposed) {
+      setState(loading);
+    }
+  };
+
+  const commitPatch = async (values: Readonly<Record<string, Json>>): Promise<Record<string, Json> | null> => {
     inflight += 1;
     epoch += 1;
-    try {
-      // A refusal is a throw, and the form says it on the field in its own words.
-      const result = await client.commit(values);
-      const after = modelOf(result.snapshot);
-      const canonical: Record<string, Json> = {};
-      for (const id of Object.keys(values)) {
-        const value = after.initial[id];
-        if (value !== undefined) {
-          canonical[id] = value;
-          applied[id] = value;
-        }
+    if (disposed || state.phase !== 'ready') {
+      throw new Error('Settings unavailable.');
+    }
 
-        // The host saved it and could not take it into effect: it waits for a restart, as one that declares so does.
-        if (result.applied && !result.uncertain) {
-          unapplied.delete(id);
-        } else {
-          unapplied.add(id);
-        }
+    const before = state;
+    const keys = before.model.wireKeys;
+    const patch = Object.keys(values).some((id) => Object.hasOwn(keys, id))
+      ? Object.fromEntries(Object.entries(values).map(([id, value]) => [keys[id] ?? id, value]))
+      : values;
+    // A refusal is a throw. A successful write need not come with a usable readback.
+    const result = await client.commit(scope, patch);
+    if (disposed || ownedForm !== before.form) {
+      return null;
+    }
+
+    if (scope.kind === 'plugin' && !result.snapshot.categories.plugin) {
+      const warning = result.message || 'Settings were saved, but the current settings view is unavailable.';
+      replaceAfterSave(before.form, { phase: 'loading', warning });
+      return null;
+    }
+
+    // A previously lost readback still needs a fresh read after all writes settle.
+    if (replacement && !('model' in replacement)) {
+      return null;
+    }
+
+    const after = modelOf(result.snapshot, scope);
+    if (scope.kind === 'plugin') {
+      const key = schemaKeyOf(after);
+      if (key !== schemaKey) {
+        // Do not interpret the new field IDs in the old form. Overlapping writes can also make this snapshot stale.
+        replaceAfterSave(before.form, inflight === 1 ? { model: after, key } : LOADING);
+        return null;
+      }
+    }
+
+    const canonical: Record<string, Json> = {};
+    for (const id of Object.keys(values)) {
+      const value = after.initial[id];
+      if (value !== undefined) {
+        canonical[id] = value;
+        applied[id] = value;
       }
 
-      hostWaiting = after.pendingRestart;
-      if (state.phase === 'ready') {
-        state.form.rebase({}, { pendingRestart: waiting() });
+      // The host saved it and could not take it into effect: it waits for a restart, as one that declares so does.
+      if (result.applied && !result.uncertain) {
+        unapplied.delete(id);
+      } else {
+        unapplied.add(id);
       }
+    }
 
-      return canonical;
-    } finally {
-      inflight -= 1;
-      epoch += 1;
-      if (inflight === 0 && wantsRefresh) {
-        wantsRefresh = false;
-        void refresh(0);
-      }
+    hostWaiting = after.pendingRestart;
+    before.form.rebase({}, { pendingRestart: waiting() });
+    return canonical;
+  };
+
+  const finishPatch = (): void => {
+    inflight -= 1;
+    epoch += 1;
+    if (disposed || inflight !== 0) {
+      return;
+    }
+
+    // Every submitting field has consumed its result. Replacing its form or starting a queued read is now safe.
+    const next = replacement;
+    replacement = undefined;
+    if (next && !('model' in next)) {
+      discardForm();
+      startLoad(next.warning);
+      return;
+    }
+
+    if (next) {
+      installIfChanged(next.model, next.key);
+    }
+
+    if (wantsRefresh) {
+      wantsRefresh = false;
+      void refresh(0);
     }
   };
 
   const submit = async ({ values }: SubmitPayload): Promise<SubmitOutcome> => ({ ok: true, values: await commitPatch(values) });
 
   const resetMaterial = async (): Promise<boolean> => {
-    if (disposed || state.phase !== 'ready' || materialResetBlock(state.form) !== undefined) {
+    if (scope.kind !== 'host' || disposed || state.phase !== 'ready' || materialResetBlock(state.form) !== undefined) {
       return false;
     }
 
@@ -185,7 +259,7 @@ export function createSettingsSession({ client, scheduler }: SessionOptions): Se
     form.setContext({ [RESETTING_MATERIAL]: true });
     try {
       const values = await commitPatch(defaults);
-      if (!disposed) {
+      if (!disposed && values !== null) {
         form.rebase(values);
         for (const id of MATERIAL_FIELDS) {
           if (form.field(id)?.dirty) {
@@ -199,6 +273,7 @@ export function createSettingsSession({ client, scheduler }: SessionOptions): Se
       return false;
     } finally {
       form.setContext({ [RESETTING_MATERIAL]: false });
+      finishPatch();
     }
   };
 
@@ -245,6 +320,16 @@ export function createSettingsSession({ client, scheduler }: SessionOptions): Se
     }
   };
 
+  const readSnapshot = async (withDeadline: boolean): Promise<HostSnapshot> => {
+    const read = client.snapshot(scope);
+    const snapshot = await (withDeadline ? answered(read) : read);
+    if (scope.kind === 'plugin' && !snapshot.categories.plugin) {
+      throw new Error('Plugin settings unavailable.');
+    }
+
+    return snapshot;
+  };
+
   const cancelRetry = (): void => {
     if (retryTimer !== undefined) {
       scheduler.clearTimeout(retryTimer);
@@ -252,7 +337,7 @@ export function createSettingsSession({ client, scheduler }: SessionOptions): Se
     }
   };
 
-  const retryLater = (): void => {
+  const retryLater = (retry: () => void): void => {
     const wait = RETRY_WAITS[retries];
     if (disposed || retryTimer !== undefined || wait === undefined) {
       return;
@@ -261,7 +346,7 @@ export function createSettingsSession({ client, scheduler }: SessionOptions): Se
     retries += 1;
     retryTimer = scheduler.setTimeout(() => {
       retryTimer = undefined;
-      void refresh(0);
+      retry();
     }, wait);
   };
 
@@ -284,11 +369,20 @@ export function createSettingsSession({ client, scheduler }: SessionOptions): Se
     const mine = asked;
     let snapshot: HostSnapshot;
     try {
-      snapshot = await answered(client.snapshot());
+      snapshot = await readSnapshot(true);
     } catch {
       // The newest question was lost: what the form shows may not be what the host holds, and no event will say so. Ask again after a wait, a bounded number of times (RETRY_WAITS). A lost question that is not the newest changes nothing.
-      if (mine === asked) {
-        retryLater();
+      if (!disposed && mine === asked && state.phase === 'ready' && state.form === form) {
+        if (scope.kind === 'plugin' && started === epoch) {
+          // A provider can disappear or change privacy classification during a reload. Do not keep an editable stale schema.
+          discardForm();
+          setState(FAILED);
+          return;
+        }
+
+        retryLater(() => {
+          void refresh(0);
+        });
       }
 
       return;
@@ -312,7 +406,121 @@ export function createSettingsSession({ client, scheduler }: SessionOptions): Se
     }
 
     retries = 0;
-    follow(form, modelOf(snapshot));
+    const model = modelOf(snapshot, scope);
+    if (!installIfChanged(model)) {
+      follow(form, model);
+    }
+  }
+
+  function discardForm(): void {
+    schemaKey = '';
+    ownedForm?.dispose();
+    ownedForm = undefined;
+
+    applied = {};
+    unapplied.clear();
+    hostWaiting = [];
+    setNotes(NONE);
+    if (said.text !== '') {
+      said = { text: '', serial: said.serial + 1 };
+      for (const listener of sayListeners) {
+        listener();
+      }
+    }
+  }
+
+  /** Preserve ordinary drafts across value changes. Replace the whole form when its provider changes schema or redaction. */
+  function installIfChanged(model: SettingsModel, nextKey = schemaKeyOf(model)): boolean {
+    if (state.phase === 'ready' && schemaKey === nextKey) {
+      return false;
+    }
+
+    discardForm();
+    schemaKey = nextKey;
+    const compiled = compileSchema(model.schema);
+    if (!compiled.ok) {
+      setState(FAILED);
+      return true;
+    }
+
+    applied = { ...model.initial };
+    hostWaiting = model.pendingRestart;
+    const form = createFormStore({
+      schema: compiled.schema,
+      mode: 'apply-on-change',
+      send: 'changed',
+      initial: model.initial,
+      presence: model.presence,
+      pendingRestart: model.pendingRestart,
+      submit,
+      onApplySettled: finishPatch,
+      validators: { host: check },
+      scheduler,
+      announce,
+    });
+    // Once a draft is reverted or applied, its changed-elsewhere note goes with it.
+    form.subscribeTo(
+      (current) => [...current.dirtyIds, ...current.fields.flatMap((field) => (field.secret?.changed === true ? [field.id] : []))].join('\n'),
+      (key) => {
+        const drafts = key === '' ? [] : key.split('\n');
+        if (Object.keys(notes).some((id) => !drafts.includes(id))) {
+          setNotes(Object.fromEntries(Object.entries(notes).filter(([id]) => drafts.includes(id))));
+        }
+      },
+    );
+    ownedForm = form;
+    setState({ phase: 'ready', model, form });
+    return true;
+  }
+
+  function startLoad(warning?: string, superseding = false): void {
+    if (disposed) {
+      return;
+    }
+
+    cancelRetry();
+    generation += 1;
+    const mine = generation;
+    wantsRefresh = false;
+    if (state.phase !== 'loading' || state.warning !== warning) {
+      setState(warning === undefined ? LOADING : { phase: 'loading', warning });
+      if (disposed || mine !== generation) {
+        return;
+      }
+    }
+
+    void readSnapshot(scope.kind === 'plugin' || superseding).then(
+      (snapshot) => {
+        if (disposed || mine !== generation) {
+          return;
+        }
+
+        if (wantsRefresh) {
+          startLoad(warning, true);
+          return;
+        }
+
+        retries = 0;
+        installIfChanged(modelOf(snapshot, scope));
+      },
+      () => {
+        if (!disposed && mine === generation) {
+          if (wantsRefresh) {
+            startLoad(warning, true);
+            return;
+          }
+
+          // As before, a lost replacement read of Core retries on the clock; a failed plugin read offers Retry.
+          if (superseding && scope.kind === 'host') {
+            retryLater(() => {
+              startLoad(warning, true);
+            });
+          }
+
+          setState(warning === undefined ? FAILED : { phase: 'failed', warning });
+        }
+      },
+    );
   }
 
   function load(): void {
@@ -320,66 +528,10 @@ export function createSettingsSession({ client, scheduler }: SessionOptions): Se
       return;
     }
 
-    generation += 1;
-    const mine = generation;
-    wantsRefresh = false;
-    if (state.phase !== 'loading') {
-      setState(LOADING);
-    }
-
-    client.snapshot().then(
-      (snapshot) => {
-        if (disposed || mine !== generation) {
-          return;
-        }
-
-        const model = modelOf(snapshot);
-        const compiled = compileSchema(model.schema);
-        if (!compiled.ok) {
-          setState(FAILED);
-          return;
-        }
-
-        applied = { ...model.initial };
-        hostWaiting = model.pendingRestart;
-        const form = createFormStore({
-          schema: compiled.schema,
-          mode: 'apply-on-change',
-          send: 'changed',
-          initial: model.initial,
-          presence: model.presence,
-          pendingRestart: model.pendingRestart,
-          submit,
-          validators: { host: check },
-          scheduler,
-          announce,
-        });
-        // A draft that is put back or applied is no longer a draft, and the note that the host changed under it goes with it.
-        form.subscribeTo(
-          // The drafts: the fields that differ from what the host holds, and the secrets that are being typed (a secret has no value to differ).
-          (current) => [...current.dirtyIds, ...current.fields.flatMap((field) => (field.secret?.changed === true ? [field.id] : []))].join('\n'),
-          (key) => {
-            const drafts = key === '' ? [] : key.split('\n');
-            if (Object.keys(notes).some((id) => !drafts.includes(id))) {
-              setNotes(Object.fromEntries(Object.entries(notes).filter(([id]) => drafts.includes(id))));
-            }
-          },
-        );
-        setState({ phase: 'ready', model, form });
-        if (wantsRefresh) {
-          wantsRefresh = false;
-          void refresh(0);
-        }
-      },
-      () => {
-        if (!disposed && mine === generation) {
-          setState(FAILED);
-        }
-      },
-    );
+    startLoad(state.warning);
   }
 
-  const stop = client.onChanged(() => {
+  const changed = (): void => {
     if (disposed) {
       return;
     }
@@ -389,23 +541,10 @@ export function createSettingsSession({ client, scheduler }: SessionOptions): Se
       void refresh(0);
     } else if (state.phase === 'loading') {
       wantsRefresh = true;
+    } else {
+      load();
     }
-  });
-  // The events connection came back (server mode): nothing that was told while it was down is replayed, so the host is asked what it holds now, as for an event.
-  const stopReconnect = client.onReconnect?.(() => {
-    if (disposed) {
-      return;
-    }
-
-    retries = 0;
-    if (state.phase === 'ready') {
-      void refresh(0);
-    } else if (state.phase === 'loading') {
-      wantsRefresh = true;
-    }
-  });
-
-  load();
+  };
 
   return {
     getState: () => state,
@@ -416,6 +555,7 @@ export function createSettingsSession({ client, scheduler }: SessionOptions): Se
       };
     },
     load,
+    changed,
     resetMaterial,
     refresh: () => {
       retries = 0;
@@ -445,21 +585,62 @@ export function createSettingsSession({ client, scheduler }: SessionOptions): Se
       }
 
       disposed = true;
-      stop();
-      stopReconnect?.();
       cancelRetry();
       for (const timer of deadlines) {
         scheduler.clearTimeout(timer);
       }
 
       deadlines.clear();
-      if (state.phase === 'ready') {
-        state.form.dispose();
-      }
+      ownedForm?.dispose();
+      ownedForm = undefined;
+      replacement = undefined;
 
       listeners.clear();
       noteListeners.clear();
       sayListeners.clear();
+    },
+  };
+}
+
+/** One listener per transport signal, however many plugins are installed. Every form owns one immutable RPC scope. */
+export function createSettingsSession(options: SessionOptions): SettingsSession {
+  const { client } = options;
+  const core = createScopeSession(options, HOST_SCOPE);
+  const plugins = createPluginPages(client.inventory, (pluginId) => createScopeSession(options, { kind: 'plugin', pluginId }));
+  const offChanged = client.onChanged((scope) => {
+    if (scope.kind === 'host') {
+      core.changed();
+    } else {
+      plugins.changed(scope.pluginId);
+    }
+  });
+  const offInventory = client.onInventoryChanged(plugins.refresh);
+  const offReconnect = client.onReconnect?.(() => {
+    core.changed();
+    plugins.refresh();
+  });
+  let disposed = false;
+  core.load();
+  plugins.refresh();
+
+  return {
+    ...core,
+    plugins,
+    refresh: () => {
+      core.refresh();
+      plugins.refresh();
+    },
+    dispose: () => {
+      if (disposed) {
+        return;
+      }
+
+      disposed = true;
+      offChanged();
+      offInventory();
+      offReconnect?.();
+      core.dispose();
+      plugins.dispose();
     },
   };
 }

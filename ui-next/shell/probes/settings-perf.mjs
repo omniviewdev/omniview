@@ -97,10 +97,10 @@ async function openPart(env) {
  * once and lives as long as the app, so this is what a person waits for when the window is first opened, after its page has loaded.
  */
 async function openWindowPart(env) {
-  const where = `${env.engine}@1060x640 window`;
+  const where = `${env.engine}@preferred window`;
   const samples = [];
   for (let index = 0; index < 5; index += 1) {
-    const { page, context } = await openFixture(env, `case=window&host=held&request=${enc({ requestId: 1, target: '/settings?category=appearance', visible: true })}`, { viewport: WINDOW_SIZES['1060x640'], init: [script(commitCounter)], fonts: 'none' });
+    const { page, context } = await openFixture(env, `case=window&host=held&request=${enc({ requestId: 1, target: '/settings?category=appearance', visible: true })}`, { viewport: WINDOW_SIZES.preferred, init: [script(commitCounter)], fonts: 'none' });
     try {
       await page.waitForSelector('[data-settings-part="window"] [data-settings-state="loading"]', { timeout: WAIT });
       await sleep(200);
@@ -147,9 +147,9 @@ const SHOW_SAMPLE = async (settle) => {
 };
 
 async function showPart(env) {
-  const where = `${env.engine}@1060x640 window`;
+  const where = `${env.engine}@preferred window`;
   const load = os.loadavg()[0];
-  const { page, context } = await openFixture(env, `case=window&request=${enc({ requestId: 1, target: '/settings?category=appearance', visible: true })}`, { viewport: WINDOW_SIZES['1060x640'], init: [script(commitCounter)], fonts: 'none' });
+  const { page, context } = await openFixture(env, `case=window&request=${enc({ requestId: 1, target: '/settings?category=appearance', visible: true })}`, { viewport: WINDOW_SIZES.preferred, init: [script(commitCounter)], fonts: 'none' });
   try {
     await page.waitForSelector('[data-settings-part="window"][data-visible="true"] [data-settings-row]', { timeout: WAIT });
     await sleep(500);
@@ -283,7 +283,7 @@ async function idlePart(env) {
     await openSheet(page);
   });
   if (!env.first) return;
-  const size = WINDOW_SIZES['1060x640'];
+  const size = WINDOW_SIZES.preferred;
   const request = enc({ requestId: 1, target: '/settings?category=appearance', visible: true });
   await idleOf(env, 'window shown', `case=window&request=${request}`, size, { selector: '[data-settings-part="window"][data-visible="true"] [data-settings-row]' });
   await idleOf(env, 'window hidden', `case=window&request=${request}`, size, { selector: '[data-settings-part="window"][data-visible="true"] [data-settings-row]' }, async (page) => {
@@ -344,8 +344,8 @@ async function closedPart(env) {
     check(added.length === 0, where, 'perf.closed.listeners', `${added.length} registrations on the window or the document stayed after the sheet closed: ${added.map((entry) => `${entry.key} ${entry.source.slice(0, 80)}`).join('; ')}`);
     check(removed.length === 0, where, 'perf.closed.listeners', `${removed.length} registrations that were there before the first open are gone: ${removed.map((entry) => entry.key).join('; ')}`);
     check(later.observers.join() === before.observers.join(), where, 'perf.closed.listeners', `observers held after the sheet closed: ${later.observers.join(', ') || 'none'}; before the first open: ${before.observers.join(', ') || 'none'}`);
-    const host = await page.evaluate(() => window.__host.listeners());
-    check(host === 0, where, 'perf.closed.listeners', `the host still has ${host} listeners of Settings after the sheet closed: it must be told to stop`);
+    const host = await page.evaluate(() => ({ settings: window.__host.listeners(), inventory: window.__host.inventoryListeners(), reconnect: window.__host.reconnectListeners() }));
+    check(Object.values(host).every((count) => count === 0), where, 'perf.closed.listeners', `the host still has listeners after close: ${JSON.stringify(host)}`);
     const stillHeld = outstanding(later.watch) - outstanding(before.watch);
     check(stillHeld <= 0, where, 'perf.closed.timers', `${stillHeld} timers, intervals or frames are outstanding after the sheet closed: ${KINDS.flatMap((kind) => later.watch[kind]).slice(0, 3).map(describe).join('; ')}`);
     check(later.ran - ranBefore === 0, where, 'perf.closed.timers', `${later.ran - ranBefore} timer or frame callbacks ran in a second with the sheet closed: ${later.watch.timeouts.slice(0, 2).map(describe).join('; ')}`);

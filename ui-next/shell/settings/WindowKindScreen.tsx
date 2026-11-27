@@ -13,7 +13,7 @@ export type WindowKindScreenProps = {
 };
 
 /**
- * What the window draws is decided by its kind (the host's window service: the app's Settings is a window of kind `settings`, 1060 x 640 px, and the new UI draws its content there, with no shell around it). In a browser there is
+ * What the window draws is decided by its kind (the host's window service: the app's Settings is a window of kind `settings`, and the new UI draws its content there, with no shell around it). In a browser there is
  * no such window and the shell is drawn at once, with no wait; in a native window the page asks which it is and draws nothing until the host has answered (the shell's own first frame waits for the same window service's answer
  * about its session, so this adds no wait of its own that the shell was not already in). A window that cannot be told what it is draws the shell.
  */

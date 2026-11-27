@@ -12,7 +12,7 @@ export const repo = path.resolve(here, '../../..');
 /** The nine themes the host persists (the kit's ids). */
 export const THEMES = ['void', 'dark', 'light', 'obsidian', 'carbon', 'solarized-dark', 'solarized-light', 'high-contrast-dark', 'high-contrast-light'];
 
-/** The host's pages in the design's order, by id and by the title the sheet shows: the categories of `settings/model/testing.ts`, of which the adapter offers these six (the theme and the native application are pickers, not drawn). */
+/** The six host fixture pages in the design's order, by id and by the title the sheet shows. */
 export const PAGES = [
   { id: 'appearance', title: 'Appearance' },
   { id: 'general', title: 'General' },
@@ -22,8 +22,8 @@ export const PAGES = [
   { id: 'developer', title: 'Developer Settings' },
 ];
 
-/** The sizes of the Settings window the host makes: 1060 x 640 (`backend/window/settings.go`) and the least it may be, 960 x 600 (`backend/window/wails.go`). */
-export const WINDOW_SIZES = { '1060x640': { width: 1060, height: 640 }, '960x600': { width: 960, height: 600 } };
+/** Next's preferred native Settings size and the minimum supported by the window host. */
+export const WINDOW_SIZES = { preferred: { width: 1280, height: 800 }, minimum: { width: 960, height: 600 } };
 
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 export const round = (value) => Math.round(value * 100) / 100;
@@ -111,9 +111,19 @@ export async function openSheet(page) {
   await page.waitForSelector('dialog[open] [data-settings-row]', { timeout: 10_000 });
 }
 
-/** Chooses a page of the open Settings (a sheet or the window) by pressing its button, and waits until the page is the one on screen. */
+/** Opens the same Settings body in either container, with the supplied fixture query parameters. */
+export async function openSettings(env, container, params = {}) {
+  const query = new URLSearchParams({ case: container, ...params });
+  if (container === 'window') query.set('request', JSON.stringify({ requestId: 1, target: '/settings?category=appearance', visible: true }));
+  const opened = await openFixture(env, query.toString(), { viewport: container === 'window' ? WINDOW_SIZES.preferred : env.viewport });
+  if (container === 'sheet') await openSheet(opened.page);
+  else await opened.page.waitForSelector('[data-settings-part="window"][data-visible="true"] [data-settings-row]', { timeout: 10_000 });
+  return opened;
+}
+
+/** Chooses a page in the expanded Settings tree and waits for its content in either container. */
 export async function goToPage(page, id) {
-  await page.locator(`[data-settings-part="nav"] [data-settings-page="${id}"]`).click();
+  await page.locator(`[data-settings-part="tree"] [role="treeitem"][data-settings-page="${id}"]`).click();
   // `attached`, not visible: Playwright's WebKit does not call a page's section visible when it is taller than the pane that scrolls it (its header and rows are).
   await page.waitForSelector(`[data-settings-part="page"][data-settings-page-id="${id}"]`, { state: 'attached', timeout: 5000 });
 }

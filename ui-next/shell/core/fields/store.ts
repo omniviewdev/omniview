@@ -65,6 +65,8 @@ export type FormOptions = {
   /** The ids the host says wait for a restart. */
   readonly pendingRestart?: readonly string[] | undefined;
   readonly submit: SubmitFn;
+  /** Runs after an apply-on-change submission settles and the form has consumed its result. The owner may now replace the form. */
+  readonly onApplySettled?: (() => void) | undefined;
   readonly validators?: Readonly<Record<string, RemoteValidator>> | undefined;
   readonly providers?: Readonly<Record<string, OptionProvider>> | undefined;
   readonly scheduler?: Scheduler | undefined;
@@ -1003,23 +1005,32 @@ export function createFormStore(options: FormOptions): FormStore {
     return Object.freeze(compact({ code: 'rejected' as const, text: reason.text, detail: reason.detail, severity: 'error' as const, source: 'host' as const }));
   };
 
+  function accept(rec: Rec, sent: Json | undefined, canonical: Readonly<Record<string, Json>> | null | undefined): void {
+    if (rec.spec.sensitive) {
+      if (canonical !== null) {
+        rec.presence = !(sent === '' || sent === undefined);
+      }
+
+      // Drop the accepted secret, but not a newer one typed while the write was in flight.
+      if (sameValue(vault.get(rec.spec.id), sent)) {
+        clearSecret(rec);
+      }
+
+      return;
+    }
+
+    const read = canonical && Object.hasOwn(canonical, rec.spec.id) ? readValue(rec.spec.kind as Exclude<CompiledField['kind'], 'unsupported'>, canonical[rec.spec.id], false) : undefined;
+    const applied = canonical === null ? rec.applied : read?.ok === true ? read.value : sent;
+    if (sameValue(rec.value, sent)) {
+      rec.value = applied;
+    }
+
+    rec.applied = applied;
+  }
+
   function applyOutcome(rec: Rec, outcome: SubmitOutcome, value: Json | undefined): boolean {
     if (outcome === undefined || outcome.ok) {
-      const canonical = outcome?.values !== undefined && Object.hasOwn(outcome.values, rec.spec.id) ? readValue(rec.spec.kind as Exclude<CompiledField['kind'], 'unsupported'>, outcome.values[rec.spec.id], false) : undefined;
-      const applied = canonical?.ok === true ? canonical.value : value;
-      const follows = sameValue(rec.value, value);
-      if (rec.spec.sensitive) {
-        rec.presence = !(value === '' || value === undefined);
-        // The host has it now, so the typed value goes; unless the user has typed another since, which is the one applied next.
-        if (sameValue(vault.get(rec.spec.id), value)) {
-          clearSecret(rec);
-        }
-      } else {
-        rec.applied = applied;
-        if (follows) {
-          rec.value = applied;
-        }
-      }
+      accept(rec, value, outcome?.values);
 
       return true;
     }
@@ -1064,7 +1075,8 @@ export function createFormStore(options: FormOptions): FormStore {
       }
 
       if (applyOutcome(rec, outcome, value)) {
-        rec.phase = rec.spec.validate !== undefined || (rec.spec.kind !== 'boolean' && rec.spec.kind !== 'select') ? 'saved' : 'idle';
+        const confirmed = outcome?.ok !== true || outcome.values !== null;
+        rec.phase = confirmed && (rec.spec.validate !== undefined || (rec.spec.kind !== 'boolean' && rec.spec.kind !== 'select')) ? 'saved' : 'idle';
         rec.savedNote = rec.remote.status === 'valid' ? rec.remote.note : '';
         if (rec.phase === 'saved') {
           scheduler.clearTimeout(rec.savedTimer);
@@ -1100,10 +1112,18 @@ export function createFormStore(options: FormOptions): FormStore {
     } finally {
       inflightSecrets.delete(mine);
       rec.inflight = false;
+      if (!isDisposed) {
+        mark(rec);
+        flush();
+      }
+
+      try {
+        options.onApplySettled?.();
+      } catch (error) {
+        report(error, 'after apply');
+      }
     }
 
-    mark(rec);
-    flush();
     return { status };
   }
 
@@ -1124,10 +1144,9 @@ export function createFormStore(options: FormOptions): FormStore {
     return doApply(rec).then(async (result) => {
       const waiting = rec.next;
       rec.next = undefined;
-      if (waiting !== undefined && !isDisposed) {
-        waiting.resolve(await commit(rec.spec.id));
-      } else {
-        waiting?.resolve(result);
+      if (waiting !== undefined) {
+        // A queued draft was never sent if the accepted write retired this form.
+        waiting.resolve(isDisposed ? refused('disposed') : await commit(rec.spec.id));
       }
 
       return result;
@@ -1388,16 +1407,7 @@ export function createFormStore(options: FormOptions): FormStore {
       if (!hasFailed && (outcome === undefined || outcome.ok)) {
         const canonical = outcome?.ok === true ? outcome.values : undefined;
         for (const rec of included) {
-          const sent = values[rec.spec.id];
-          if (rec.spec.sensitive) {
-            clearSecret(rec);
-            rec.presence = !(sent === '' || sent === null);
-          } else {
-            const read = canonical !== undefined && Object.hasOwn(canonical, rec.spec.id) ? readValue(rec.spec.kind as Exclude<CompiledField['kind'], 'unsupported'>, canonical[rec.spec.id], false) : undefined;
-            const applied = read?.ok === true ? read.value : (sent ?? undefined);
-            rec.applied = applied;
-            rec.value = applied;
-          }
+          accept(rec, values[rec.spec.id] ?? undefined, canonical);
 
           rec.told = false;
           recheck(rec);

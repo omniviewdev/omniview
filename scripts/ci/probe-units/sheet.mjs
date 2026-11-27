@@ -1,5 +1,5 @@
 // The kit's Sheet part (ST1): the modal surface the new UI's Settings takes in a window that has no native windows, on the real ui-next parts page (the example `OpenedFromTheButton`), in WebKit and Chromium at 1440 x 900 and
-// 1280 x 800: nothing open at load, one modal dialog with the focus inside it, the page behind inert, the frame 1060 x 640 and centred with a 41 px header and a 24 px Close, the paint the tokens name and no veil over the page,
+// 1280 x 800: nothing open at load, one modal dialog with the focus inside it, the page behind inert, the frame centred and clamped with a 41 px header and a 24 px Close, the paint the tokens name and no veil over the page,
 // axe (colour contrast included) in Void and Light, Tab and Shift+Tab that wrap inside it, a press on the scrim that closes nothing, Escape in a field with a draft that puts the value back and closes nothing, and the
 // focus given back to the button that opened it. It reads the ui-next build the shard makes (DIST).
 

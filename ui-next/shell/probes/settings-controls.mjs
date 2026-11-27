@@ -5,12 +5,12 @@
 // `base` is the perturbation of the CLEAN run, for an assertion that the real page does not satisfy yet (a finding of the probe, not a fault of a control): the clean run is the page repaired by the stylesheet or script of `base`, where
 // the assertion must be silent, and the perturbed run is the page with its fault laid over the repair. A control whose assertion the real page satisfies has no `base`.
 
-/** What a page does with the scroll of the page before it: `arg` is where it opens, 175 px down (the page keeps the last one's scroll, as it does today: a fault) or 0 (the repair). */
+/** Simulate reusing the previous page's scroll offset after a tree item opens a different page. */
 const SCROLL = (top) => {
   document.addEventListener(
     'click',
     (event) => {
-      if (event.target instanceof Element && event.target.closest('[data-settings-part="nav"] button') !== null) {
+      if (event.target instanceof Element && event.target.closest('[data-settings-part="tree"] [data-settings-page]') !== null) {
         requestAnimationFrame(() =>
           requestAnimationFrame(() => {
             const content = document.querySelector('[data-settings-part="content"]');
@@ -28,8 +28,8 @@ export const PERTURBATIONS = {
   'win-sidebar': {
     section: 'window',
     parts: ['old'],
-    says: /^window\.old\.match /,
-    fault: 'the sidebar is 200 px wide, not the original window\'s 212',
+    says: /^window\.old\.decided /,
+    fault: 'the sidebar is 200 px wide instead of the mock\'s 244',
     plant: { css: '[data-settings-part="nav"] { inline-size: 200px !important; }' },
   },
   'win-caption': {
@@ -81,28 +81,28 @@ export const PERTURBATIONS = {
     parts: ['nav'],
     says: /^page\.nav /,
     fault: 'a page\'s row in the navigation is 34 px high, as the original window\'s were',
-    plant: { css: '[data-settings-part="nav"] button { block-size: 34px !important; }' },
+    plant: { css: '[data-settings-part="tree"] [data-settings-page] { block-size: 34px !important; }' },
   },
   'nav-selected-paint': {
     section: 'page',
     parts: ['navstates'],
     says: /^page\.navstates /,
     fault: 'the page on screen is painted in a colour that is no role of the theme',
-    plant: { css: '[data-settings-part="nav"] [aria-current="page"] { background-color: rgb(200, 0, 0) !important; }' },
+    plant: { css: '[data-settings-part="tree"] [data-settings-page][aria-current="page"] { background-color: rgb(200, 0, 0) !important; }' },
   },
   'group-size': {
     section: 'page',
     parts: ['group'],
     says: /^page\.group\.size /,
-    fault: 'the group\'s label is 12 px muted in a 28 px row, as it is today, not the mock\'s 13 px in the text colour in a 24 px row',
-    plant: { css: '[data-settings-part="nav"] > [aria-hidden="true"] { font-size: var(--ov-fs-12) !important; color: var(--ov-fg-muted) !important; padding-block: 6px !important; }' },
+    fault: 'the Core label uses the 12 px caption size instead of the mock’s 13 px tree label',
+    plant: { css: '[data-settings-branch="core"] [data-settings-part="tree-label"] { font-size: var(--ov-fs-12) !important; }' },
   },
   'group-tabbable': {
     section: 'page',
     parts: ['group'],
     says: /^page\.group\.label /,
-    fault: 'the group\'s label is a Tab stop',
-    plant: { js: () => document.querySelector('[data-settings-part="nav"] > [aria-hidden="true"]').setAttribute('tabindex', '0') },
+    fault: 'the Core branch remains in the Tab sequence alongside the current page',
+    plant: { js: () => { document.querySelector('[data-settings-branch="core"]').tabIndex = 0; } },
   },
   'heading-lane': {
     section: 'page',
@@ -200,15 +200,15 @@ export const PERTURBATIONS = {
     section: 'page',
     parts: ['scroll'],
     says: /^page\.scroll\.reset /,
-    fault: 'a page opens where the page before it was scrolled to (175 px), as it does today, not at the top',
+    fault: 'a page opens where the page before it was scrolled to (175 px), not at the top',
     plant: { js: SCROLL, arg: 175 },
   },
   'scroll-fits': {
     section: 'page',
     parts: ['scroll'],
     says: /^page\.scroll\.fits /,
-    fault: 'Appearance, which fits its pane, has 400 px more under its rows, so it scrolls',
-    plant: { css: '[data-settings-part="page"][data-settings-page-id="appearance"] { padding-block-end: 400px !important; }' },
+    fault: 'General, which fits its pane, has a full viewport of extra space below its only row',
+    plant: { css: '[data-settings-part="page"][data-settings-page-id="general"] { padding-block-end: 100vh !important; }' },
   },
   'states-loading': {
     section: 'page',
@@ -250,7 +250,7 @@ export const PERTURBATIONS = {
     parts: ['paint'],
     says: /^page\.paint /,
     fault: 'in Obsidian the page on screen is painted in a colour that is no role of the theme',
-    plant: { css: 'html[data-ov-theme="obsidian"] [data-settings-part="nav"] [aria-current="page"] { background-color: rgb(1, 2, 3) !important; }' },
+    plant: { css: 'html[data-ov-theme="obsidian"] [data-settings-part="tree"] [data-settings-page][aria-current="page"] { background-color: rgb(1, 2, 3) !important; }' },
   },
 
   // ---------------------------------------------------------------- sheet
@@ -292,8 +292,8 @@ export const PERTURBATIONS = {
     section: 'sheet',
     parts: ['clamp'],
     says: /^sheet\.clamp /,
-    fault: 'the frame is 1060 x 640 in a window that is smaller',
-    plant: { css: '[data-ov-part="frame"] { inline-size: 1060px !important; block-size: 640px !important; }' },
+    fault: 'the frame keeps its full 1280 x 800 size in a window that is smaller',
+    plant: { css: '[data-ov-part="frame"] { inline-size: 1280px !important; block-size: 800px !important; }' },
   },
   'sheet-veil': {
     section: 'sheet',
@@ -373,17 +373,18 @@ export const PERTURBATIONS = {
     section: 'keys',
     parts: ['nav'],
     says: /^keys\.nav /,
-    fault: 'ArrowDown on the last page goes round to the first',
+    fault: 'ArrowDown on the last visible tree item wraps to the first branch',
     plant: {
       js: () => {
-        const nav = document.querySelector('[data-settings-part="nav"]');
-        nav.addEventListener(
+        const tree = document.querySelector('[data-settings-part="tree"]');
+        tree.addEventListener(
           'keydown',
           (event) => {
-            const buttons = [...nav.querySelectorAll('button')];
-            if (event.key === 'ArrowDown' && document.activeElement === buttons.at(-1)) {
-              buttons[0].focus();
+            const items = [...tree.querySelectorAll('[role="treeitem"]')].filter((item) => item.getClientRects().length > 0);
+            if (event.key === 'ArrowDown' && document.activeElement === items.at(-1)) {
+              event.preventDefault();
               event.stopPropagation();
+              items[0].focus();
             }
           },
           true,
@@ -396,7 +397,7 @@ export const PERTURBATIONS = {
     parts: ['nav'],
     says: /^keys\.nav /,
     fault: 'a second page is a Tab stop of its own',
-    plant: { js: () => document.querySelectorAll('[data-settings-part="nav"] button')[2].setAttribute('tabindex', '0') },
+    plant: { js: () => { document.querySelector('[data-settings-part="tree"] [data-settings-page="editor"]').tabIndex = 0; } },
   },
   'keys-unreachable': {
     section: 'keys',

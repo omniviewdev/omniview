@@ -22,7 +22,7 @@ func TestAppearanceBootAndCommittedEffects(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
 	require.NoError(t, store.SaveCategory("appearance", map[string]any{
-		"windowMaterial": "glass", "glassStyle": "clear", "chromeOpacity": 74,
+		"windowMaterial": "glass", "glassStyle": "clear", "chromeOpacity": 74, "motion": "reduced",
 		"contentOpacity": 999, // Rejected during hydration, before any window sees it.
 	}))
 	category := coresettings.Appearance
@@ -58,6 +58,7 @@ func TestAppearanceBootAndCommittedEffects(t *testing.T) {
 	require.Equal(t, "clear", initial.Preferences.GlassStyle)
 	require.Equal(t, 74, initial.Preferences.ChromeOpacity)
 	require.Equal(t, 94, initial.Preferences.ContentOpacity)
+	require.Equal(t, "reduced", initial.Preferences.Motion)
 	require.Equal(t, material, initial.Material)
 	require.Equal(t, []settingsservice.AppearanceRequest{{WindowMaterial: "glass", GlassStyle: "clear", Theme: "void"}}, applied)
 	wire, err := json.Marshal(initial)
@@ -77,6 +78,12 @@ func TestAppearanceBootAndCommittedEffects(t *testing.T) {
 	commit("future", "another-private-example")
 	require.Equal(t, paint, read(), "unrelated and identical changes do not invalidate the projection")
 	require.Equal(t, []uint64{initial.Revision + 1, paint.Revision}, notifications)
+	commit("motion", "normal")
+	normal := read()
+	require.Equal(t, "normal", normal.Preferences.Motion)
+	require.Equal(t, paint.Revision+1, normal.Revision)
+	require.Equal(t, []uint64{initial.Revision + 1, paint.Revision, normal.Revision}, notifications)
+	require.Len(t, applied, 1, "changing motion notifies every window without reapplying native materials")
 	commit("windowMaterial", "translucent")
 	require.Len(t, applied, 2)
 	require.Equal(t, "translucent", applied[1].WindowMaterial)
@@ -93,6 +100,7 @@ func TestAppearanceBootAndCommittedEffects(t *testing.T) {
 	require.Equal(t, "translucent", saved["windowMaterial"])
 	require.Equal(t, float64(0), saved["chromeOpacity"])
 	require.Equal(t, float64(100), saved["sheetOpacity"])
+	require.Equal(t, "normal", saved["motion"])
 
 	_, err = binding.Commit(settingsservice.Scope{Kind: "host"}, map[string]any{"appearance.chromeOpacity": -1})
 	require.Error(t, err)

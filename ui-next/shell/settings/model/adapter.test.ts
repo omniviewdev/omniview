@@ -125,16 +125,22 @@ describe('a field is the id a commit takes, and its kind follows what the host d
 describe('what is not drawn, and why', () => {
   const reason = (id: string): string | undefined => model.notDrawn.find((entry) => entry.id === id)?.reason;
 
-  it('leaves out the two settings whose editor is a picker the old window registers for them: the theme and the native terminal application', () => {
-    expect(Object.keys(NOT_DRAWN)).toEqual(['appearance.theme', 'terminal.nativeApplication']);
-    expect(kindOf('appearance.theme')).toBeUndefined();
-    expect(kindOf('terminal.nativeApplication')).toBeUndefined();
-    expect(reason('appearance.theme')).toBe('picker');
-    expect(reason('terminal.nativeApplication')).toBe('picker');
+  it('offers the theme as a choice of colors, then layout, followed by the declared material fields', () => {
+    expect(fieldOf('appearance.theme')).toMatchObject({ kind: 'text', display: 'theme-picker', default: 'void', help: 'The color theme for the application UI' });
+    expect(fieldOf('appearance.theme')?.validate).toBeUndefined();
+    expect(fieldOf('appearance.density')).toMatchObject({ kind: 'select', display: 'segmented' });
+    expect(fieldOf('appearance.textSize')).toMatchObject({ kind: 'select', display: 'slider', default: '100' });
+    expect(fieldOf('appearance.motion')).toMatchObject({ kind: 'select', display: 'segmented' });
     expect(model.pages.find((page) => page.id === 'appearance')?.fields).toEqual([
+      'appearance.theme', 'appearance.density', 'appearance.textSize', 'appearance.motion',
       'appearance.windowMaterial', 'appearance.glassStyle', 'appearance.chromeOpacity', 'appearance.contentOpacity', 'appearance.menuOpacity', 'appearance.sheetOpacity',
-      'appearance.density', 'appearance.textSize', 'appearance.motion',
     ]);
+  });
+
+  it('still omits the native terminal application until its discovery-backed picker exists', () => {
+    expect(Object.keys(NOT_DRAWN)).toEqual(['terminal.nativeApplication']);
+    expect(kindOf('terminal.nativeApplication')).toBeUndefined();
+    expect(reason('terminal.nativeApplication')).toBe('picker');
   });
 
   it('leaves out a setting that is for developers: none of the host\'s core settings is, and no flag says developer mode is on here', () => {
@@ -215,5 +221,51 @@ describe('the values', () => {
   it('keep a value of the wrong type out of the form rather than guessing: the field starts from its default', () => {
     const wrong = hostSnapshot({ 'editor.fontSize': 'big' });
     expect(modelOf(wrong).initial['editor.fontSize']).toBeUndefined();
+  });
+});
+
+describe('a plugin snapshot', () => {
+  const scope = { kind: 'plugin', pluginId: 'profile.a' } as const;
+
+  it('uses the opaque map key, not the category or a separately declared id, without host-only presentations', () => {
+    const ordinary = setting('not-the-key', 'text', 'Provider theme', '', 'local');
+    const plugin = { ...category('plugin', 'Plugin', '', '', []), settings: {
+      'appearance.theme': ordinary, 'terminal.nativeApplication': ordinary, 'limits.cpu.soft': { ...ordinary, label: '' },
+    } };
+    const one = modelOf({ categories: { plugin } }, scope);
+    expect(one.pages).toHaveLength(1);
+    expect(one.pages[0]?.fields).toEqual(['appearance.theme', 'limits.cpu.soft', 'terminal.nativeApplication']);
+    expect(one.schema.sections[0]?.fields[0]).toMatchObject({ kind: 'text', validate: { remote: 'host' } });
+    expect(one.schema.sections[0]?.fields[0]?.display).toBeUndefined();
+    expect(one.schema.sections[0]?.fields[1]?.label).toBe('limits.cpu.soft');
+    expect(one.initial).toEqual({ 'appearance.theme': 'local', 'terminal.nativeApplication': 'local', 'limits.cpu.soft': 'local' });
+  });
+
+  it('preserves text arrays, including an empty multi-file picker, and never exposes mixed or sensitive arrays as text', () => {
+    const fileSelection = { enabled: true, multiple: true, allowFolders: false, relative: false };
+    const paths = setting('contexts.files', 'text', 'Configuration files', '', [], { fileSelection });
+    const list = setting('labels', 'text', 'Labels', '', ['one', 'two']);
+    const plugin = category('plugin', 'Plugin', '', '', [paths, list,
+      { ...paths, id: 'mixed', value: [false] },
+      { ...list, id: 'secret', sensitive: true, value: ['secret-array-marker'] }]);
+    const one = modelOf({ categories: { plugin } }, scope);
+    expect(one.pages[0]?.fields).toEqual(['contexts.files', 'labels']);
+    expect(one.schema.sections[0]?.fields[0]).toMatchObject({ kind: 'list', mono: true, constraints: { item: 'path' }, default: [] });
+    expect(one.initial).toEqual({ 'contexts.files': [], labels: ['one', 'two'] });
+    expect(JSON.stringify(one)).not.toContain('secret-array-marker');
+  });
+
+  it('discards sensitive values, defaults, options and file metadata; it never invents a stored fact', () => {
+    const marker = 'never-send-this-to-search';
+    const leaky = { ...setting('token', 'text', 'API key', '', ''), value: marker, default: marker, sensitive: true,
+      options: [{ value: marker, label: marker }], fileSelection: { enabled: true, allowFolders: false, extensions: [marker], multiple: false, relative: false } };
+    const plugin = category('plugin', 'Plugin', '', '', [leaky, { ...leaky, type: 'password', sensitive: false, id: 'password' },
+      { ...leaky, type: 'integer', id: 'pin', value: 123456, default: 123456 }]);
+    const one = modelOf({ categories: { plugin } }, scope);
+    expect(one.pages).toEqual([]);
+    expect(one.initial).toEqual({});
+    expect(one.presence).toEqual({});
+    expect(JSON.stringify(one)).not.toContain(marker);
+    expect(JSON.stringify(one)).not.toContain('123456');
   });
 });

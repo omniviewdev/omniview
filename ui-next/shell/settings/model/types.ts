@@ -13,9 +13,9 @@ export type HostSetting = {
   readonly label: string;
   readonly description: string;
   readonly type: HostSettingType;
-  /** The value in effect. `null` for a sensitive setting: the host never sends one. */
+  /** The value in effect. Sensitive values are redacted; the adapter must not read them. */
   readonly value?: unknown;
-  /** `null` for a sensitive setting. */
+  /** Also redacted for a sensitive setting. */
   readonly default?: unknown;
   readonly options?: readonly HostOption[] | null | undefined;
   readonly fileSelection?: HostFileSelection | null | undefined;
@@ -34,9 +34,16 @@ export type HostCategory = {
   readonly settings: Readonly<Record<string, HostSetting | undefined>>;
 };
 
+/** A plugin's setting keys belong to that provider, not to a host category. */
+export type SettingsScope = { readonly kind: 'host' } | { readonly kind: 'plugin'; readonly pluginId: string };
+export const HOST_SCOPE = { kind: 'host' } as const;
+
+/** Display metadata for an installed plugin whose backend has a settings provider. */
+export type SettingsPlugin = { readonly id: string; readonly name: string; readonly description: string; readonly icon: string };
+
 export type HostSnapshot = {
   readonly categories: Readonly<Record<string, HostCategory | undefined>>;
-  /** Which sensitive settings hold a value, by the id a commit takes (`category.setting`): the host's own fact, never the value (`Snapshot.Stored`). */
+  /** Presence facts keyed by commit id. The plugin controller currently supplies none. */
   readonly stored?: Readonly<Record<string, boolean | undefined>> | undefined;
 };
 
@@ -48,11 +55,12 @@ export type HostCommit = { readonly snapshot: HostSnapshot; readonly applied: bo
 
 /** The host's settings service as Settings needs it: a seam, so that a test and the probe's fixture answer from memory. The production one is `runtime.ts`. */
 export type SettingsClient = {
-  readonly snapshot: () => Promise<HostSnapshot>;
-  readonly validate: (id: string, value: unknown) => Promise<HostValidation>;
-  readonly commit: (values: Readonly<Record<string, unknown>>) => Promise<HostCommit>;
-  /** Listens for a change of the host's settings that someone made (this window or another). Answers the function that stops it. */
-  readonly onChanged: (listener: () => void) => () => void;
+  readonly snapshot: (scope: SettingsScope) => Promise<HostSnapshot>;
+  readonly validate: (scope: SettingsScope, id: string, value: unknown) => Promise<HostValidation>;
+  readonly commit: (scope: SettingsScope, values: Readonly<Record<string, unknown>>) => Promise<HostCommit>;
+  readonly inventory: () => Promise<readonly SettingsPlugin[]>;
+  readonly onInventoryChanged: (listener: () => void) => () => void;
+  readonly onChanged: (listener: (scope: SettingsScope) => void) => () => void;
   /** Listens for the page's events connection coming back after it dropped (server mode: nothing that was told while it was down is replayed). Absent where there is no such connection. Answers the function that stops it. */
   readonly onReconnect?: ((listener: () => void) => () => void) | undefined;
 };

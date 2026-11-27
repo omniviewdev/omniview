@@ -13,7 +13,7 @@
 //   closed   nothing is open at load, and the page has no dialog
 //   modal    pressing the opener opens ONE modal dialog (`:modal`) and the focus is inside it
 //   inert    the page behind cannot take the focus while it is open
-//   frame    the frame is 1060 x 640 and centred, the header 41 px, Close 24 x 24 at the end of it, the title 13/16 at 600
+//   frame    the frame prefers 1280 x 800 and is centred with at least 24 px clearance, the header 41 px, Close 24 x 24 at its end, the title 13/16 at 600
 //   paint    the frame's fill, edge, text colour and shadow are the tokens they name, and nothing is drawn over the page (no veil: the dialog and its backdrop are transparent)
 //   axe      axe-core (colour contrast included) finds no serious or critical violation in the open sheet in Void and Light
 //   trap     12 presses of Tab and 12 of Shift+Tab never leave the dialog and cycle through its five controls in order (WebKit on macOS reaches buttons with Option+Tab: that is what is pressed there)
@@ -176,9 +176,11 @@ async function steps(page, engine, where, size) {
         font: style(part('frame'), 'fontFamily'),
       };
     });
-    const want = { w: 1060, h: 640, x: (size.width - 1060) / 2, y: (size.height - 640) / 2 };
+    const w = Math.min(1280, size.width - 48);
+    const h = Math.min(800, size.height - 48);
+    const want = { w, h, x: (size.width - w) / 2, y: (size.height - h) / 2 };
     check(near(frame.dialog.x, 0) && near(frame.dialog.y, 0) && near(frame.dialog.w, size.width) && near(frame.dialog.h, size.height), here, 'frame', `the dialog is ${JSON.stringify(frame.dialog)}, not the window`);
-    check(near(frame.frame.w, want.w) && near(frame.frame.h, want.h), here, 'frame', `the frame is ${frame.frame.w} x ${frame.frame.h}, not 1060 x 640`);
+    check(near(frame.frame.w, want.w) && near(frame.frame.h, want.h), here, 'frame', `the frame is ${frame.frame.w} x ${frame.frame.h}, wanted ${w} x ${h}`);
     check(near(frame.frame.x, want.x) && near(frame.frame.y, want.y), here, 'frame', `the frame is at ${frame.frame.x},${frame.frame.y}, not centred at ${want.x},${want.y}`);
     check(near(frame.header.h, 41), here, 'frame', `the header is ${frame.header.h} px high, not 41`);
     check(near(frame.close.w, 24) && near(frame.close.h, 24), here, 'frame', `Close is ${frame.close.w} x ${frame.close.h}, not 24 x 24`);

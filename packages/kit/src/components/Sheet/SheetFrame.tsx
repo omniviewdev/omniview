@@ -5,8 +5,8 @@ import { KindTile } from '../KindTile';
 import styles from './Sheet.module.css';
 
 /**
- * The size of a sheet. A dialog is `narrow` (440 px wide), `standard` (640) or `wide` (900), as high as its content up to the window, and its body scrolls (the mock's `.dlg`). `settings` is the fixed frame of the
- * Settings window, 1060 x 640 px, whose body clips and leaves the scrolling to its caller.
+ * The size of a sheet. A dialog is `narrow` (440 px wide), `standard` (640) or `wide` (900), as high as its content up to the window, and its body scrolls (the mock's `.dlg`). `settings` prefers 1280 x 800 px;
+ * its body clips and leaves scrolling to the caller.
  */
 export type SheetSize = 'narrow' | 'standard' | 'wide' | 'settings';
 

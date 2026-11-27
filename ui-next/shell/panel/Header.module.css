@@ -170,12 +170,12 @@
     color: var(--ov-error-fg);
   }
 
-  .lead[data-state='starting'] > svg {
+  :where(:root:not([data-ov-motion='reduced'])) .lead[data-state='starting'] > svg {
     animation: spin 1.2s linear infinite;
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .lead[data-state='starting'] > svg {
+    :where(:root:not([data-ov-motion='normal'])) .lead[data-state='starting'] > svg {
       animation: none;
     }
   }

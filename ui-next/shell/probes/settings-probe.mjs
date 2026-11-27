@@ -1,13 +1,13 @@
-// Probes the new UI's Settings, in WebKit and Chromium: the content of the Settings WINDOW (the native window of kind `settings`, 1060 x 640, which is what the app has where there are native windows) against the original application's
+// Probes the new UI's Settings, in WebKit and Chromium: the content of the Settings WINDOW (the native window of kind `settings`, 1280 x 800, which is what the app has where there are native windows) against the original application's
 // window and the host's window service, and the SAME content as the SHEET in the window (where there are none: a browser, server mode) at 1440 x 900 and 1280 x 800 (decision A15), the page against the design mock's own Settings page.
-// The real components run: the product's control, lazy chunk, session, form model and kit parts (ui-next/shell/settings, the kit's `Sheet` and `Field`), over a host that answers from memory with the host's six categories
+// The real components run: the product's control, lazy chunk, session, form model and kit parts over the host's six categories and, in the inventory scenarios, an installed plugin with a scoped setting
 // (settings-fixture.tsx), in a production build of the repository's own Vite configuration.
 //
 //   node ui-next/shell/probes/settings-probe.mjs        builds the fixture (OMNIVIEW_UI=next) into a temp dir, serves it, probes it
 //
 //   FIXTURE_DIST=<dir>   probe an existing build   BUILD_CACHE=<dir>   build once into <dir> and let the next run read it (the shard table's controls do)   FONT_DELAY_MS=40   as a runner serves fonts
-//   ENGINES=webkit,chromium   VIEWPORTS=1440x900,1280x800   (defaults: both of each; the window is the host's own size, 1060 x 640, and its least, 960 x 600)      AXE=<axe.min.js>
-//   SECTIONS=window,page,sheet,keys,a11y,perf   (default: all)      REPORT=<file>   the full report as JSON      SHOTS=<dir>   the screenshots (WebKit, Void, 1440 x 900 or the window's 1060 x 640): probe-*.png
+//   ENGINES=webkit,chromium   VIEWPORTS=1440x900,1280x800   (defaults: both of each; the native window uses its preferred and minimum sizes)      AXE=<axe.min.js>
+//   SECTIONS=window,page,sheet,keys,a11y,perf   (default: all)      REPORT=<file>   the full report as JSON      SHOTS=<dir>   the screenshots: probe-*.png
 //   NEGATIVE_CONTROL=<name>   perturb ONE behaviour of the page (settings-controls.mjs lists them, each with the assertion it is named for), run the part that must see it clean and then perturbed (Chromium at 1440 x 900 unless ENGINES and
 //                             VIEWPORTS say otherwise), and exit 0 when the clean run is silent for that assertion, the perturbed run trips it, and no other assertion fails that did not fail clean; 1 NOT DETECTED, 2 it trips another
 //                             assertion, 3 the clean run already trips it (the control proves nothing)
@@ -18,7 +18,7 @@
 //   window.*   old.match, old.decided, bare, drag, keys, request, sync        the Settings window against the original application's, and what the host's requests make of it
 //   page.*     nav, navstates, group, heading, list, rows, scroll, states       the page against the mock's Settings page
 //   sheet.*    closed, open, modal, inert, frame, clamp, paint, trap, scrim, draft, escape, close, opener, tip     the sheet over the shell, the kit part's own checks on the real Settings
-//   keys.*     nav, order, reach, operate, select, draft                       the keyboard, in both containers
+//   keys.*     nav, reach, operate, select, draft                               the keyboard, searchable tree and field controls in both containers
 //   a11y.*     axe                                                             axe-core, contrast included, in both containers, every page, Void and Light, and the nine themes on one page
 //   perf.*     open, key, idle, closed                                         the production build's costs: commits, frames, timers, listeners and nodes
 // Exit code 1 when anything differs.
@@ -28,7 +28,7 @@ import os from 'node:os';
 import { ENGINES, launch } from '../../../packages/kit/probes/probe-lib.mjs';
 import { AXE, NATIVE_VIEWPORTS, serveFixtures } from './harness.mjs';
 import { PERTURBATIONS } from './settings-controls.mjs';
-import { buildFixture, state, tabKeys } from './settings-lib.mjs';
+import { buildFixture, state, tabKeys, WINDOW_SIZES } from './settings-lib.mjs';
 import { a11ySection } from './settings-a11y.mjs';
 import { keysSection } from './settings-keys.mjs';
 import { pageSection } from './settings-page.mjs';
@@ -67,7 +67,10 @@ async function run({ origin, axe, plant, only }) {
       const keys = await tabKeys(browser);
       // The window is the host's own size, so it is read once for an engine, whatever the viewports are.
       const base = { browser, engine: engineName, origin, axe, keys, plant, only, shots: SHOTS };
-      if (SECTIONS.includes('window')) await timed('window', async () => SECTION_MODULES.window({ ...base, viewportName: '1060x640', viewport: { width: 1060, height: 640 } }));
+      if (SECTIONS.includes('window')) {
+        const viewport = WINDOW_SIZES.preferred;
+        await timed('window', async () => SECTION_MODULES.window({ ...base, viewportName: `${viewport.width}x${viewport.height}`, viewport }));
+      }
       for (const [index, viewportName] of viewportNames.entries()) {
         const env = { ...base, viewportName, viewport: NATIVE_VIEWPORTS[viewportName], first: index === 0 };
         for (const name of SECTIONS) {
@@ -95,7 +98,7 @@ try {
     const bySection = Object.fromEntries(Object.entries(seconds).map(([name, value]) => [name, Math.round(value)]));
     // The numbers of the window against the original application's, which the section `window` judged: each is the same or differs by a decision.
     const old = state.notes.window?.[`old ${engineNames[0]}`];
-    if (old !== undefined) console.log(`\nthe Settings window against the original application's (${engineNames[0]}, 1060 x 640):\n${old.map((row) => `  ${row.quantity.padEnd(30)} original ${String(row.old).padStart(7)}   now ${String(row.now).padStart(7)}   ${row.verdict}`).join('\n')}`);
+    if (old !== undefined) console.log(`\nthe Settings window against the original application's (${engineNames[0]}, preferred size):\n${old.map((row) => `  ${row.quantity.padEnd(30)} original ${String(row.old).padStart(7)}   now ${String(row.now).padStart(7)}   ${row.verdict}`).join('\n')}`);
     console.log(`\nseconds by section: ${JSON.stringify(bySection)}`);
     console.log(`\nsettings probe: ${state.checks} checks, ${failures.length} failures (${total} s in all; ${os.loadavg()[0].toFixed(1)} load average at the end)`);
     if (process.env.REPORT) writeFileSync(process.env.REPORT, `${JSON.stringify({ uptime: load, checks: state.checks, failures, secondsBySection: bySection, totalSeconds: total, notes: state.notes }, null, 2)}\n`);

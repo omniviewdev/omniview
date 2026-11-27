@@ -31,7 +31,7 @@ async function mountWindow(first?: SettingsRequest): Promise<{ readonly windows:
   return { windows, host };
 }
 
-const selectedPage = (): string | null => screen.getByRole('button', { current: 'page' }).textContent;
+const selectedPage = (): string | null => screen.getByRole('treeitem', { current: 'page' }).textContent;
 
 describe('the window', () => {
   it('draws Settings and no shell: a caption named Settings with Close, the pages and a page, not a dialog', async () => {
@@ -39,7 +39,7 @@ describe('the window', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument();
     expect(screen.queryByRole('dialog')).toBeNull();
-    expect(within(screen.getByRole('navigation', { name: 'Settings pages' })).getAllByRole('button').length).toBeGreaterThan(3);
+    expect(within(screen.getByRole('navigation', { name: 'Settings pages' })).getAllByRole('treeitem').length).toBeGreaterThan(3);
   });
 
   it('puts the page\'s heading one level under the window\'s own title, which is the document\'s h1', async () => {
@@ -51,6 +51,7 @@ describe('the window', () => {
   it('opens on the page the host\'s request names, and on the first page when the request names none', async () => {
     await mountWindow({ requestId: 1, target: '/settings?category=terminal', visible: true });
     expect(selectedPage()).toBe('Terminal');
+    expect(screen.getByRole('treeitem', { name: 'Terminal' })).toHaveFocus();
     cleanup();
     await mountWindow({ requestId: 1, target: '/settings', visible: true });
     expect(selectedPage()).toBe('Appearance');
@@ -59,7 +60,7 @@ describe('the window', () => {
   it('goes to the page of a new request, and stays where it is for a show or a hide of the same one', async () => {
     const { windows } = await mountWindow({ requestId: 1, target: '/settings?category=general', visible: true });
     expect(selectedPage()).toBe('General');
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Editor' }));
+    await userEvent.setup().click(screen.getByRole('treeitem', { name: 'Editor' }));
     expect(selectedPage()).toBe('Editor');
     await act(async () => {
       windows.emit({ requestId: 1, target: '/settings?category=general', visible: false });

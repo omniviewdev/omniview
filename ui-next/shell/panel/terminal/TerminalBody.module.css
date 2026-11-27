@@ -76,8 +76,8 @@
     background-color: transparent;
   }
 
-  /* The bell (BEL) is shown and never sounded: one 240 ms fade of the text colour over the plane, a change of brightness that moves nothing and flashes once (fewer than three flashes a second, WCAG 2.3.1; none while
-     `prefers-reduced-motion`, as the toasts' fade). The screen holds `data-bell` `a` or `b`, switched for each bell: two names for the same fade restart it without a timer or a reflow. */
+  /* The bell (BEL) is shown and never sounded: one 240 ms fade of the text colour over the plane, a change of brightness that moves nothing and flashes once (fewer than three flashes a second, WCAG 2.3.1).
+     Reduced motion disables the fade. The screen holds `data-bell` `a` or `b`, switched for each bell: two names for the same fade restart it without a timer or a reflow. */
   .screen[data-bell]::after {
     position: absolute;
     inset: 0;
@@ -87,11 +87,11 @@
     pointer-events: none;
   }
 
-  .screen[data-bell='a']::after {
+  :where(:root:not([data-ov-motion='reduced'])) .screen[data-bell='a']::after {
     animation: bell-a 240ms ease-out;
   }
 
-  .screen[data-bell='b']::after {
+  :where(:root:not([data-ov-motion='reduced'])) .screen[data-bell='b']::after {
     animation: bell-b 240ms ease-out;
   }
 
@@ -116,7 +116,7 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .screen[data-bell]::after {
+    :where(:root:not([data-ov-motion='normal'])) .screen[data-bell]::after {
       animation: none;
     }
   }

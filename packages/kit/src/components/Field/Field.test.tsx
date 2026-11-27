@@ -889,12 +889,10 @@ describe('the Field stylesheet', () => {
   });
 
   it('reveals the loader after a second by the stylesheet (nothing is added to the page then), turns it, and holds it still under reduced motion', () => {
-    const rules = cssRules(css);
-    const busy = rules.find((entry) => entry.selector.includes('[data-ov-busy') && !entry.context.some((context) => context.includes('prefers-reduced-motion')));
-    expect(busy?.declarations.opacity).toBe('0');
-    expect(busy?.declarations.animation).toBe('reveal 1ms linear 1s forwards, spin 1.2s linear 1s infinite');
-    const reduced = rules.filter((entry) => entry.context.some((context) => context.includes('prefers-reduced-motion')));
-    expect(reduced.some((entry) => entry.declarations.animation === 'reveal 1ms linear 1s forwards')).toBe(true);
+    const loader = '.lane > svg[data-ov-busy=\'true\']';
+    expect(rule(loader)).toMatchObject({ opacity: '0', animation: 'reveal 1ms linear 1s forwards, spin 1.2s linear 1s infinite' });
+    expect(rule(`:where(:root[data-ov-motion='reduced']) ${loader}`)['animation-name']).toBe('reveal');
+    expect(declarationsOf(css, `:where(:root:not([data-ov-motion='normal'])) ${loader}`, 'prefers-reduced-motion: reduce')['animation-name']).toBe('reveal');
   });
 
   it('makes Retry a link of the lane: a 24 px target in the link colour, underlined on hover, in the lane\'s own type', () => {

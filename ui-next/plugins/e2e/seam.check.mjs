@@ -212,7 +212,6 @@ import { AGAIN_LABEL, buildConnectionsProcess, buildPortsProcess, buildProcess, 
 import { ASKED, LAPSE_MS, LAPSE_WORDS, LAPSED_LABEL, LONG_ID_LABEL, MANY_LABEL, STOP_ALL_LABEL } from '../fixture/src/ports.ts';
 import { startWithPortRetry } from './hostStart.mjs';
 import { uninstallWords } from '../../shell/plugins-page/core/words.ts';
-import { appearanceOrder } from '../../shell/settings/model/material.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const server = path.join(root, 'bin/Omniview-server');
@@ -6381,10 +6380,11 @@ const SETTINGS_CALLS = {
   hide: methodId(WINDOW_SERVICE, 'HideSettings'),
 };
 
-/** The bound method a request of a page asks for, or `undefined` when it is not a call of the runtime. */
-function calledMethod(request) {
+/** The bound method a page asks for, optionally limited to settings calls whose first argument names the given scope. */
+function calledMethod(request, scope) {
   try {
-    return JSON.parse(request.postData() ?? '{}')?.args?.methodID;
+    const call = JSON.parse(request.postData() ?? '{}')?.args;
+    return scope === undefined || call?.args?.[0]?.kind === scope ? call?.methodID : undefined;
   } catch {
     return undefined;
   }
@@ -6397,29 +6397,28 @@ async function answerWith(route, body, status = 200) {
 }
 
 /**
- * Takes the host's place in one page for the calls `answer` wants: `answer(route, id)` takes the call (`answerWith`) and returns true, or returns false and the call goes on to the host. This is how a control changes what the host
- * answers a page: in a copy of the page's view of the host, never in the host. Returns what puts the page back.
+ * Takes the host's place in one page for the calls `answer` wants, optionally limited to a settings scope. `answer(route, id)` returns true if it answered the call; the rest go to the host. Returns what puts the page back.
  */
-async function standIn(page, answer) {
+async function standIn(page, answer, scope) {
   const handler = async (route) => {
-    if (!(await answer(route, calledMethod(route.request())))) await route.continue();
+    if (!(await answer(route, calledMethod(route.request(), scope)))) await route.continue();
   };
   await page.route('**/wails/runtime', handler);
   return async () => page.unroute('**/wails/runtime', handler);
 }
 
-/** The pages of Settings in the order the sheet lists them (the design's table), and what it leaves out of its first slice: two settings that are pickers in the old window, and whatever is for developers only. */
+/** The navigation and Appearance group order. Native terminal discovery remains outside this settings slice. */
 const SETTINGS_PAGE_ORDER = ['appearance', 'general', 'editor', 'terminal', 'notifications', 'telemetry', 'developer'];
-const SETTINGS_NOT_DRAWN = ['appearance.theme', 'terminal.nativeApplication'];
+const SETTINGS_NOT_DRAWN = ['terminal.nativeApplication'];
+const APPEARANCE_ORDER = ['theme', 'density', 'textSize', 'motion', 'windowMaterial', 'glassStyle', 'chromeOpacity', 'contentOpacity', 'menuOpacity', 'sheetOpacity'];
 const SETTINGS_DRAWN_TYPES = ['toggle', 'integer', 'float', 'password', 'text', 'select'];
 
-/** The rows a page of Settings draws for one category of the host's snapshot, in the order it draws them (by id) and with the host's own label: what the host declares, less what the first slice leaves out. */
+/** The host's drawable rows in their page order, with the host's labels. */
 function settingsRowsOf(snapshot, category) {
   const settings = snapshot.categories[category]?.settings ?? {};
-  // The rule of the page (shell/settings/model/adapter.ts): with the material settings declared, the rows are in material.ts's order, the unlisted last, ties by id.
-  const rank = (key) => (category === 'appearance' && settings.windowMaterial !== undefined ? appearanceOrder(`${category}.${key}`) : 0);
-  return Object.keys(settings)
-    .sort((a, b) => rank(a) - rank(b) || (a < b ? -1 : a > b ? 1 : 0))
+  const keys = Object.keys(settings).sort();
+  const ordered = category === 'appearance' ? [...APPEARANCE_ORDER.filter((key) => Object.hasOwn(settings, key)), ...keys.filter((key) => !APPEARANCE_ORDER.includes(key))] : keys;
+  return ordered
     .map((key) => ({ id: `${category}.${key}`, setting: settings[key] }))
     .filter(({ id, setting }) => {
       const secret = setting.sensitive === true || setting.type === 'password';
@@ -6442,6 +6441,11 @@ function settingsPagesOf(snapshot) {
 
 /** The rows a root has drawn, with the labels they carry. */
 const rowsDrawn = async (root) => root.locator('[data-settings-row]').evaluateAll((rows) => rows.map((row) => ({ id: row.getAttribute('data-settings-row'), label: row.querySelector('label')?.textContent ?? '' })));
+
+const settingsTreeItems = '[data-settings-part="tree"] [role="treeitem"]';
+const settingsPage = (root, id) => root.locator(`${settingsTreeItems}[data-settings-page="${id}"]`);
+
+const paneHeadingBox = (root) => root.locator('[data-settings-part="page"] > header').boundingBox();
 
 /** The part of a box that two boxes share, or `undefined` when they do not meet. */
 function overlap(a, b) {
@@ -6505,10 +6509,13 @@ async function settingsSheet(c) {
   const search = page.locator('[data-shell-part="search"]');
   const dialog = page.getByRole('dialog', { name: 'Settings' });
   const palette = page.getByRole('dialog', { name: 'Search' });
-  const nav = dialog.getByRole('navigation', { name: 'Settings pages' });
-  const toPage = async (title) => nav.getByRole('button', { name: title, exact: true }).click();
+  const nav = dialog.locator('[data-settings-part="nav"]');
+  const filter = nav.locator('input[data-settings-part="search"]');
+  const core = nav.locator(`${settingsTreeItems}[data-settings-branch="core"]`);
+  const plugins = nav.locator(`${settingsTreeItems}[data-settings-branch="plugins"]`);
+  const current = nav.locator(`${settingsTreeItems}[data-settings-page][aria-current="page"]`);
   const hasFocus = async (locator) => locator.evaluate((element) => element === document.activeElement);
-  const onPage = async () => nav.locator('[aria-current="page"]').getAttribute('data-settings-page');
+  const onPage = async () => current.getAttribute('data-settings-page');
   await gear.waitFor({ timeout: 30_000 });
   await afterFrames(page);
   const snapshot = await c.snapshot();
@@ -6552,14 +6559,22 @@ async function settingsSheet(c) {
     assert.equal(await page.locator('dialog[open]').count(), 1, `${engine}: ${how} opens one dialog`);
     assert.equal(await dialog.getAttribute('data-settings-part'), 'sheet', `${engine}: ${how} opens the Settings sheet`);
     const frame = await dialog.locator('[data-ov-part="frame"]').boundingBox();
-    assert.deepEqual([Math.round(frame.width), Math.round(frame.height)], [1060, 640], `${engine}: ${how}: the sheet is 1060 by 640 px`);
+    assert.deepEqual([Math.round(frame.width), Math.round(frame.height)], [1280, 800], `${engine}: ${how}: the sheet is 1280 by 800 px`);
+    const sidebar = await nav.boundingBox();
+    const pane = await dialog.locator('[data-settings-part="content"]').boundingBox();
+    const form = await paneHeadingBox(dialog);
+    assert.deepEqual([sidebar.width, pane.x - sidebar.x - sidebar.width, form.x - pane.x, pane.x + pane.width - form.x - form.width].map(Math.round), [244, 5, 12, 12], `${engine}: ${how}: sidebar and gutter leave equal page insets`);
     assert.ok(Math.abs(frame.x + frame.width / 2 - 720) <= 1 && Math.abs(frame.y + frame.height / 2 - 450) <= 1, `${engine}: ${how}: and is centred in the window`);
     assert.equal(Math.round((await dialog.locator('[data-ov-part="header"]').boundingBox()).height), 41, `${engine}: ${how}: its header is 41 px`);
     assert.equal(await dialog.locator('[data-ov-part="header"]').getByRole('button', { name: 'Close', exact: true }).count(), 1, `${engine}: ${how}: and holds its Close`);
-    assert.deepEqual(await nav.getByRole('button').allInnerTexts(), pages.map((entry) => entry.title), `${engine}: ${how}: the pages are the host's categories, in the design's order`);
+    assert.ok(await filter.isVisible(), `${engine}: ${how}: the tree has a search field`);
+    assert.equal(await core.getAttribute('aria-expanded'), 'true', `${engine}: ${how}: Core starts expanded`);
+    assert.equal(await plugins.getAttribute('aria-expanded'), 'true', `${engine}: ${how}: Plugins starts expanded`);
+    const leaves = nav.locator(`${settingsTreeItems}[data-settings-page]:visible`);
+    assert.deepEqual(await leaves.evaluateAll((items) => items.map((item) => ({ id: item.dataset.settingsPage, title: item.querySelector('[data-settings-part="tree-label"]').textContent }))), pages, `${engine}: ${how}: the pluginless host lists only its real categories, in the design's order`);
     assert.equal(await onPage(), pages[0].id, `${engine}: ${how}: the sheet opens on the first page`);
     assert.deepEqual(await rowsDrawn(dialog), settingsRowsOf(snapshot, pages[0].id), `${engine}: ${how}: the rows are the host's own, with the host's labels`);
-    assert.ok(await hasFocus(nav.locator('[aria-current="page"]')), `${engine}: ${how}: the focus is on the page that is on screen`);
+    assert.ok(await hasFocus(current), `${engine}: ${how}: the focus is on the page that is on screen`);
     await page.keyboard.press('Escape');
     await dialog.waitFor({ state: 'detached' });
     assert.ok(await c.until(5000, async () => hasFocus(origin)), `${engine}: Escape closes the sheet that ${how} opened and gives the focus back to the control that had it`);
@@ -6568,7 +6583,12 @@ async function settingsSheet(c) {
   // A toggle: pressed, applied on the host at once, and still applied after the page is reloaded (the reload is the sheet's own: a copy of the host's answer that forgets it makes the assertion fail).
   await chord();
   await dialog.waitFor();
-  await toPage('Terminal');
+  await core.press('ArrowLeft');
+  assert.equal(await core.getAttribute('aria-expanded'), 'false', `${engine}: Left collapses Core`);
+  assert.equal(await settingsPage(dialog, 'terminal').isVisible(), false, `${engine}: a collapsed Core hides its pages`);
+  await core.press('ArrowRight');
+  assert.equal(await core.getAttribute('aria-expanded'), 'true', `${engine}: Right expands Core`);
+  await settingsPage(dialog, 'terminal').click();
   const blink = dialog.getByRole('switch', { name: 'Cursor Blink' });
   const reset = dialog.getByRole('button', { name: 'Reset Cursor Blink to default' });
   assert.equal(await blink.getAttribute('aria-checked'), 'true', `${engine}: the cursor blinks, which is the host's default`);
@@ -6579,7 +6599,7 @@ async function settingsSheet(c) {
   const reopen = async () => {
     await page.reload({ waitUntil: 'load' });
     await sheetByChord(page);
-    await toPage('Terminal');
+    await settingsPage(dialog, 'terminal').click();
     await blink.waitFor();
   };
   const forgetsBlink = async (route, id) => {
@@ -6594,7 +6614,7 @@ async function settingsSheet(c) {
   await asserting(
     'settings-persist',
     async () => {
-      putBack = await standIn(page, forgetsBlink);
+      putBack = await standIn(page, forgetsBlink, 'host');
       await reopen();
     },
     async () => {
@@ -6616,8 +6636,13 @@ async function settingsSheet(c) {
   await reset.waitFor({ state: 'detached' });
 
   // A value the host refuses: its words in the lane, the typed text kept, the host's value untouched. Escape takes the draft first and closes the sheet second.
-  await toPage('Developer Settings');
+  await filter.fill('Host profiling port');
+  await nav.getByRole('button', { name: /Host profiling port/i }).waitFor();
+  await filter.press('Enter');
   const port = dialog.getByRole('spinbutton', { name: 'Host profiling port' });
+  assert.ok(await c.until(5000, async () => hasFocus(port)), `${engine}: Enter on a setting search opens its page and focuses its field`);
+  assert.equal(await onPage(), 'developer', `${engine}: the tree marks the page containing the search hit`);
+  assert.equal(await filter.inputValue(), '', `${engine}: choosing a search hit restores the unfiltered tree`);
   const lane = dialog.locator('[data-settings-row="developer.pprof_port"] [data-ov-part="lane"]');
   const kept = await c.held('developer.pprof_port');
   const refusal = await c.call(SETTINGS_SERVICE, 'Validate', { kind: 'host' }, 'developer.pprof_port', 70000);
@@ -6633,7 +6658,7 @@ async function settingsSheet(c) {
   await asserting(
     'settings-words',
     async () => {
-      putBack = await standIn(page, plantsWords);
+      putBack = await standIn(page, plantsWords, 'host');
       await refuse();
     },
     async () => {
@@ -6662,12 +6687,12 @@ async function settingsWindow(c) {
   const { engine, base, asserting } = c;
   const snapshot = await c.snapshot();
   await c.call(WINDOW_SERVICE, 'HideSettings');
-  const page = await c.page(1060, 640);
+  const page = await c.page(1280, 800);
   const mac = await page.evaluate(() => navigator.platform.includes('Mac'));
   const mod = mac ? 'Meta' : 'Control';
   let asked = 0;
   page.on('request', (request) => {
-    if (calledMethod(request) === SETTINGS_CALLS.snapshot) asked += 1;
+    if (calledMethod(request, 'host') === SETTINGS_CALLS.snapshot) asked += 1;
   });
   await page.goto(`${base}/?screen=settings-window`, { waitUntil: 'load' });
   const frame = page.locator('[data-settings-part="window"]');
@@ -6682,13 +6707,13 @@ async function settingsWindow(c) {
         shell: document.querySelectorAll('[data-shell-part="window"]').length,
         dialogs: document.querySelectorAll('dialog').length,
         caption: caption === null ? null : { height: Math.round(caption.getBoundingClientRect().height), title: caption.querySelector('h1')?.textContent, close: close?.getAttribute('aria-label'), drag: getComputedStyle(caption).getPropertyValue('--wails-draggable').trim(), closeDrag: close === null || close === undefined ? '' : getComputedStyle(close).getPropertyValue('--wails-draggable').trim() },
-        current: document.querySelector('[aria-current="page"]')?.getAttribute('data-settings-page'),
+        current: document.querySelector('[data-settings-part="tree"] [data-settings-page][aria-current="page"]')?.getAttribute('data-settings-page'),
         rows: [...document.querySelectorAll('[data-settings-row]')].map((row) => ({ id: row.getAttribute('data-settings-row'), label: row.querySelector('label')?.textContent ?? '' })),
       };
     });
   const onPage = async (id) =>
     page.waitForFunction(
-      (wanted) => document.querySelector('[data-settings-part="window"]')?.getAttribute('data-visible') === 'true' && document.querySelector('[aria-current="page"]')?.getAttribute('data-settings-page') === wanted && document.querySelectorAll('[data-settings-row]').length > 0,
+      (wanted) => document.querySelector('[data-settings-part="window"]')?.getAttribute('data-visible') === 'true' && document.querySelector('[data-settings-part="tree"] [data-settings-page][aria-current="page"]')?.getAttribute('data-settings-page') === wanted && document.querySelectorAll('[data-settings-row]').length > 0,
       id,
       { timeout: 15_000 },
     );
@@ -6697,6 +6722,9 @@ async function settingsWindow(c) {
   assert.equal(await skipped(), 'hidden', `${engine}: its content is skipped, not laid out`);
   assert.equal(await c.show('/settings?category=terminal'), 'settings', `${engine}: the host answers OpenSettings with the window it shows`);
   await onPage('terminal');
+  const form = await paneHeadingBox(frame);
+  const pane = await frame.locator('[data-settings-part="content"]').boundingBox();
+  assert.deepEqual([Math.round(form.x), Math.round(pane.x + pane.width - form.x - form.width)], [266, 12], `${engine}: the native form fills its pane with equal insets`);
   assert.deepEqual(
     await read(),
     { shell: 0, dialogs: 0, caption: { height: 41, title: 'Settings', close: 'Close', drag: 'drag', closeDrag: 'no-drag' }, current: 'terminal', rows: settingsRowsOf(snapshot, 'terminal') },
@@ -6770,7 +6798,7 @@ async function settingsWindow(c) {
 async function settingsReconnect(c) {
   const { engine, base, asserting } = c;
   await c.commit({ 'terminal.cursorBlink': true });
-  const windowPage = await c.page(1060, 640);
+  const windowPage = await c.page(1280, 800);
   const sockets = [];
   await windowPage.routeWebSocket(/\/wails\/events/, (ws) => {
     const server = ws.connectToServer();
@@ -6807,7 +6835,7 @@ async function settingsReconnect(c) {
     'settings-reconnect',
     async () => {
       // The page asks the host again when its socket is back, and is answered with what the host held before this outage.
-      putBack = await standIn(windowPage, staleSnapshot(JSON.stringify(await c.snapshot())));
+      putBack = await standIn(windowPage, staleSnapshot(JSON.stringify(await c.snapshot())), 'host');
       await outage();
     },
     async () => {
@@ -6834,12 +6862,12 @@ async function settingsTruth(c) {
   const sheet = await c.page(1440, 900);
   await open(sheet, base);
   const dialog = await sheetByChord(sheet);
-  await dialog.getByRole('navigation', { name: 'Settings pages' }).getByRole('button', { name: 'Terminal', exact: true }).click();
-  const windowPage = await c.page(1060, 640);
+  await settingsPage(dialog, 'terminal').click();
+  const windowPage = await c.page(1280, 800);
   await windowPage.goto(`${base}/?screen=settings-window`, { waitUntil: 'load' });
   await c.show('/settings?category=terminal');
   await windowPage.waitForFunction(
-    () => document.querySelector('[data-settings-part="window"]')?.getAttribute('data-visible') === 'true' && document.querySelector('[aria-current="page"]')?.getAttribute('data-settings-page') === 'terminal' && document.querySelectorAll('[data-settings-row]').length > 0,
+    () => document.querySelector('[data-settings-part="window"]')?.getAttribute('data-visible') === 'true' && document.querySelector('[data-settings-part="tree"] [data-settings-page][aria-current="page"]')?.getAttribute('data-settings-page') === 'terminal' && document.querySelectorAll('[data-settings-row]').length > 0,
     null,
     { timeout: 15_000 },
   );
@@ -6887,7 +6915,9 @@ async function settingsTruth(c) {
   await asserting(
     'settings-reach',
     async () => {
-      putBack = await standIn(sheet, staleSnapshot(JSON.stringify(await c.snapshot())));
+      // The first press returns before its host commit and the other window's refresh. Freeze the sheet only after that change arrived, or the stale snapshot can already contain the next press's value.
+      assert.ok(await reaches(sheet, 2000), `${engine}: before the fault, the sheet received the first change from the Settings window`);
+      putBack = await standIn(sheet, staleSnapshot(JSON.stringify(await c.snapshot())), 'host');
       await change();
     },
     async () => {
@@ -6928,6 +6958,15 @@ async function settingsTruth(c) {
   assert.equal(await shell.inputValue(), had, `${engine}: Escape takes the draft`);
   assert.equal(await dialog.count(), 1, `${engine}: and the sheet stays`);
   await c.commit({ 'terminal.cursorBlink': true });
+
+  // One committed motion preference controls both documents, not just the selected radio in the open sheet.
+  await settingsPage(dialog, 'appearance').click();
+  const motion = dialog.locator('[data-settings-row="appearance.motion"]');
+  for (const [label, preference] of [['Reduced', 'reduced'], ['Normal', 'normal'], ['Follow System', 'system']]) {
+    await motion.getByRole('radio', { name: label, exact: true }).click();
+    await Promise.all([sheet, windowPage].map((page) => page.waitForFunction((value) => document.documentElement.dataset.ovMotion === value, preference, { timeout: 5000 })));
+    assert.equal(await c.held('appearance.motion'), preference, `${engine}: ${label} is committed and painted in both windows`);
+  }
 }
 
 /**
@@ -6944,14 +6983,14 @@ async function settingsSlots(c) {
   let refused = false;
   const refusal = async (route, id) => (id === SETTINGS_CALLS.snapshot ? answerWith(route, { message: 'The operation exceeds a host resource limit.', code: 'RESOURCE_LIMIT' }, 429) : false);
   const read = async (number) => {
-    const page = await c.page(1060, 640);
+    const page = await c.page(1280, 800);
     try {
-      if (refused) await standIn(page, refusal);
+      if (refused) await standIn(page, refusal, 'host');
       await page.goto(`${base}/?screen=settings-window`, { waitUntil: 'load' });
       // The wait ends on the page's own state (its rows, or the failed notice) and is bounded. When it is lost, the failure says what the page was doing and what the host held at that moment, so a slow runner's
       // lost page is told from a host that refused it: no CI run has shown the cause of the one 30 s wait of 2026-11-24 (WebKit, PR #705), and 3 runs in a 2-CPU arm64 container and 1 in the CI image under emulation had none.
       try {
-        await page.waitForFunction(() => (document.querySelector('[aria-current="page"]')?.getAttribute('data-settings-page') === 'terminal' && document.querySelectorAll('[data-settings-row]').length > 0) || document.querySelector('[data-settings-state="failed"]') !== null, null, { timeout: 30_000 });
+        await page.waitForFunction(() => (document.querySelector('[data-settings-part="tree"] [data-settings-page][aria-current="page"]')?.getAttribute('data-settings-page') === 'terminal' && document.querySelectorAll('[data-settings-row]').length > 0) || document.querySelector('[data-settings-state="failed"]') !== null, null, { timeout: 30_000 });
       } catch (error) {
         const seen = await page
           .evaluate(() => ({ text: document.body.innerText.slice(0, 200), state: document.querySelector('[data-settings-state]')?.getAttribute('data-settings-state') ?? null, rows: document.querySelectorAll('[data-settings-row]').length }))
@@ -7020,7 +7059,7 @@ async function settingsSecrets(c) {
   const row = dialog.locator(`[data-settings-row="${ID}"]`);
   const reopen = async () => {
     await sheetByChord(page);
-    await dialog.getByRole('navigation', { name: 'Settings pages' }).getByRole('button', { name: 'Telemetry', exact: true }).click();
+    await settingsPage(dialog, 'telemetry').click();
     await row.waitFor();
   };
   const field = row.locator('[data-ov-part="secret"]');
@@ -7096,7 +7135,7 @@ async function settingsSecrets(c) {
   await asserting(
     'settings-secret-saved',
     async () => {
-      putBack = await standIn(page, forgetsStored);
+      putBack = await standIn(page, forgetsStored, 'host');
       await page.reload({ waitUntil: 'load' });
       await reopen();
     },
@@ -7126,12 +7165,11 @@ async function settingsSecrets(c) {
  */
 async function settingsPopups(c) {
   const { engine, base, asserting } = c;
-  await c.commit({ 'terminal.cursorBlink': false, 'appearance.density': 'comfortable' });
+  await c.commit({ 'terminal.cursorBlink': false, 'terminal.cursorStyle': 'block' });
   const page = await c.page(1440, 900);
   await open(page, base);
   const dialog = await sheetByChord(page);
-  const toPage = async (title) => dialog.getByRole('navigation', { name: 'Settings pages' }).getByRole('button', { name: title, exact: true }).click();
-  await toPage('Terminal');
+  await settingsPage(dialog, 'terminal').click();
   const reset = dialog.getByRole('button', { name: 'Reset Cursor Blink to default' });
   await reset.waitFor();
   const tipSelector = '[role="tooltip"][popover]';
@@ -7189,35 +7227,31 @@ async function settingsPopups(c) {
   );
 
   // Type-ahead in a native select inside the sheet: the first letters of an option choose it, and the host takes the choice.
-  await toPage('Appearance');
-  const density = dialog.locator('[data-settings-row="appearance.density"] select');
-  const typeAhead = async () => {
-    await c.commit({ 'appearance.density': 'comfortable' });
-    assert.ok(await c.until(5000, async () => (await density.inputValue()) === 'comfortable'), `${engine}: the sheet follows the host to the first option of the select`);
-    await density.focus();
-    await page.keyboard.type('Compa', { delay: 30 });
+  const cursorStyle = dialog.getByRole('combobox', { name: 'Cursor Style' });
+  const typeAhead = async (disable = false) => {
+    // A native select keeps a type-ahead prefix between key presses. Give each attempt a fresh field, not the prefix left by the previous attempt.
+    await settingsPage(dialog, 'general').click();
+    await c.commit({ 'terminal.cursorStyle': 'block' });
+    await settingsPage(dialog, 'terminal').click();
+    assert.ok(await c.until(5000, async () => (await cursorStyle.inputValue()) === 'block'), `${engine}: the sheet follows the host to the first option of the select`);
+    if (disable) await cursorStyle.evaluate((element) => { element.disabled = true; });
+    await cursorStyle.focus();
+    await page.keyboard.type('Under', { delay: 30 });
   };
   await typeAhead();
   await asserting(
     'settings-typeahead',
     async () => {
-      await density.evaluate((element) => {
-        element.disabled = true;
-      });
-      await typeAhead();
+      assert.ok(await c.until(5000, async () => (await c.held('terminal.cursorStyle')) === 'underline'), `${engine}: before the fault, the host received the first type-ahead choice`);
+      await typeAhead(true);
     },
+    () => typeAhead(),
     async () => {
-      await density.evaluate((element) => {
-        element.disabled = false;
-      });
-      await typeAhead();
-    },
-    async () => {
-      assert.equal(await density.inputValue(), 'compact', `${engine}: typing the first letters of an option in the sheet's select chooses it`);
+      assert.equal(await cursorStyle.inputValue(), 'underline', `${engine}: typing the first letters of an option in the sheet's select chooses it`);
     },
   );
-  assert.ok(await c.until(5000, async () => (await c.held('appearance.density')) === 'compact'), `${engine}: and the host holds the choice`);
-  await c.commit({ 'terminal.cursorBlink': true, 'appearance.density': 'comfortable' });
+  assert.ok(await c.until(5000, async () => (await c.held('terminal.cursorStyle')) === 'underline'), `${engine}: and the host holds the choice`);
+  await c.commit({ 'terminal.cursorBlink': true, 'terminal.cursorStyle': 'block' });
 }
 
 /** Part of s, the watch over errors, after the others: no page of the scenario wrote an error, the host's log holds no settings error, and none of the secrets that were typed is in it. */

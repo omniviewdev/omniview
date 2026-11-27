@@ -12,7 +12,7 @@ export type SheetProps = {
   readonly onClose: () => void;
   /** The body, under the header. In a dialog size it is padded 12 px, takes the caller's content as it flows and is the one thing that scrolls; in `settings` it fills the frame and clips, and whatever scrolls inside it scrolls itself. */
   readonly children: ReactNode;
-  /** The frame: `narrow` (440 px), `standard` (640 px, the default) or `wide` (900 px), each as high as its content up to the window; or `settings`, the fixed 1060 x 640 px of the Settings window. */
+  /** The frame: `narrow` (440 px), `standard` (640 px, the default) or `wide` (900 px), each as high as its content up to the window; or `settings`, up to 1280 x 800 px with space around it. */
   readonly size?: SheetSize | undefined;
   /** A glyph in a 20 px tile before the title. Decoration: the title names the dialog. */
   readonly icon?: IconName | undefined;
@@ -28,7 +28,7 @@ export type SheetProps = {
  * A modal dialog in the window, over the page: a header (an icon when there is one, the title, a meta line when there is one, and Close at its end), a body the caller lays out, and a footer for the actions when there
  * is one. It is the browser's own modal, a native `dialog` opened with `showModal()`: in the top layer, so nothing needs a z-index, and the rest of the window inert. The dialog is itself the scrim and covers the whole
  * window, drawing nothing of its own; the frame inside it has a `size`: a `narrow`, `standard` (the default) or `wide` dialog as high as its content up to the window, whose body is the one scroller, or `settings`, the
- * fixed 1060 x 640 px of the old Settings window, whose caller lays out its own scrollers.
+ * preferred size of the Settings window, whose caller lays out its own scrollers.
  *
  * Naming: a `Sheet` is the modal dialog, and it keeps the name. The mock's `.sheet` is something else, the drawer at the right-hand side of the window; that will be a separate inspector part, never a variant of this one.
  *

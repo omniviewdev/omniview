@@ -1,9 +1,7 @@
 // Section `keys` of the Settings probe: the keyboard, with real key presses, in both containers (the sheet, and the Settings window's content, which is the same body under another frame), on the real Settings over a host in memory.
 //
-//   nav       the pages are a list of buttons that is ONE Tab stop (the page on screen); the arrows, Home and End move the focus between them and stop at the ends (the kit's roving group: `Nav.tsx`); the page follows the focus (the editors this is
-//             modelled on do the same), and Enter and Space on it keep it chosen with the focus on it                                                                                           keys.nav
-//   reach     on every page, Tab goes from Close to the page on screen and then through the controls of every row in the order of the page, and every control a row has is a Tab stop and none else is: no control that cannot be
-//             reached, no stop that belongs to no row                                                                                                                                 keys.reach
+//   nav       the expanded tree has one Tab stop. Up/Down, Home and End traverse visible rows without wrapping; Left/Right collapse, expand and move between parent and child. Pages follow focus, branches do not.    keys.nav
+//   reach     Tab goes from Close to search to the current tree item and through every control of the page in row order, with no orphan stops.                                                         keys.reach
 //   operate   each kind of row works from the keyboard alone: a switch (Space), a whole number (typed, Enter; the arrow steps), a text (typed, Enter, asked of the host first), a secret (typed, Enter, said Saved and shown
 //             nowhere), Reset (Enter, and the focus goes to the row's control), Retry (Enter, after a refused save)                                                                    keys.operate
 //   select    the kit's Select is the engine's own: type-ahead picks a value inside the dialog and applies it                                                                           keys.select
@@ -14,38 +12,22 @@ import {
   fail,
   goToPage,
   note,
-  openFixture,
-  openSheet,
+  openSettings,
   round,
   sleep,
   WHO,
-  WINDOW_SIZES,
   wants,
   PAGES,
   plant,
 } from './settings-lib.mjs';
 
-const enc = (value) => encodeURIComponent(JSON.stringify(value));
-const NAV = '[data-settings-part="nav"] button';
+const NAV = '[data-settings-part="tree"] [role="treeitem"]';
+const SEARCH = 'input[data-settings-part="search"]';
+const PLUGIN = { id: 'plugin/acme', title: 'Acme Resources' };
 const SENTINEL = 'sk-probe-7f3a9c1e5b2d4086';
 const CONTAINERS = ['sheet', 'window'];
 
-/** The Settings of a container, open on its first page: the sheet over the shell, or the window's own content. */
-async function open(env, container, query = 'case=sheet') {
-  if (container === 'sheet') {
-    const opened = await openFixture(env, query);
-    await openSheet(opened.page);
-    return opened;
-  }
-
-  const opened = await openFixture(env, `case=window&request=${enc({ requestId: 1, target: '/settings?category=appearance', visible: true })}`, { viewport: WINDOW_SIZES['1060x640'] });
-  await opened.page.waitForSelector('[data-settings-part="window"][data-visible="true"] [data-settings-row]', { timeout: 10_000 });
-  return opened;
-}
-
-const whereOf = (env, container) => `${env.engine}@${container === 'window' ? '1060x640' : env.viewportName} ${container}`;
-const current = (page) => page.evaluate(() => document.querySelector('[data-settings-part="nav"] [aria-current="page"]')?.textContent ?? null);
-const region = (page) => page.evaluate(() => document.querySelector('[data-settings-part="page"]')?.getAttribute('aria-label') ?? null);
+const whereOf = (env, container) => `${env.engine}@${container === 'window' ? 'preferred' : env.viewportName} ${container}`;
 const selectAll = async (page) => page.keyboard.press((await page.evaluate(() => /mac/i.test(navigator.platform))) ? 'Meta+a' : 'Control+a');
 const commits = (page) => page.evaluate(() => window.__host.calls.commit);
 const waitCommits = (page, count) => page.waitForFunction((n) => window.__host.calls.commit.length >= n, count, { timeout: 4000 }).catch(() => undefined);
@@ -53,38 +35,67 @@ const waitCommits = (page, count) => page.waitForFunction((n) => window.__host.c
 // ---------------------------------------------------------------------------------------------------------------------------
 async function navPart(env, container) {
   const where = whereOf(env, container);
-  const { page, context } = await open(env, container);
+  const { page, context } = await openSettings(env, container, { plugins: 'installed' });
   try {
+    await page.locator(`${NAV}[data-settings-page="${PLUGIN.id}"]`).waitFor();
     await plant(env, page);
-    const stops = await page.$$eval(NAV, (buttons) => buttons.map((button) => [button.textContent, button.tabIndex]));
-    check(stops.length === 6 && stops[0][1] === 0 && stops.slice(1).every(([, tabIndex]) => tabIndex === -1), where, 'keys.nav', `the pages' tab indexes are ${JSON.stringify(stops.map(([, index]) => index))}, wanted the page on screen alone in the Tab order`);
-    check((await page.evaluate(WHO)) === 'Appearance', where, 'keys.nav', `the keyboard starts on ${await page.evaluate(WHO)}, wanted the page on screen`);
-    const press = async (key, expectedFocus, why) => {
-      await page.keyboard.press(key);
-      check((await page.evaluate(WHO)) === expectedFocus, where, 'keys.nav', `${why}: the focus is on ${await page.evaluate(WHO)}, wanted ${expectedFocus}`);
+    const readTree = () => page.$$eval(NAV, (items) => {
+      const visible = items.filter((item) => item.getClientRects().length > 0);
+      const id = (item) => item?.dataset.settingsPage ?? item?.dataset.settingsBranch;
+      return {
+        ids: visible.map(id), stops: visible.filter((item) => item.tabIndex === 0).map(id),
+        focus: id(document.activeElement) ?? document.activeElement?.getAttribute('aria-label') ?? document.activeElement?.tagName,
+        current: visible.filter((item) => item.matches('[aria-current="page"]')).map(id),
+        expanded: Object.fromEntries(visible.filter((item) => item.hasAttribute('data-settings-branch')).map((item) => [id(item), item.getAttribute('aria-expanded')])),
+        page: document.querySelector('[data-settings-part="page"]')?.dataset.settingsPageId,
+      };
+    });
+    const all = ['core', ...PAGES.map(({ id }) => id), 'plugins', PLUGIN.id];
+    const initial = await readTree();
+    check(initial.ids.join() === all.join(), where, 'keys.nav', `the expanded tree contains ${initial.ids.join(', ')}, wanted ${all.join(', ')}`);
+    const position = (tree, key, focus, content) => {
+      check(tree.focus === focus && tree.stops.length === 1 && tree.stops[0] === focus, where, 'keys.nav', `${key}: focus ${tree.focus}, tree Tab stops ${tree.stops.join(', ')}, wanted ${focus} alone`);
+      check(tree.page === content, where, 'keys.nav', `${key}: the page is ${tree.page}, wanted ${content}`);
+      const current = tree.ids.includes(content) ? [content] : [];
+      check(tree.current.join() === current.join(), where, 'keys.nav', `${key}: current visible page ${tree.current.join(', ') || 'none'}, wanted ${current.join(', ') || 'none'}`);
     };
-    await press('ArrowDown', 'General', 'ArrowDown from the first page');
-    check((await current(page)) === 'General' && (await region(page)) === 'General', where, 'keys.nav', `an arrow moved the focus to General and ${await current(page)} is on screen (region ${await region(page)}): the page follows the focus, as in VS Code's settings contents and JetBrains' settings tree`);
-    for (let index = 0; index < 4; index += 1) await page.keyboard.press('ArrowDown');
-    await press('ArrowDown', 'Developer Settings', 'ArrowDown to the last page');
-    await press('ArrowDown', 'Developer Settings', 'ArrowDown past the last page (it does not wrap)');
-    await press('Home', 'Appearance', 'Home');
-    await press('ArrowUp', 'Appearance', 'ArrowUp past the first page (it does not wrap)');
-    await press('End', 'Developer Settings', 'End');
-    // Enter and Space on the page that has the focus keep it chosen, and the focus stays on its button, which is the Tab stop.
-    await press('Home', 'Appearance', 'Home');
-    for (let index = 0; index < 3; index += 1) await page.keyboard.press('ArrowDown');
-    await press('Enter', 'Terminal', 'Enter on Terminal');
-    check((await current(page)) === 'Terminal' && (await region(page)) === 'Terminal', where, 'keys.nav', `Enter on Terminal shows ${await current(page)} (region ${await region(page)})`);
-    const after = await page.$$eval(NAV, (buttons) => buttons.map((button) => button.tabIndex));
-    check(after.filter((index) => index === 0).length === 1 && after[3] === 0, where, 'keys.nav', `after Enter the Tab stop is ${JSON.stringify(after)}, wanted the chosen page alone`);
-    await press('ArrowUp', 'Editor', 'ArrowUp from Terminal');
-    await press('Space', 'Editor', 'Space on Editor');
-    check((await current(page)) === 'Editor' && (await region(page)) === 'Editor', where, 'keys.nav', `Space on Editor shows ${await current(page)}`);
-    // Tab leaves the list for the first control of the page.
+    position(initial, 'on open', 'appearance', 'appearance');
+    // Report opening focus independently from the keyboard walk: Enter on Close would discard the entire sheet.
+    if (initial.focus !== 'appearance') await page.locator(`${NAV}[data-settings-page="appearance"]`).focus();
+    const press = async (key, focus, content = focus) => {
+      await page.keyboard.press(key);
+      const tree = await readTree();
+      position(tree, key, focus, content);
+      return tree;
+    };
+    await press('ArrowDown', 'general');
+    await press('Home', 'core', 'general');
+    await press('ArrowUp', 'core', 'general');
+    const closedCore = await press('ArrowLeft', 'core', 'general');
+    check(closedCore.expanded.core === 'false' && closedCore.ids.join() === ['core', 'plugins', PLUGIN.id].join(), where, 'keys.nav', 'collapsing Core did not hide just its pages');
+    const openCore = await press('ArrowRight', 'core', 'general');
+    check(openCore.expanded.core === 'true' && openCore.ids.join() === all.join(), where, 'keys.nav', 'expanding Core did not restore its pages');
+    await press('ArrowRight', 'appearance');
+    await press('End', PLUGIN.id);
+    await press('ArrowDown', PLUGIN.id);
+    await press('ArrowLeft', 'plugins', PLUGIN.id);
+    const closedPlugins = await press('ArrowLeft', 'plugins', PLUGIN.id);
+    check(closedPlugins.expanded.plugins === 'false' && closedPlugins.ids.join() === all.slice(0, -1).join(), where, 'keys.nav', 'collapsing Plugins did not hide just its installed page');
+    const openPlugins = await press('Space', 'plugins', PLUGIN.id);
+    check(openPlugins.expanded.plugins === 'true' && openPlugins.ids.join() === all.join(), where, 'keys.nav', 'Space did not reopen Plugins');
+    await press('Home', 'core', PLUGIN.id);
+    for (const id of ['appearance', 'general', 'editor', 'terminal']) await press('ArrowDown', id);
+    await press('Enter', 'terminal');
+    await press('ArrowUp', 'editor');
+    await press('Space', 'editor');
     await page.keyboard.press(env.keys.forward);
-    const inRow = await page.evaluate(() => document.activeElement?.closest('[data-settings-row]')?.getAttribute('data-settings-row') ?? null);
-    check(inRow === 'editor.folding', where, 'keys.nav', `Tab from the list went to ${inRow ?? await page.evaluate(WHO)}, wanted the first row's control (editor.folding)`);
+    const inRow = await page.evaluate(() => document.activeElement?.closest('[data-settings-row]')?.dataset.settingsRow);
+    check(inRow === 'editor.folding', where, 'keys.nav', `Tab from the tree went to ${inRow ?? await page.evaluate(WHO)}, wanted the first row's control (editor.folding)`);
+    const search = page.locator(SEARCH);
+    if (!await search.isVisible()) return fail(where, 'keys.nav', 'Settings search is not visible after the tree keyboard walk');
+    await search.fill('Refresh resource watches');
+    const hit = page.locator(`[data-settings-result-page="${PLUGIN.id}"][data-settings-result-field="watch.autoRefresh"]`);
+    check(await hit.isVisible() && (await readTree()).page === 'editor', where, 'keys.nav', 'search must offer the installed plugin setting without navigating away while typing');
   } finally {
     await context.close();
   }
@@ -94,16 +105,20 @@ async function navPart(env, container) {
 /** The Tab stops of the container, in document order, kept on the window; and which row each belongs to. Runs in the page. */
 const MARK = (rootSelector) => {
   const root = document.querySelector(rootSelector);
-  const stops = [...root.querySelectorAll('a[href], button, input:not([type="hidden"]), select, textarea, [tabindex]')].filter((element) => element.getAttribute('tabindex') !== '-1' && !element.matches(':disabled') && element.getClientRects().length > 0);
+  // A radio group contributes its chosen radio, not every radio, to the tab sequence.
+  const chosenRadio = (element) => !element.matches('input[type="radio"], [role="radio"]') || element.matches(':checked, [aria-checked="true"]');
+  const stops = [...root.querySelectorAll('a[href], button, input:not([type="hidden"]), select, textarea, [tabindex]')].filter((element) => element.getAttribute('tabindex') !== '-1' && !element.matches(':disabled') && (!element.matches('input[type="radio"]') || chosenRadio(element)) && element.getClientRects().length > 0);
   window.__tabStops = stops;
   return {
     names: stops.map((element) => (element.getAttribute('aria-label') ?? element.labels?.[0]?.textContent ?? element.textContent ?? element.tagName).replace(/\s+/g, ' ').trim().slice(0, 40)),
     rows: stops.map((element) => element.closest('[data-settings-row]')?.getAttribute('data-settings-row') ?? null),
+    search: stops.findIndex((element) => element.matches('input[data-settings-part="search"]')),
+    tree: stops.flatMap((element, index) => element.matches('[role="treeitem"]') ? [[index, element.getAttribute('data-settings-page')]] : []),
     reset: stops.findIndex((element) => element.matches('[data-settings-part="reset-material"]')),
     // The controls each row has, which must all be among the stops: the steppers of a number field are not, by design (the field is one stop and the arrows step it, as the mock's `oneStop`); they are read apart and must stay out.
     rowControls: [...root.querySelectorAll('[data-settings-row]')].map((row) => ({
       id: row.getAttribute('data-settings-row'),
-      controls: [...row.querySelectorAll('input:not([type="hidden"]), select, button:not([data-ov-slot="decrease"]):not([data-ov-slot="increase"]), textarea, [role="switch"]')].filter((element) => element.getClientRects().length > 0).map((element) => stops.indexOf(element)),
+      controls: [...row.querySelectorAll('input:not([type="hidden"]), select, button:not([data-ov-slot="decrease"]):not([data-ov-slot="increase"]), textarea, [role="switch"]')].filter((element) => chosenRadio(element) && element.getClientRects().length > 0).map((element) => stops.indexOf(element)),
     })),
     steppers: [...root.querySelectorAll('[data-ov-slot="decrease"], [data-ov-slot="increase"]')].map((element) => stops.includes(element)),
   };
@@ -112,23 +127,23 @@ const MARK = (rootSelector) => {
 async function reachPart(env, container) {
   const where = whereOf(env, container);
   const root = container === 'sheet' ? 'dialog[open]' : '[data-settings-part="window"]';
-  const { page, context } = await open(env, container, `case=sheet&values=${enc({ 'terminal.cursorBlink': false })}`);
+  const { page, context } = await openSettings(env, container, { plugins: 'installed', values: JSON.stringify({ 'terminal.cursorBlink': false }) });
   try {
     await plant(env, page);
     let controls = 0;
-    for (const entry of PAGES) {
+    for (const entry of [...PAGES, PLUGIN]) {
       await goToPage(page, entry.id);
       await sleep(60);
       const here_ = `${where} ${entry.id}`;
       const mark = await page.evaluate(MARK, root);
-      check(mark.names[0] === 'Close' && mark.names[1] === entry.title, here_, 'keys.reach', `the first Tab stops are ${JSON.stringify(mark.names.slice(0, 2))}, wanted Close and ${entry.title}`);
-      // The only page action outside a setting row is the material group's reset, between its sliders and Interface.
+      check(mark.names[0] === 'Close' && mark.search === 1 && JSON.stringify(mark.tree) === JSON.stringify([[2, entry.id]]), here_, 'keys.reach', `the first Tab stops are ${JSON.stringify(mark.names.slice(0, 3))}, wanted Close, search and the current ${entry.title} tree item`);
+      // Each field has a tab stop. The material reset is the sole page action outside a setting row.
       const missing = mark.rowControls.filter((row) => row.controls.length === 0 || row.controls.includes(-1));
       check(missing.length === 0, here_, 'keys.reach', `the rows ${missing.map((row) => row.id).join(', ')} have a control that is not a Tab stop`);
       if (entry.id === 'appearance') {
-        check(mark.reset > 1 && mark.rows[mark.reset - 1] === 'appearance.sheetOpacity' && mark.rows[mark.reset + 1] === 'appearance.density', here_, 'keys.reach', 'Reset material settings is not a Tab stop between Surface opacity and Interface');
+        check(mark.reset === mark.names.length - 1 && mark.rows[mark.reset - 1] === 'appearance.sheetOpacity', here_, 'keys.reach', 'Reset material settings is not the final Tab stop after Surface opacity');
       }
-      const orphans = mark.rows.slice(2).filter((id, index) => id === null && (entry.id !== 'appearance' || mark.reset !== index + 2));
+      const orphans = mark.rows.slice(3).filter((id, index) => id === null && (entry.id !== 'appearance' || mark.reset !== index + 3));
       check(orphans.length === 0, here_, 'keys.reach', `${orphans.length} Tab stops belong to no row`);
       check(mark.steppers.every((isStop) => !isStop), here_, 'keys.reach', 'a stepper of a number field is a Tab stop of its own: the field is one stop and the arrows step it');
       const order = mark.rowControls.flatMap((row) => row.controls);
@@ -152,7 +167,7 @@ async function reachPart(env, container) {
 // ---------------------------------------------------------------------------------------------------------------------------
 async function operatePart(env, container) {
   const where = whereOf(env, container);
-  const { page, context } = await open(env, container);
+  const { page, context } = await openSettings(env, container);
   try {
     await plant(env, page);
     await goToPage(page, 'terminal');
@@ -218,7 +233,7 @@ async function operatePart(env, container) {
 
 async function secretPart(env) {
   const where = `${env.engine}@${env.viewportName} sheet`;
-  const { page, context } = await open(env, 'sheet');
+  const { page, context } = await openSettings(env, 'sheet');
   try {
     await plant(env, page);
     await goToPage(page, 'telemetry');
@@ -240,7 +255,7 @@ async function secretPart(env) {
 // ---------------------------------------------------------------------------------------------------------------------------
 async function selectPart(env, container) {
   const where = whereOf(env, container);
-  const { page, context } = await open(env, container);
+  const { page, context } = await openSettings(env, container);
   try {
     await plant(env, page);
     await goToPage(page, 'terminal');
@@ -261,7 +276,7 @@ async function selectPart(env, container) {
 // ---------------------------------------------------------------------------------------------------------------------------
 async function draftPart(env) {
   const where = `${env.engine}@${env.viewportName} sheet`;
-  const { page, context } = await open(env, 'sheet');
+  const { page, context } = await openSettings(env, 'sheet');
   try {
     await plant(env, page);
     // A valid draft: the press on another page takes the focus out of the field, which applies it (apply on change: a value applies when it is committed, on Enter or when the focus leaves).

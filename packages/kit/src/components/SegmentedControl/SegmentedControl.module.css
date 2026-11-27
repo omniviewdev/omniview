@@ -49,7 +49,7 @@
     border-end-start-radius: var(--ov-radius-control);
   }
 
-  .option:last-child {
+  .option:last-of-type {
     border-start-end-radius: var(--ov-radius-control);
     border-end-end-radius: var(--ov-radius-control);
   }

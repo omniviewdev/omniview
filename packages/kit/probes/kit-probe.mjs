@@ -479,8 +479,20 @@ async function busy(browser, url, viewport, where) {
   await quiet.waitForFunction(() => document.querySelector('[data-example="Button/Busy"] svg')?.getAttribute('data-ov-glyph') === 'loader', null, { timeout: 3000, polling: 50 }).catch(() => undefined);
   const reduced = await quiet.evaluate(() => ({ glyph: document.querySelector('[data-example="Button/Busy"] svg').getAttribute('data-ov-glyph'), animation: getComputedStyle(document.querySelector('[data-example="Button/Busy"] svg')).animationName }));
   if (reduced.glyph !== 'loader' || reduced.animation !== 'none') fail(where, `reduced motion: ${JSON.stringify(reduced)}, expected a still loader`);
+  // This parts page has no settings service. Exercise the kit's document contract on its real loader; the settings seam drives the same attribute from the control in a running host.
+  const motionName = (preference) => quiet.locator('[data-example="Button/Busy"] svg').evaluate((glyph, value) => {
+    if (value !== undefined) document.documentElement.setAttribute('data-ov-motion', value);
+    return getComputedStyle(glyph).animationName;
+  }, preference);
+  const normalOverride = await motionName('normal');
+  const systemReduced = await motionName('system');
+  await quiet.emulateMedia({ reducedMotion: 'no-preference' });
+  const systemNormal = await motionName();
+  const reducedOverride = await motionName('reduced');
+  const modes = { normalOverride, systemReduced, systemNormal, reducedOverride };
+  if (normalOverride === 'none' || systemReduced !== 'none' || systemNormal === 'none' || reducedOverride !== 'none') fail(where, `loader motion overrides: ${JSON.stringify(modes)}`);
   await still.close();
-  (report.keyboard[where] ??= {}).busy = { timeline, timers, spinning, reducedMotion: reduced };
+  (report.keyboard[where] ??= {}).busy = { timeline, timers, spinning, reducedMotion: reduced, modes };
 }
 
 // ---- a11y -------------------------------------------------------------------------------------------------------------------

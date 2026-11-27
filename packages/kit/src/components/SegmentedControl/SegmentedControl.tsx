@@ -1,5 +1,6 @@
 import { useId, type KeyboardEvent } from 'react';
 import { dataAttributes, type DataAttributes } from '../../shared/dataAttributes';
+import { useFieldControl } from '../FormControl/useFieldControl';
 import { Icon, type IconName } from '../Icon';
 import { tip } from '../TooltipHost';
 import styles from './SegmentedControl.module.css';
@@ -40,6 +41,7 @@ const available = (option: SegmentedOption) => option.disabledReason === undefin
  */
 export function SegmentedControl<Value extends string>({ label, options, value, onValueChange, ...rest }: SegmentedControlProps<Value>) {
   const base = useId();
+  const control = useFieldControl({ label, invalid: undefined, readOnly: undefined, disabledReason: undefined });
   const chosen = options.findIndex((option) => option.value === value && available(option));
   const stop = chosen >= 0 ? chosen : options.findIndex(available);
 
@@ -61,6 +63,10 @@ export function SegmentedControl<Value extends string>({ label, options, value, 
     }
 
     event.preventDefault();
+    if (control.locked) {
+      return;
+    }
+
     const reachable = options.flatMap((option, index) => (available(option) ? [index] : []));
     const position = reachable.indexOf(at);
     const to =
@@ -85,7 +91,19 @@ export function SegmentedControl<Value extends string>({ label, options, value, 
   };
 
   return (
-    <div {...dataAttributes(rest)} className={styles.root} role="radiogroup" aria-label={label} onKeyDown={onKeyDown}>
+    <div
+      {...dataAttributes(rest)}
+      className={styles.root}
+      role="radiogroup"
+      aria-label={control.ariaLabel}
+      aria-labelledby={control.labelId}
+      aria-describedby={control.describedBy}
+      aria-invalid={control.invalid || undefined}
+      aria-readonly={control.readOnly || undefined}
+      aria-required={control.required || undefined}
+      aria-disabled={control.reason ? true : undefined}
+      onKeyDown={onKeyDown}
+    >
       {options.map((option, index) => {
         const isChosen = option.value === value;
         const reason = available(option) ? undefined : option.disabledReason;
@@ -94,17 +112,18 @@ export function SegmentedControl<Value extends string>({ label, options, value, 
         return (
           <button
             key={option.value}
-            {...dataAttributes(tip(reason ?? option.tip))}
+            {...dataAttributes(tip(control.reason ?? reason ?? option.tip))}
+            id={index === stop ? control.id : undefined}
             type="button"
             role="radio"
             className={styles.option}
             aria-checked={isChosen}
-            aria-label={text === '' ? option.tip : undefined}
-            aria-disabled={reason === undefined ? undefined : 'true'}
+            aria-label={option.label ?? option.tip}
+            aria-disabled={reason !== undefined || control.reason !== undefined ? 'true' : undefined}
             aria-describedby={reason === undefined ? undefined : reasonId}
             tabIndex={index === stop ? 0 : -1}
             onClick={() => {
-              if (reason === undefined && !isChosen) {
+              if (!control.locked && reason === undefined && !isChosen) {
                 onValueChange(option.value);
               }
             }}
@@ -119,6 +138,7 @@ export function SegmentedControl<Value extends string>({ label, options, value, 
           </button>
         );
       })}
+      {control.reasonId === undefined ? null : <span id={control.reasonId} hidden>{control.reason}</span>}
     </div>
   );
 }

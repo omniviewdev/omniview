@@ -6,7 +6,7 @@ const PAGES = ['General', 'Appearance', 'Keyboard'] as const;
 
 /**
  * A sheet written the way a consumer writes it: the caller owns whether it is open, because mounting is opening and the sheet never closes itself; `onClose` is Escape or Close, and the caller stops rendering it.
- * An open modal makes the whole page inert, so nothing opens at load: press the button. The frame is the `settings` size, 1060 x 640 px, whose body clips and leaves the scrolling to its caller: the body is the caller's own layout, a list of pages at the left and a page at the right, and the draft of its field lives
+ * An open modal makes the whole page inert, so nothing opens at load: press the button. The frame is the `settings` size, whose body clips and leaves the scrolling to its caller: the body is the caller's own layout, a list of pages at the left and a page at the right, and the draft of its field lives
  * above the sheet, so it is still there when the sheet is opened again. Escape in the field puts the applied value back and goes no further; with no draft it closes the sheet. The button takes the focus as it
  * is pressed (a Mac browser does not focus a button that was pressed), and gets it back when the sheet closes.
  */

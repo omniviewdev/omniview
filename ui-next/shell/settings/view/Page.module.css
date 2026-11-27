@@ -1,9 +1,8 @@
-/* A page of Settings: the heading lane (the mock's `.settings-page .heading`: the title 18/24 and a one-line description 12/16) and the list of rows. The page scrolls in its pane; its width is the pane's. */
+/* Keep the same inset on both sides as the window grows. */
 @layer ov.shell {
   .page {
-    box-sizing: border-box;
     min-inline-size: 0;
-    padding: var(--ov-spacing-16) var(--ov-spacing-24) var(--ov-spacing-24);
+    padding: var(--ov-spacing-12);
   }
 
   /* The title has a 28 px lane and the description starts 4 px under it (S124); the description is one line and ends in an ellipsis. */
@@ -38,14 +37,14 @@
   }
 
   .group + .group {
-    margin-block-start: var(--ov-spacing-16);
+    margin-block-start: var(--ov-spacing-12);
   }
 
   .group > [data-settings-part='section-title'] {
-    margin-block-end: var(--ov-spacing-4);
+    margin-block-end: var(--ov-spacing-8);
   }
 
-  .group [data-ov-layout='row'] {
+  .rows [data-settings-concise='true'] [data-ov-layout='row'] {
     align-items: center;
   }
 
@@ -70,5 +69,27 @@
   .reset > [role='alert'] {
     color: var(--ov-error-fg);
     font-size: var(--ov-fs-12);
+  }
+
+  /* Below a two-column field's usable width, keep its label, control and reset in the pane. */
+  @container settings-content (max-width: 460px) {
+    .page .rows [data-ov-layout='row'] {
+      flex-direction: column;
+      align-items: stretch;
+      gap: var(--ov-spacing-4);
+    }
+
+    .rows [data-ov-part='control'] {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: start;
+      margin-inline-start: 0;
+    }
+
+    .rows [data-ov-part='control'] > :first-child {
+      min-inline-size: 0;
+      max-inline-size: 100%;
+      justify-self: start;
+    }
   }
 }
