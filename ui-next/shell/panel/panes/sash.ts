@@ -133,7 +133,9 @@ export function createSash({ store, tool, boundary, axis, geometry, panes, marke
     window.removeEventListener('keydown', onEscape, true);
     marked()?.removeAttribute('data-resizing');
     const final = raw ?? session.raw;
-    const answer = commit ? store.moveSash(tool, boundary, positionOf(final, session.geometry, boundary), session.geometry.extent) : undefined;
+    // The window may have changed while the pointer was down: the shares committed are read against the deck as it is when the pointer is released (its start and its length), as the panel splitter reads the window's height again then.
+    const now = geometry() ?? session.geometry;
+    const answer = commit ? store.moveSash(tool, boundary, positionOf(final, now, boundary), now.extent) : undefined;
     // A commit that changed the shares is drawn by React in a moment, and the deck hands the inline value back then; any other end gives it back here.
     if (answer?.status !== 'done') {
       clear();

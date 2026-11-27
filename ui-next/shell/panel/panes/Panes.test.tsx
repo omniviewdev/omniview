@@ -5,6 +5,7 @@ import type { ToolInput } from '../../core/panel';
 import type { ShellRegistration } from '../../registration';
 import { StaticShell } from '../../testing';
 import { staticPanel, type StaticSession } from '../testing';
+import { usePaneRoom } from './room';
 
 // The panes of a tool in the panel (#697 step 6, the layout): several bodies side by side, the sash between them, and what a click does. The model is tested in ../../core/panel; this is the DOM that carries it. The bodies are the
 // invented streams of ../testing.tsx (NO emulator: what a real emulator does with a pane's width is the probe's, in a real engine, and the fake one's in ../terminal/TerminalSplit.test.tsx). jsdom has no layout, so the deck's length is
@@ -15,18 +16,21 @@ const TERMINAL: ToolInput = { id: 'terminal', label: 'Terminal', icon: 'terminal
 const running = (title: string): StaticSession => ({ tool: 'terminal', title, state: 'running' });
 const DECK = 800;
 const SASH = 5;
+/** The deck's length now: a test that changes the window changes it. */
+let deckWidth = DECK;
 
 beforeEach(() => {
+  deckWidth = DECK;
   window.innerHeight = 900;
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function (this: HTMLElement) {
-    return this.getAttribute('data-shell-part') === 'panelDeck' ? DECK : 0;
+    return this.getAttribute('data-shell-part') === 'panelDeck' ? deckWidth : 0;
   });
   vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function (this: HTMLElement) {
     return this.getAttribute('data-shell-part') === 'panelDeck' ? 200 : 0;
   });
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
     const sash = this.getAttribute('data-shell-part') === 'paneSash';
-    const width = sash ? SASH : this.getAttribute('data-shell-part') === 'panelDeck' ? DECK : 0;
+    const width = sash ? SASH : this.getAttribute('data-shell-part') === 'panelDeck' ? deckWidth : 0;
     return { x: 0, y: 0, left: 0, top: 0, right: width, bottom: 0, width, height: sash ? SASH : 0, toJSON: () => ({}) };
   });
   vi.useFakeTimers({ toFake: ['requestAnimationFrame', 'cancelAnimationFrame'] });
@@ -285,10 +289,6 @@ describe('the sash\'s drag', () => {
   });
 
   it('reads the deck again when it is released: a window that changed while the pointer was down gives the length the minimum is held against', () => {
-    let deckWidth = DECK;
-    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function (this: HTMLElement) {
-      return this.getAttribute('data-shell-part') === 'panelDeck' ? deckWidth : 0;
-    });
     const h = mount();
     split(h, 2);
     const sash = sashAt(0);
@@ -358,6 +358,49 @@ describe('a resize of the panel', () => {
       resized?.();
     });
     expect((h.store.getSnapshot().panes.terminal?.ratios[0] ?? 0) * (DECK - SASH)).toBeGreaterThanOrEqual(80 - 1e-6);
+    vi.unstubAllGlobals();
+  });
+});
+
+/** A body that says what the deck tells it: whether one more pane fits and the length a split would be given. */
+function Room() {
+  const room = usePaneRoom();
+  return <div data-fixture="room" data-fits={String(room?.fits)} data-extent={String(room?.extent())} />;
+}
+
+describe('the room for one more pane', () => {
+  it('is what the deck measured: one more fits while every pane would keep 80 px, and the length a split is given has the sash the new pane brings', () => {
+    let resized: (() => void) | undefined;
+    class Observer {
+      observe = vi.fn();
+
+      disconnect = vi.fn();
+
+      constructor(callback: () => void) {
+        resized = callback;
+      }
+    }
+
+    vi.stubGlobal('ResizeObserver', Observer);
+    const panel = staticPanel({ tools: [TERMINAL], sessions: [running('zsh')], open: true, renderBody: () => <Room /> });
+    render(<StaticShell registration={registration} panel={panel} />);
+    act(() => {
+      panel.store.splitPane('terminal', { plugin: 'host', title: 'two', state: 'running' }, { extent: DECK });
+    });
+    const read = (): { fits: string | null; extent: string | null } => {
+      const element = document.querySelector('[data-fixture="room"]');
+      return { fits: element?.getAttribute('data-fits') ?? null, extent: element?.getAttribute('data-extent') ?? null };
+    };
+    act(() => {
+      resized?.();
+    });
+    // Two panes and a sash in 800 px: a third needs 240 of the 790 two sashes leave.
+    expect(read()).toEqual({ fits: 'true', extent: String(DECK - 2 * SASH) });
+    deckWidth = 200;
+    act(() => {
+      resized?.();
+    });
+    expect(read().fits).toBe('false');
     vi.unstubAllGlobals();
   });
 });

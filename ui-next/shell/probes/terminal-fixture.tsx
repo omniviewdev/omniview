@@ -55,7 +55,7 @@ import type { PluginEntry } from '../../plugins/host/pluginStore';
 import type { PluginSource } from '../../plugins/host/contributions';
 import type { EngineLoader, FindOptions } from '../panel/terminal/engine';
 import { loadXtermEngine } from '../panel/terminal/loadEngine';
-import { attachLocalTerminal, localRestartTarget, localShellTarget, restoreLocalTerminals } from '../panel/terminal/localShell';
+import { attachLocalTerminal, localHereTarget, localRestartTarget, localShellTarget, restoreLocalTerminals } from '../panel/terminal/localShell';
 import { loadTerminalChannels, sessionCapabilityStorage, type ChannelClient, type ChannelSocket } from '../panel/terminal/terminalChannel';
 import { createTerminalPreferences, type PreferencesSource } from '../panel/terminal/preferences';
 import { createShellList, type ShellList } from '../panel/terminal/profiles';
@@ -1343,7 +1343,7 @@ async function mount(): Promise<void> {
             onRetry={() => undefined}
             onRetryInventory={() => undefined}
             session={session}
-            terminals={{ target: () => localShellTarget(channels), load, restore: async () => restoreLocalTerminals(channels), reattach: (id: string) => attachLocalTerminal(id, undefined, channels), restart: (made, tab: string) => localRestartTarget(made, tab, channels), ...(givesOpenExternal ? { openExternal } : {}), ...(shells === undefined ? {} : { shells }), ...(preferences === undefined ? {} : { preferences }) }}
+            terminals={{ target: () => localShellTarget(channels), load, restore: async () => restoreLocalTerminals(channels), reattach: (id: string) => attachLocalTerminal(id, undefined, channels), restart: (made, tab: string) => localRestartTarget(made, tab, channels), here: (where) => localHereTarget(where, channels), ...(givesOpenExternal ? { openExternal } : {}), ...(shells === undefined ? {} : { shells }), ...(preferences === undefined ? {} : { preferences }) }}
           />
         </Profiler>
       </MenuHost>
