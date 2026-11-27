@@ -86,6 +86,9 @@ type Manager struct {
 	// flowStall is how long a pause on the transport's credit waits before the watchdog steps
 	// (flowControl); a field so that a test can state it. SetFlowStall sets it before sessions start.
 	flowStall time.Duration
+	// closeWait is how long a close waits for the sessions to be gone (the const closeWait): a field, so that a
+	// test can state a short one. Nothing else changes it, and a test sets it before it starts a terminal.
+	closeWait time.Duration
 	// replayBytes is how much of a terminal's output its replay ring keeps (ReplayBytes): a field, so that a test
 	// can state it.
 	replayBytes int
@@ -142,7 +145,7 @@ func NewManager(ctx context.Context, log logging.Logger, sink Sink) *Manager {
 	detachments, _ := sink.(DetachmentSink)
 	m := &Manager{
 		base: shellenv.LaunchEnvironment, resolve: shellenv.Resolve, probe: shellenv.Probe, integrationOn: func() (bool, error) { return true, nil }, bashVersion: probeBashVersion,
-		ctx: ctx, log: log.Named("TerminalManager"), sink: sink, reported: reported, closing: atomic.Bool{}, launching: sync.WaitGroup{}, flowStall: FlowStall,
+		ctx: ctx, log: log.Named("TerminalManager"), sink: sink, reported: reported, closing: atomic.Bool{}, launching: sync.WaitGroup{}, flowStall: FlowStall, closeWait: closeWait,
 		replayBytes: ReplayBytes, channel: defaultChannelLimits(), offsets: offsets, detachments: detachments,
 		mu: sync.RWMutex{}, sessions: make(map[string]*session), starting: make(map[string]struct{}), ended: nil, tombs: nil, tombTimer: nil, clock: wallClock{},
 	}
@@ -1210,7 +1213,7 @@ func (m *Manager) awaitLaunches() {
 		m.launching.Wait()
 		close(handed)
 	}()
-	deadline := time.NewTimer(closeWait)
+	deadline := time.NewTimer(m.closeWait)
 	defer deadline.Stop()
 	select {
 	case <-handed:
@@ -1226,7 +1229,7 @@ func (m *Manager) shutdownWhenDone() {
 
 // awaitGone waits, for at most closeWait in all, until the sessions are gone.
 func (m *Manager) awaitGone(sessions []*session) {
-	deadline := time.NewTimer(closeWait)
+	deadline := time.NewTimer(m.closeWait)
 	defer deadline.Stop()
 	for _, s := range sessions {
 		select {
