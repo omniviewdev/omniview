@@ -141,6 +141,19 @@ describe('a request to show a command', () => {
     expect(m.loader.engines[0]?.scrolls).toEqual([0]);
   });
 
+  it('says that a command that is truly gone is gone exactly once, and asks for nothing again (fake emulator)', async () => {
+    const m = await withCommand();
+    const asked = vi.spyOn(m.sessions, 'requestJump');
+    act(() => {
+      m.sessions.requestJump(m.id, 'c99');
+    });
+    await settle();
+    await settle();
+    expect(asked, 'only the person\'s own request: nothing is re-asked').toHaveBeenCalledTimes(1);
+    expect(m.sessions.pendingJump(m.id)).toBeUndefined();
+    expect(page.getAllByText('That command is no longer in the terminal')).toHaveLength(1);
+  });
+
   it('is taken once: a second request for the same command moves the view again, and nothing moves with no request', async () => {
     const m = await withCommand();
     const engine = m.loader.engines[0];
