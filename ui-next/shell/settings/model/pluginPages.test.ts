@@ -149,7 +149,7 @@ describe('installed settings providers', () => {
     session.dispose();
   });
 
-  it('keeps the search index stable on a refresh with no metadata, phase or schema changes', async () => {
+  it('replaces the navigation entries for a schema change, but not for a refresh or value change', async () => {
     const host = fakeHost();
     const clock = manualClock();
     const session = createSettingsSession({ client: host.client, scheduler: clock.scheduler });
@@ -158,12 +158,21 @@ describe('installed settings providers', () => {
     session.refresh();
     await clock.flush();
     expect(session.plugins.getSnapshot()).toBe(empty);
-    host.plugin(metadata('unchanged'), [field('x')]);
+    const unchanged = metadata('unchanged');
+    host.plugin(unchanged, [field('x')]);
     await clock.flush();
     const populated = session.plugins.getSnapshot();
     session.refresh();
     await clock.flush();
     expect(session.plugins.getSnapshot()).toBe(populated);
+    await host.client.commit(scope('unchanged'), { x: 'updated' });
+    await clock.flush();
+    expect(ready(plugin(session, 'unchanged')).form.field('x')?.value).toBe('updated');
+    expect(session.plugins.getSnapshot().entries).toBe(populated.entries);
+    host.plugin(unchanged, [field('x'), field('y')]);
+    await clock.flush();
+    expect(ready(plugin(session, 'unchanged')).model.pages[0]?.fields).toEqual(['x', 'y']);
+    expect(session.plugins.getSnapshot().entries).not.toBe(populated.entries);
     session.dispose();
   });
 

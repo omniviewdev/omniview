@@ -35,9 +35,9 @@ export function createPluginPages(read: SettingsClient['inventory'], create: (pl
     }
   };
 
-  // A new or removed field changes the navigation/search index; typing in a field does not.
+  // The compiled navigation memoizes entries. A phase or schema change invalidates that list; editing a value does not.
   const schemaChanged = (): void => {
-    publish({ ...snapshot });
+    publish({ ...snapshot, entries: [...snapshot.entries] });
   };
 
   const refresh = (): void => {
