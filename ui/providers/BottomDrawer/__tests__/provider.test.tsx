@@ -299,6 +299,28 @@ describe('BottomDrawerProvider', () => {
     expect(log.error).toHaveBeenCalledTimes(1);
   });
 
+  it('closing several tabs together: a close-timeout of one hides no real failure of another', async () => {
+    mocks.initialSlot = slotOf([serializedTab('sess-1'), serializedTab('sess-2')], 'sess-1');
+    mocks.listExecSessions.mockResolvedValue([{ id: 'sess-1', labels: {} }, { id: 'sess-2', labels: {} }]);
+    await renderRestoredDrawer();
+
+    const real = new Error('the host is gone');
+    mocks.closeSession.mockImplementation(async (id: string) => {
+      if (id === 'sess-1') {
+        throw Object.assign(new Error('close timed out'), { type: 'omniview:terminal/close-timeout', title: 'Terminal close timed out', status: 504, code: 'CLOSE_TIMEOUT', detail: 'The terminal was ordered to close and was still ending.' });
+      }
+
+      throw real;
+    });
+    await act(async () => {
+      drawer.closeTabs([{ id: 'sess-1' }, { id: 'sess-2' }]);
+    });
+    await waitFor(() => {
+      expect(log.error).toHaveBeenCalledTimes(1);
+    });
+    expect(log.error).toHaveBeenCalledWith(real, { event: 'terminate_sessions' });
+  });
+
   it('main window adopts surviving sessions except those another window claims', async () => {
     mocks.initialSlot = slotOf([serializedTab('sess-own')], 'sess-own');
     mocks.listExecSessions.mockResolvedValue([
