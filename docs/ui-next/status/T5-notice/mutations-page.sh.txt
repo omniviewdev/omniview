@@ -63,12 +63,12 @@ run threshold-is-exclusive "$NOTICE" "$NOTICET" 'is raised from the threshold up
 run front-terminal-is-told "$NOTICE" "$NOTICET" 'is not raised for a terminal the person is looking at' "told.has(key) || deps.shown(session)" "told.has(key)"
 run command-told-twice "$NOTICE" "$NOTICET" 'is raised once for each command' "      remember(key);" ""
 run control-characters-pass "$NOTICE" "$NOTICET" 'bounds the words and keeps a command line' "text.replace(CONTROL, ' ')" "text"
-run show-goes-nowhere "$NOTICE" "$NOTICET" 'brings the terminal forward and jumps|newest command' "              deps.show(session, finished.id);" ""
+run show-goes-nowhere "$NOTICE" "$NOTICET" 'brings the terminal forward and jumps|newest command' "              deps.show(session, finished.id, generation);" ""
 
 SESSIONS=$DIR/TerminalSessions.ts
 SESSIONST=$DIR/TerminalSessionsNotice.test.ts
-run finished-on-every-status "$SESSIONS" "$SESSIONST" 'is not told again for a status that changed in another way' "snapshot.finished !== before && " ""
-run jump-is-not-spent "$SESSIONS" "$SESSIONST" 'the request to move a terminal' "        jumps.delete(session);
+run finished-on-every-status "$SESSIONS" "$SESSIONST" 'is not told again for a status that changed|which terminal of a session' "snapshot.finished !== before && " ""
+run jump-is-not-spent "$SESSIONS" "$SESSIONST" 'the request to move a terminal|which terminal of a session' "        jumps.delete(session);
         tellJumps();" "        tellJumps();"
 run jump-outlives-its-tab "$SESSIONS" "$SESSIONST" 'goes with the session' "    if (jumps.delete(id)) {
       tellJumps();
@@ -77,8 +77,8 @@ run jump-outlives-its-tab "$SESSIONS" "$SESSIONST" 'goes with the session' "    
 BODY=$DIR/TerminalBody.tsx
 BODYT=$DIR/TerminalBodyJump.test.tsx
 run jump-ignores-visibility "$BODY" "$BODYT" 'waits for the terminal to be on screen' "if (jump === undefined || !visible || !view.ready) {" "if (jump === undefined || !view.ready) {"
-run jump-without-keyboard "$BODY" "$BODYT" 'a request to show a command' "      screen.commands.reveal(command);
-      screen.focus();" "      screen.commands.reveal(command);"
+run jump-without-keyboard "$BODY" "$BODYT" 'a request to show a command' "      screen.commands.reveal(command, generation);
+      screen.focus();" "      screen.commands.reveal(command, generation);"
 
 TOOL=$DIR/terminals.ts
 TOOLT=$DIR/terminalsNotice.test.ts
