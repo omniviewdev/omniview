@@ -108,7 +108,7 @@ describe('Show, on the notice', () => {
     expect(terminals.sessions.pendingJump(back.id)).toBe('c5');
   });
 
-  it('does nothing for a terminal whose tab was closed since: no request is left behind and nothing throws', () => {
+  it('says that the terminal was closed when its tab is gone, leaves no request behind and does not throw', () => {
     const { open, records, fixture, store, terminals } = rig();
     const back = open('zsh');
     open('bash');
@@ -116,5 +116,15 @@ describe('Show, on the notice', () => {
     store.closeSession(back.id);
     expect(() => fixture.store.run(records()[0]?.id ?? '', 'show')).not.toThrow();
     expect(terminals.sessions.pendingJump(back.id)).toBeUndefined();
+    expect(records().some((record) => record.title === 'That terminal was closed')).toBe(true);
+  });
+
+  it('carries the terminal of the session the command finished in, so a restart does not make Show go to another command', () => {
+    const { open, records, fixture, terminals } = rig();
+    const back = open('zsh');
+    open('bash');
+    back.feed.set({ finished: long('c5') });
+    fixture.store.run(records()[0]?.id ?? '', 'show');
+    expect(terminals.sessions.jumpGeneration(back.id)).toBe(0);
   });
 });

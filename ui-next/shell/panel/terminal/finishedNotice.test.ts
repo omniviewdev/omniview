@@ -9,15 +9,15 @@ import { createFinishedNotices, LONG_COMMAND_MS } from './finishedNotice';
 
 type Rig = {
   readonly fixture: ReturnType<typeof makeNotices>;
-  readonly show: ReturnType<typeof vi.fn<(session: string, command: string) => void>>;
+  readonly show: ReturnType<typeof vi.fn<(session: string, command: string, generation: number) => void>>;
   readonly front: Set<string>;
-  readonly finished: (session: string, finished: Partial<TerminalFinished> & { readonly id: string }) => void;
+  readonly finished: (session: string, finished: Partial<TerminalFinished> & { readonly id: string }, generation?: number) => void;
   readonly records: () => ReturnType<ReturnType<typeof makeNotices>['store']['selectors']['recent']>;
 };
 
 function rig(): Rig {
   const fixture = makeNotices();
-  const show = vi.fn<(session: string, command: string) => void>();
+  const show = vi.fn<(session: string, command: string, generation: number) => void>();
   const front = new Set<string>();
   const notices = createFinishedNotices({ notices: fixture.store, shown: (session) => front.has(session), show, nameOf: (session) => (session === 's1' ? 'zsh' : session === 's2' ? 'zsh (2)' : undefined) });
   return { fixture, show, front, finished: notices.finished, records: () => fixture.store.selectors.recent() };
@@ -88,7 +88,7 @@ describe('the notice of a command that finished', () => {
     expect(records).toHaveLength(1);
     expect(records[0]?.count).toBe(2);
     r.fixture.store.run(records[0]?.id ?? '', 'show');
-    expect(r.show).toHaveBeenCalledWith('s1', 'c2');
+    expect(r.show).toHaveBeenCalledWith('s1', 'c2', 0);
   });
 
   it('keeps no more than it must of what it has told: a flood of commands is bounded, and the newest is still not told twice', () => {
@@ -110,7 +110,16 @@ describe('the notice of a command that finished', () => {
     const record = r.records()[0];
     expect(r.fixture.store.run(record?.id ?? '', 'show').status).toBe('done');
     expect(r.show).toHaveBeenCalledTimes(1);
-    expect(r.show).toHaveBeenCalledWith('s1', 'c7');
+    expect(r.show).toHaveBeenCalledWith('s1', 'c7', 0);
+  });
+
+  it('tells the terminal of the session the command finished in to Show, and tells a command of another terminal of the session apart', () => {
+    const r = rig();
+    r.finished('s1', { id: 'c1', durationMs: 20_000, command: 'make a', timeMs: 100 }, 0);
+    r.finished('s1', { id: 'c1', durationMs: 20_000, command: 'make a', timeMs: 100 }, 1);
+    expect(r.records()[0]?.count, 'the same id and time in the next terminal of the session is another command').toBe(2);
+    r.fixture.store.run(r.records()[0]?.id ?? '', 'show');
+    expect(r.show).toHaveBeenCalledWith('s1', 'c1', 1);
   });
 
   it('bounds the words and keeps a command line\'s control characters out of them: it is the person\'s text, drawn as text (the notice is checked as it is handed to the shell\'s notices, which clean text themselves)', () => {

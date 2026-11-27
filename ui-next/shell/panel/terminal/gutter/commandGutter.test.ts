@@ -740,3 +740,29 @@ describe('revealing a command by its id', () => {
     expect(events.at(-1)).toEqual({ kind: 'said', words: 'Command 1 of 1, Running: make' });
   });
 });
+
+// REVEALING AFTER A RESTART (review of #694 step 6): a notice says which terminal of the session the command finished in (its epoch), so the same id in the terminal that came after a restart is not the command it names.
+
+describe('revealing a command of an earlier terminal', () => {
+  it('goes to the command of the terminal it was told of, and to the newest terminal\'s command when told of none', async () => {
+    const { gutter, engine, run } = setup({ rows: 6 });
+    const out = 'o1\r\no2\r\no3\r\n';
+    await run('old one', out, { id: 'c1' });
+    await run('old two', out, { id: 'c2' });
+    gutter.seal();
+    await run('new one', out, { id: 'c1' });
+    await run('new two', out, { id: 'c2' });
+    const lineOf = (text: string) => gutter.commands().find((one) => one.command === text)?.line;
+    expect(gutter.reveal('c2', 0)?.command).toBe('old two');
+    expect(engine.viewport().top).toBe(lineOf('old two'));
+    expect(gutter.reveal('c2', 1)?.command).toBe('new two');
+    expect(gutter.reveal('c2')?.command, 'no epoch: the newest terminal\'s').toBe('new two');
+  });
+
+  it('says it is gone for a terminal that never had the command', async () => {
+    const { gutter, run, events } = setup({ rows: 6 });
+    await run('only', 'o\r\n', { id: 'c1' });
+    expect(gutter.reveal('c1', 3)).toBeUndefined();
+    expect(events.at(-1)).toEqual({ kind: 'said', words: 'That command is no longer in the terminal' });
+  });
+});

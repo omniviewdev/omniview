@@ -30,10 +30,10 @@ function rig(options: TerminalSessionsOptions = {}) {
 
 describe('a command that finished (`finished`)', () => {
   function told() {
-    const calls: Array<readonly [string, TerminalFinished]> = [];
+    const calls: Array<readonly [string, TerminalFinished, number]> = [];
     const r = rig({
-      finished: (session, finished) => {
-        calls.push([session, finished]);
+      finished: (session, finished, generation) => {
+        calls.push([session, finished, generation]);
       },
     });
     return { ...r, calls };
@@ -94,6 +94,39 @@ describe('a command that finished (`finished`)', () => {
     expect(warn).toHaveBeenCalledTimes(1);
     feed.set({ state: 'ended' });
     expect(store.getSnapshot().sessions[opened?.id ?? '']?.state).toBe('ended');
+  });
+});
+
+describe('which terminal of a session a command finished in', () => {
+  it('counts the restarts of the session: the same ids come again from c1 in the terminal a restart makes', () => {
+    const calls: Array<readonly [string, number]> = [];
+    const next = fakeTerminalFeed();
+    const r = rig({
+      finished: (session, finished, generation) => {
+        calls.push([finished.id, generation]);
+        expect(session).not.toBe('');
+      },
+      restart: (_made, session) => ({ plugin: HOST, id: 'local', title: 'Terminal', sessionId: session, open: () => next }),
+    });
+    const first = fakeTerminalFeed({ restart: { id: 'old' } });
+    const opened = r.sessions.open({ plugin: HOST, id: 'local', title: 'Terminal', open: () => first });
+    first.set({ finished: done('c2') });
+    first.set({ state: 'ended' });
+    expect(r.sessions.restart(opened?.id ?? '')).toBe(true);
+    next.set({ finished: done('c2', { timeMs: 2 }) });
+    expect(calls).toEqual([['c2', 0], ['c2', 1]]);
+  });
+
+  it('is kept with the request to show a command, and is 0 when none is given', () => {
+    const r = rig();
+    const opened = r.sessions.open({ plugin: HOST, id: 'local', title: 'Terminal', open: () => fakeTerminalFeed() });
+    const id = opened?.id ?? '';
+    r.sessions.requestJump(id, 'c1', 2);
+    expect(r.sessions.jumpGeneration(id)).toBe(2);
+    r.sessions.requestJump(id, 'c1');
+    expect(r.sessions.jumpGeneration(id)).toBe(0);
+    r.sessions.takeJump(id);
+    expect(r.sessions.jumpGeneration(id)).toBeUndefined();
   });
 });
 
