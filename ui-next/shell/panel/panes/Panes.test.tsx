@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ToolInput } from '../../core/panel';
@@ -27,7 +27,7 @@ beforeEach(() => {
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
     const sash = this.getAttribute('data-shell-part') === 'paneSash';
     const width = sash ? SASH : this.getAttribute('data-shell-part') === 'panelDeck' ? DECK : 0;
-    return { x: 0, y: 0, left: 0, top: 0, right: width, bottom: 0, width, height: sash ? 200 : 0, toJSON: () => ({}) };
+    return { x: 0, y: 0, left: 0, top: 0, right: width, bottom: 0, width, height: sash ? SASH : 0, toJSON: () => ({}) };
   });
   vi.useFakeTimers({ toFake: ['requestAnimationFrame', 'cancelAnimationFrame'] });
 });
@@ -95,11 +95,12 @@ describe('a group of panes', () => {
     act(() => {
       h.store.splitPane('terminal', { plugin: 'host', title: 'fish', state: 'running' }, { extent: DECK });
     });
-    // The group is [s1, s4, s2, s3]; the bodies stay mounted in the order they opened in.
+    // The group is [first, fourth, second, third]; the bodies stay mounted in the order they opened in.
     const shown = slots().filter((slot) => !slot.hidden);
-    expect(shown.map((slot) => slot.getAttribute('data-session-id'))).toEqual(['s1', 's2', 's3', 's4']);
-    const byOrder = [...shown].sort((a, b) => Number(a.style.order) - Number(b.style.order)).map((slot) => slot.getAttribute('data-session-id'));
-    expect(byOrder).toEqual(['s1', 's4', 's2', 's3']);
+    const [s1, s2, s3, s4] = h.store.getSnapshot().order;
+    expect(shown.map((slot) => slot.getAttribute('data-session-id'))).toEqual([s1, s2, s3, s4]);
+    const byOrder = [...shown].sort((a, b) => Number(a.style.getPropertyValue('--_order')) - Number(b.style.getPropertyValue('--_order'))).map((slot) => slot.getAttribute('data-session-id'));
+    expect(byOrder).toEqual([s1, s4, s2, s3]);
     expect(shown.map((slot) => slot.style.getPropertyValue('--_share'))).toEqual(['0.25', '0.25', '0.25', '0.25']);
     expect(sashes()).toHaveLength(3);
     expect(deck()).toHaveAttribute('data-axis', 'row');
@@ -117,7 +118,7 @@ describe('a group of panes', () => {
     expect(second).toHaveAttribute('aria-valuenow', '67');
     expect(first.getAttribute('aria-controls')?.split(' ')).toHaveLength(2);
     // Placed between the bodies they divide, by `order`.
-    expect([first, second].map((one) => Number(one.style.order))).toEqual([1, 3]);
+    expect([first, second].map((one) => Number(one.style.getPropertyValue('--_order')))).toEqual([1, 3]);
   });
 
   it('is laid out as a column when the model says stacked: horizontal separators', () => {
@@ -133,7 +134,7 @@ describe('a group of panes', () => {
     const h = mount();
     split(h, 2);
     act(() => {
-      h.store.closeSession('s2');
+      h.store.closeSession(h.store.getSnapshot().order[1]);
     });
     expect(sashes()).toHaveLength(0);
     expect(slots().filter((slot) => !slot.hidden)).toHaveLength(1);
@@ -154,20 +155,18 @@ describe('a group of panes', () => {
     const h = mount();
     split(h, 2);
     expect(h.store.getSnapshot().panes.terminal?.active).toBe('p2');
-    const first = slots().find((slot) => slot.getAttribute('data-session-id') === 's1');
+    const [one, two] = h.store.getSnapshot().order;
+    const first = slots().find((slot) => slot.getAttribute('data-session-id') === one);
     expect(first).toBeDefined();
-    fireEvent.pointerDown(first as HTMLElement);
+    fireEvent.pointerDown(first!);
     expect(h.store.getSnapshot().panes.terminal?.active).toBe('p1');
-    expect(h.store.getSnapshot().active.terminal).toBe('s1');
+    expect(h.store.getSnapshot().active.terminal).toBe(one);
     const state = h.store.getSnapshot();
-    fireEvent.pointerDown(first as HTMLElement);
+    fireEvent.pointerDown(first!);
     expect(h.store.getSnapshot()).toBe(state);
-    const second = slots().find((slot) => slot.getAttribute('data-session-id') === 's2');
-    act(() => {
-      within(second as HTMLElement).getByText(/bash 2/).closest('div')?.focus();
-    });
+    const second = slots().find((slot) => slot.getAttribute('data-session-id') === two);
     const inside = document.createElement('button');
-    (second as HTMLElement).append(inside);
+    second!.append(inside);
     act(() => {
       inside.focus();
     });
@@ -324,13 +323,13 @@ describe('a resize of the panel', () => {
   it('brings the shares within the minimum of the length the deck has now', () => {
     let resized: (() => void) | undefined;
     class Observer {
+      observe = vi.fn();
+
+      disconnect = vi.fn();
+
       constructor(callback: () => void) {
         resized = callback;
       }
-
-      observe(): void {}
-
-      disconnect(): void {}
     }
 
     vi.stubGlobal('ResizeObserver', Observer);

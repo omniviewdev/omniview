@@ -244,7 +244,7 @@ export type Selectors = {
   readonly shown: (state: PanelState) => Shown | null;
   /** The panes a tool draws, or `null` while it has no visible session. */
   readonly paneLayout: (state: PanelState, tool: ToolId) => PaneLayout | null;
-  /** Whether this session's body is the one on screen: the panel is open, its tool is the tool on screen and it is the tool's session on screen. */
+  /** Whether this session's body is on screen: the panel is open, its tool is the tool on screen and it is the tool's session on screen, or a pane of that tool's group (every pane of a group is drawn). */
   readonly isShown: (state: PanelState, id: SessionId) => boolean;
   /**
    * Whether the session's plugin is off now. Only a held session can be listed while its plugin is off (A21), so this is what the card asks to say that what needs the plugin, the link back to the

@@ -15,6 +15,11 @@ export type SplitOptions = {
   readonly axis?: PaneAxis | undefined;
 };
 
+/** Whether one more pane fits in a tool: every pane, the new one included, would have its minimum of `extent` (the length the panes share along the axis). A tool with no group has one pane. */
+export function roomForPane(state: PanelState, tool: ToolId, extent: number): boolean {
+  return ((own(state.panes, tool)?.panes.length ?? 1) + 1) * PANE_MIN_PX <= extent;
+}
+
 const usable = (extent: number): boolean => Number.isFinite(extent) && extent > 0;
 
 const sameShares = (a: readonly number[], b: readonly number[]): boolean => a.length === b.length && a.every((one, index) => one === b[index]);
@@ -51,8 +56,7 @@ export function splitPane(state: PanelState, tool: ToolId, input: Omit<SessionIn
     return refuse(state, 'axis', `The panes of ${id} are laid out as a ${group.axis}: a group has one axis.`);
   }
 
-  const count = group?.panes.length ?? 1;
-  if ((count + 1) * PANE_MIN_PX > options.extent) {
+  if (!roomForPane(state, id, options.extent)) {
     return refuse(state, 'full', `There is no room for another pane: each needs ${String(PANE_MIN_PX)} px.`);
   }
 

@@ -1,0 +1,91 @@
+/* The sash between two panes of a tool (docs/ui-next/terminal/prior-art.md mechanism 13: VS Code's sash; the panel's own gutter, Panel.module.css, is the model for what is drawn). A 5 px gutter, a track of the deck between two
+   bodies (`SASH_PX` in geometry.ts is the same number), with a 1 px line at its centre that is the border between the panes. At rest the line is the quiet border; hover paints the gutter and a drag or the keyboard's focus
+   draws a 2 px accent line. A ::before widens the hit area by 3 px over each neighbouring edge, as the panel's handle does. The cursor follows the axis. */
+@layer ov.shell {
+  .sash {
+    position: relative;
+    order: var(--_order, 0);
+    flex: 0 0 5px;
+    box-sizing: border-box;
+    background-color: transparent;
+    outline: 0;
+    touch-action: none;
+    user-select: none;
+  }
+
+  .sash[data-axis='row'] {
+    cursor: col-resize;
+  }
+
+  .sash[data-axis='column'] {
+    cursor: row-resize;
+  }
+
+  .sash::before {
+    content: '';
+    position: absolute;
+  }
+
+  .sash[data-axis='row']::before {
+    inset-block: 0;
+    inset-inline: -3px;
+  }
+
+  .sash[data-axis='column']::before {
+    inset-block: -3px;
+    inset-inline: 0;
+  }
+
+  .sash::after {
+    content: '';
+    position: absolute;
+    pointer-events: none;
+    background-color: var(--ov-border-control);
+  }
+
+  .sash[data-axis='row']::after {
+    inset-block: 0;
+    inset-inline-start: calc(50% - 0.5px);
+    inline-size: 1px;
+  }
+
+  .sash[data-axis='column']::after {
+    inset-inline: 0;
+    inset-block-start: calc(50% - 0.5px);
+    block-size: 1px;
+  }
+
+  .sash:hover {
+    background-color: var(--ov-hover-toolbar);
+  }
+
+  .sash:focus-visible::after {
+    background-color: var(--ov-accent);
+  }
+
+  .sash[data-axis='row']:focus-visible::after {
+    inline-size: 2px;
+    inset-inline-start: calc(50% - 1px);
+  }
+
+  .sash[data-axis='column']:focus-visible::after {
+    block-size: 2px;
+    inset-block-start: calc(50% - 1px);
+  }
+
+  /* A drag in progress: the window carries the attribute, so the line shows whatever the pointer is over, text selection is off and the cursor stays what it is. */
+  :global([data-shell-part='window'][data-resizing='x']) {
+    cursor: col-resize;
+    user-select: none;
+  }
+
+  :global([data-shell-part='window'][data-resizing='y']) {
+    cursor: row-resize;
+    user-select: none;
+  }
+
+  :global([data-shell-part='window'][data-resizing]) .sash:focus-visible::after,
+  :global([data-shell-part='window'][data-resizing]) .sash:active::after {
+    background-color: var(--ov-accent);
+  }
+}

@@ -24,7 +24,7 @@ function mount(options: { readonly room: PaneRoom | null; readonly onSplit?: ((s
     <TerminalBody sessions={sessions} session={session} visible load={fakeEngineLoader().load} screenReader={createScreenReaderChoice(false)} canSplit={options.directory !== false} {...(options.onSplit === undefined ? {} : { onSplit: options.onSplit })} />
   );
   render(options.room === null ? body : <PaneRoomProvider value={options.room}>{body}</PaneRoomProvider>);
-  return { user: userEvent.setup() };
+  return { user: userEvent.setup(), id: session.id };
 }
 
 afterEach(cleanup);
@@ -37,7 +37,7 @@ describe('Split terminal', () => {
     expect(button).toBeEnabled();
     await r.user.click(button);
     expect(onSplit).toHaveBeenCalledTimes(1);
-    expect(onSplit).toHaveBeenCalledWith('s1', 900);
+    expect(onSplit).toHaveBeenCalledWith(r.id, 900);
   });
 
   it('is in the toolbar\'s one Tab stop with the other buttons (it is a member of the roving group), and is named for a screen reader', () => {

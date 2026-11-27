@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import type { PanelState, Session, SessionId, SessionItem, ToolId, ToolItem } from '../core/panel';
+import type { PaneLayout, PanelState, Session, SessionId, SessionItem, ToolId, ToolItem } from '../core/panel';
 import type { ToolBadge, ToolBadges } from './badge';
 import { usePanel } from './context';
 
@@ -90,4 +90,43 @@ export function useSession(id: SessionId): Session | undefined {
 export function usePluginOff(id: SessionId): boolean {
   const { store } = usePanel();
   return usePanelSelector((state) => store.selectors.pluginOff(state, id));
+}
+
+const NO_GROUP = -1;
+
+/**
+ * Where a session's body sits in its tool's group of panes: its index, or -1 when the tool shows one session. Read straight from the group (one `findIndex`), not from a layout built for each of the
+ * bodies that are mounted: with hundreds of mounted bodies a change of state would otherwise build hundreds of layouts.
+ */
+export function usePaneIndex(id: SessionId): number {
+  return usePanelSelector((state) => {
+    const tool = Object.hasOwn(state.sessions, id) ? state.sessions[id].tool : undefined;
+    const group = tool !== undefined && Object.hasOwn(state.panes, tool) ? state.panes[tool] : undefined;
+    return group === undefined ? NO_GROUP : group.panes.findIndex((pane) => pane.session === id);
+  });
+}
+
+/** The stored share of a session's pane (1 when it has none): the body's `flex-grow`, so that the visible panes share the room in proportion even when one is hidden. */
+export function usePaneShare(id: SessionId): number {
+  return usePanelSelector((state) => {
+    const tool = Object.hasOwn(state.sessions, id) ? state.sessions[id].tool : undefined;
+    const group = tool !== undefined && Object.hasOwn(state.panes, tool) ? state.panes[tool] : undefined;
+    const at = group === undefined ? NO_GROUP : group.panes.findIndex((pane) => pane.session === id);
+    return group === undefined || at === NO_GROUP ? 1 : group.ratios[at];
+  });
+}
+
+/** The slot id of a session's pane, or an empty string when it has none. */
+export function usePaneId(id: SessionId): string {
+  return usePanelSelector((state) => {
+    const tool = Object.hasOwn(state.sessions, id) ? state.sessions[id].tool : undefined;
+    const group = tool !== undefined && Object.hasOwn(state.panes, tool) ? state.panes[tool] : undefined;
+    return group?.panes.find((pane) => pane.session === id)?.id ?? '';
+  });
+}
+
+/** What a tool draws: its visible panes, their shares and the active one (`selectors.paneLayout`). */
+export function usePaneLayout(tool: ToolId | null): PaneLayout | null {
+  const { store } = usePanel();
+  return usePanelSelector((state) => (tool === null ? null : store.selectors.paneLayout(state, tool)));
 }

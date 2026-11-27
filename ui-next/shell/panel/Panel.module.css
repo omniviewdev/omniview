@@ -43,16 +43,16 @@
 
   /* A drag in progress: the window carries the attribute, so the line shows whatever the pointer is over, text selection is off and the cursor stays what it is. Written on the window's element,
      once at the start and once at the end: never on <html> (S99 writes it there; a root change restyles the page). */
-  :global([data-shell-part='window'][data-resizing]) {
+  :global([data-shell-part='window'][data-resizing='y']) {
     cursor: row-resize;
     user-select: none;
   }
 
-  :global([data-shell-part='window'][data-resizing]) .handle {
+  :global([data-shell-part='window'][data-resizing='y']) .handle {
     background-color: var(--ov-hover-toolbar);
   }
 
-  :global([data-shell-part='window'][data-resizing]) .handle::after {
+  :global([data-shell-part='window'][data-resizing='y']) .handle::after {
     background-color: var(--ov-accent);
   }
 
@@ -93,6 +93,11 @@
     min-block-size: 0;
   }
 
+  /* A group of panes laid out as a column (stacked): the bodies and the sashes between them in a column, the model's `axis`. */
+  .body[data-axis='column'] {
+    flex-direction: column;
+  }
+
   .body:focus-visible {
     outline: 2px solid var(--ov-accent);
     outline-offset: -2px;
@@ -102,6 +107,10 @@
   .slot {
     display: flex;
     flex: 1 1 0;
+    /* The share of a body in a group of panes (`--_share`, the model's ratio: the bodies share the room in proportion, so a pane that is hidden gives its room to the others); a body alone has none and grows as it always did. */
+    flex-grow: var(--_share, 1);
+    /* Where the body sits in its group of panes (`--_order`: twice its index, so that a sash is the odd number between two bodies); a body alone has none. */
+    order: var(--_order, 0);
     min-inline-size: 0;
     min-block-size: 0;
   }

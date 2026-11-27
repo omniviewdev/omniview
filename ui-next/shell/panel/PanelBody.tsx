@@ -1,7 +1,11 @@
 import { isIconName } from '@omniviewdev/kit';
+import { useRef } from 'react';
 import type { SessionId } from '../core/panel';
 import { usePanel } from './context';
-import { useActiveSession, useActiveTool, useIsShown, useMounted, useOpen, useSession, useToolItem } from './hooks';
+import { useActiveSession, useActiveTool, useIsShown, useMounted, useOpen, usePaneId, usePaneIndex, usePaneLayout, usePaneShare, useSession, useToolItem } from './hooks';
+import { PaneRoomProvider } from './panes/room';
+import { PaneSash } from './panes/PaneSash';
+import { usePaneDeck } from './panes/usePaneDeck';
 import styles from './Panel.module.css';
 import { PanelEmpty } from './PanelEmpty';
 import { bodyId, sessionTabId, toolTabId } from './words';
@@ -15,15 +19,43 @@ type SlotProps = { readonly id: SessionId; readonly prefix: string };
  * may skip the work only a visible body needs. The slot reads its own session and whether it is on screen, and renders for nothing else: a change in another session leaves it alone.
  */
 function BodySlot({ id, prefix }: SlotProps) {
-  const { renderBody } = usePanel();
+  const { store, renderBody } = usePanel();
   const session = useSession(id);
   const shown = useIsShown(id);
+  // A body in a group of panes sits in its pane's place (`order`: the panes are laid out in the group's order whatever order the bodies were mounted in, which is not moved so that no body is remounted) and takes its share of
+  // the room (`--_share`); a click or the keyboard in it makes its pane the active one.
+  const index = usePaneIndex(id);
+  const share = usePaneShare(id);
+  const pane = usePaneId(id);
   if (session === undefined) {
     return null;
   }
 
+  const placed = index >= 0 && shown;
   return (
-    <div id={bodyId(prefix, id)} className={styles.slot} hidden={!shown} data-shell-part="panelBody" data-session-id={id}>
+    <div
+      id={bodyId(prefix, id)}
+      className={styles.slot}
+      hidden={!shown}
+      style={{ '--_share': placed ? String(share) : undefined, '--_order': placed ? String(2 * index) : undefined }}
+      data-shell-part="panelBody"
+      data-session-id={id}
+      data-pane={placed ? pane : undefined}
+      onFocus={
+        placed
+          ? () => {
+            store.focusPane(session.tool, pane);
+          }
+          : undefined
+      }
+      onPointerDownCapture={
+        placed
+          ? () => {
+            store.focusPane(session.tool, pane);
+          }
+          : undefined
+      }
+    >
       {renderBody(session, shown)}
     </div>
   );
@@ -50,9 +82,22 @@ export function PanelBody({ prefix, id }: PanelBodyProps) {
   const add = tool === null ? undefined : newSessionOf(tool);
   const words = tool === null ? undefined : emptyOf?.(tool);
   const singleton = tool === null || !open ? undefined : renderTool?.(tool);
+  const layout = usePaneLayout(open ? tool : null);
+  const deck = useRef<HTMLDivElement>(null);
+  const room = usePaneDeck(deck, tool, layout);
+  const several = layout !== null && layout.panes.length > 1;
   const labelledBy = active !== null ? sessionTabId(prefix, active) : tool !== null ? toolTabId(prefix, tool) : undefined;
   return (
-    <div id={id} className={styles.body} role="tabpanel" aria-labelledby={labelledBy} aria-label={labelledBy === undefined ? 'Panel' : undefined} data-shell-part="panelDeck">
+    <div
+      ref={deck}
+      id={id}
+      className={styles.body}
+      role="tabpanel"
+      aria-labelledby={labelledBy}
+      aria-label={labelledBy === undefined ? 'Panel' : undefined}
+      data-axis={several ? layout.axis : undefined}
+      data-shell-part="panelDeck"
+    >
       {tool === null ? <PanelEmpty icon="panel-bottom" title="No tools" hint="Tools appear here when a plugin brings one." /> : null}
       {tool !== null && active === null && singleton === undefined ? (
         <PanelEmpty
@@ -67,9 +112,16 @@ export function PanelBody({ prefix, id }: PanelBodyProps) {
           {singleton}
         </div>
       )}
-      {mounted.map((sessionId) => (
-        <BodySlot key={sessionId} id={sessionId} prefix={prefix} />
-      ))}
+      <PaneRoomProvider value={room}>
+        {mounted.map((sessionId) => (
+          <BodySlot key={sessionId} id={sessionId} prefix={prefix} />
+        ))}
+      </PaneRoomProvider>
+      {several && tool !== null
+        ? layout.panes.slice(1).map((pane, at) => (
+          <PaneSash key={pane.id} deck={deck} tool={tool} axis={layout.axis} boundary={at} sessions={layout.panes.map((one) => one.session)} ratios={layout.ratios} prefix={prefix} />
+        ))
+        : null}
     </div>
   );
 }
