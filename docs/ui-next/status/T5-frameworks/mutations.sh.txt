@@ -82,7 +82,7 @@ run bash-preexec-first-command "$B" 's|\*__bp_precmd_invoke_cmd\*) __bp_preexec_
 # bash: the first prompt command returns 0, not the status: the framework's hook (starship's $?) sees 0 after `false`. (zsh hands
 # every hook the status of the command whatever a hook before it returns, so there the fault is to read $? late, below.)
 # bash 5.3: bash-preexec's PS0 hook and the epilogue of the prompt commands are taken for the user's command.
-run bash-preexec-ps0-not-ignored "$B" 's|__bp_\*) return "$__omniview_ret" ;; esac|__bp_NEVER*) return "$__omniview_ret" ;; esac|' "$T1 $T9"
+run bash-preexec-ps0-not-ignored "$B" 's#__bp_invoke_preexec_from_ps0 "$_"#__bp_NEVER#; s#__bp_interactive_mode)#__bp_NEVER2)#' "$T1 $T9"
 
 # The match on bash-preexec's commands is too broad (every __bp_*): a user's command of that name is no record.
 run bash-preexec-match-too-broad "$B" 's#^    case $BASH_COMMAND in .__bp_precmd_invoke_cmd.*#    case $BASH_COMMAND in __bp_*) return "$__omniview_ret" ;; esac#' "TestAUsersCommandNamedLikeBashPreexecsIsStillRecorded"
