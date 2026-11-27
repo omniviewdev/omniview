@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { restorePanel, serialise } from './persist';
+import { LAYOUT_MIGRATIONS, restorePanel, serialise } from './persist';
 import { checkInvariants } from './state';
 import { boot, session, tool, type Harness } from './testing';
 import type { PersistedPanel } from './types';
@@ -131,6 +131,23 @@ describe('a window saved before panes', () => {
   it('is not rejected for the missing layout: a document with no layout, an empty one, and a layout of no tools all read', () => {
     for (const layout of [undefined, { version: 1, tools: {} }]) {
       expect(restore({ ...old, layout }), JSON.stringify(layout)).toMatchObject({ ok: true, repaired: false });
+    }
+  });
+});
+
+describe('the layout\'s own migrations', () => {
+  it('are a table of their own, empty at version 1', () => {
+    expect(Object.keys(LAYOUT_MIGRATIONS)).toEqual([]);
+  });
+
+  it('an unknown version is dropped with the reason recorded, never read half way: newer, older with no step, not a whole number', () => {
+    for (const version of [2, 0, 1.5, '1']) {
+      const restored = restore(withLayout({ ...layoutOf(['a', 'b'], [0.5, 0.5]), version }));
+      expect(restored, String(version)).toMatchObject({ ok: true, repaired: true });
+      if (restored.ok) {
+        expect(restored.state.panes).toEqual({});
+        expect(restored.problems.some((one) => one.startsWith('the layout is dropped: ')), String(version)).toBe(true);
+      }
     }
   });
 });

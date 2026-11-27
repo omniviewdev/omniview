@@ -95,6 +95,18 @@ describe('split', () => {
     expect(group(h)?.panes).toHaveLength(3);
   });
 
+  it('keeps ONE axis per tool (flat groups, as a terminal group is): another axis for a tool that has panes is refused, the same one or none is fine', () => {
+    const h = terminalWith(1);
+    expect(h.store.splitPane('terminal', shell('two'), { extent: EXTENT, axis: 'column' }).status).toBe('done');
+    expect(group(h)?.axis).toBe('column');
+    const before = h.snapshot();
+    expect(h.store.splitPane('terminal', shell('three'), { extent: EXTENT, axis: 'row' })).toMatchObject({ status: 'refused', reason: 'axis' });
+    expect(h.snapshot()).toBe(before);
+    expect(h.store.splitPane('terminal', shell('three'), { extent: EXTENT, axis: 'column' }).status).toBe('done');
+    expect(h.store.splitPane('terminal', shell('four'), { extent: EXTENT }).status).toBe('done');
+    expect(group(h)?.axis).toBe('column');
+  });
+
   it('is refused for a tool that is not there, a plugin that is not live, and a session with no title', () => {
     const h = terminalWith(1);
     const before = h.snapshot();
@@ -126,6 +138,19 @@ describe('the active pane', () => {
     expect(h.store.focusPane('terminal', 'p9')).toMatchObject({ status: 'refused', reason: 'missing' });
     expect(h.store.focusPane('logs', 'p1')).toMatchObject({ status: 'refused', reason: 'missing' });
     expect(h.snapshot()).toBe(before);
+  });
+
+  it('cannot be a pane whose session is hidden (its plugin is off): refused, and nothing changes', () => {
+    const h = boot({ hostTools: HOST_TOOLS, plugins: { acme: [tool('one', 'One', 30)], beta: [] } });
+    h.store.openSession(session('acme:one', 'acme', 'a'));
+    h.store.splitPane('acme:one', { plugin: 'beta', title: 'b' }, { extent: EXTENT });
+    h.store.splitPane('acme:one', { plugin: 'acme', title: 'c' }, { extent: EXTENT });
+    h.store.focusPane('acme:one', 'p1');
+    h.store.syncPlugins([{ id: 'acme', tools: [tool('one', 'One', 30)] }]);
+    const before = h.snapshot();
+    expect(h.store.focusPane('acme:one', 'p2')).toMatchObject({ status: 'refused', reason: 'missing' });
+    expect(h.snapshot()).toBe(before);
+    expect(h.store.focusPane('acme:one', 'p3')).toMatchObject({ status: 'done' });
   });
 
   it('follows the session a tab chooses when that session is in a pane', () => {

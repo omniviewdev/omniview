@@ -11,7 +11,7 @@ const DONE: PanelResult = Object.freeze({ status: 'done' });
 export type SplitOptions = {
   /** The panel's length along the group's axis in pixels: the layout knows it, the model does not. A pane needs `PANE_MIN_PX` of it. */
   readonly extent: number;
-  /** How a tool's first split lays its panes out; a tool that has panes keeps its axis. Default: `row`. */
+  /** How a tool's first split lays its panes out; a group has ONE axis (flat, as a terminal group is: no nesting), so another axis for a tool that has panes is refused (`axis`). Default: `row`. */
   readonly axis?: PaneAxis | undefined;
 };
 
@@ -45,6 +45,10 @@ export function splitPane(state: PanelState, tool: ToolId, input: Omit<SessionIn
   if (beside === null) {
     const opened = openSession(state, { ...input, tool: id }, ctx);
     return opened.result.status === 'done' ? { state: opened.state, result: { status: 'done', id: opened.result.id, pane: slot(1) } } : { state, result: opened.result };
+  }
+
+  if (group !== undefined && options.axis !== undefined && options.axis !== group.axis) {
+    return refuse(state, 'axis', `The panes of ${id} are laid out as a ${group.axis}: a group has one axis.`);
   }
 
   const count = group?.panes.length ?? 1;

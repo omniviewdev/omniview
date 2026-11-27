@@ -16,6 +16,9 @@ export type { Migration, MigrateResult };
 /** The steps from every older version, keyed by the version they start from. Empty at version 1: the first release has nothing to migrate from. */
 export const MIGRATIONS: Readonly<Record<number, Migration>> = Object.freeze({});
 
+/** The steps from every older version of the saved LAYOUT, keyed by the version they start from. Empty at version 1; a layout change bumps `LAYOUT_VERSION` and adds its step here. */
+export const LAYOUT_MIGRATIONS: Readonly<Record<number, Migration>> = Object.freeze({});
+
 /** What a session that was restored says: it was running in the last life of the app, and nothing is running now (the mock: "Session ended when Omniview restarted"). */
 export const RESTORED_CAUSE = 'The session ended when the app restarted.';
 
@@ -33,6 +36,11 @@ export function serialise(state: PanelState): PersistedPanel {
   const active = Object.fromEntries(Object.entries(state.active).filter(([, id]) => saved.has(id)));
 
   const layout = layoutOf(state, saved);
+  // A tool with a saved group is on the session of its active pane, as `restorePanel` brings it back: the document says so itself (a session the cap cut cannot be the choice).
+  for (const [tool, one] of Object.entries(layout?.tools ?? {})) {
+    active[tool] = one.sessions[one.active];
+  }
+
   return { version: PANEL_VERSION, open: state.open, height: state.height, tool: state.tool, active, sessions, ...(layout === undefined ? {} : { layout }) };
 }
 
@@ -187,18 +195,20 @@ function readLayout(raw: unknown, sessions: ReadonlyMap<SessionId, Session>, act
     return groups;
   }
 
-  if (!isPlainObject(raw) || raw.version !== LAYOUT_VERSION) {
-    problems.push('the layout is not a layout of a version this build reads');
+  const migrated = migrate(raw, { current: LAYOUT_VERSION, steps: LAYOUT_MIGRATIONS });
+  if (!migrated.ok) {
+    problems.push(`the layout is dropped: ${migrated.detail}`);
     return groups;
   }
 
-  if (!isPlainObject(raw.tools)) {
+  const layout = migrated.value;
+  if (!isPlainObject(layout.tools)) {
     problems.push('the layout has no tools');
     return groups;
   }
 
   const used = new Set<SessionId>();
-  for (const [tool, entry] of Object.entries(raw.tools)) {
+  for (const [tool, entry] of Object.entries(layout.tools)) {
     const group = readGroup(tool, entry, sessions, active.get(tool), used, (why) => problems.push(`the layout of ${tool} ${why}`));
     if (group !== undefined) {
       groups.set(tool, group);

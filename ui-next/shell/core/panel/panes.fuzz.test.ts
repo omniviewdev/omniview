@@ -97,6 +97,9 @@ function step(store: PanelStore, next: () => number, tally: Tally): { name: stri
       if (result.status === 'done') {
         expect(Object.keys(store.getSnapshot().sessions).length, 'a split adds exactly one session').toBe(ids.length + 1);
         expect(ids).not.toContain(result.id);
+        // A split that is done never overfills: every pane of the group can have its minimum of the extent the split was told.
+        const after = Object.hasOwn(store.getSnapshot().panes, toolId) ? store.getSnapshot().panes[toolId] : undefined;
+        expect((after?.panes.length ?? 1) * PANE_MIN_PX, `a split that is done leaves room for every pane in ${String(extent)} px`).toBeLessThanOrEqual(extent);
       }
 
       return { name: 'split', tool: toolId, extent: result.status === 'done' ? extent : undefined };
@@ -196,6 +199,13 @@ describe('the panes under random operations', () => {
       store.syncPlugins([{ id: 'acme', tools: [tool('one')] }, { id: 'beta', tools: [] }]);
       const next = generator(seed);
       for (let operation = 0; operation < 120; operation += 1) {
+        // Session pressure: in one seed of three, past the middle of the run, more sessions are opened than the saved panel keeps (50), so the oldest panes are cut from the document.
+        if (seed % 3 === 0 && operation === 60) {
+          for (let i = 0; i < 55; i += 1) {
+            store.openSession({ tool: 'logs', plugin: 'host', title: `bulk ${String(i % 4)}` }, { reveal: false });
+          }
+        }
+
         const done = step(store, next, tally);
         const state = store.getSnapshot();
         const where = `seed ${String(seed)}, operation ${String(operation)} (${done.name})`;
@@ -253,6 +263,26 @@ describe('the panes under random operations', () => {
       const saved = new Set(document.sessions.map((one) => one.id));
       for (const [toolId, group] of Object.entries(state.panes)) {
         const kept = group.panes.filter((pane) => saved.has(pane.session));
+        if (kept.length !== group.panes.length) {
+          count(tally, kept.length < 2 ? 'cap:group lost' : 'cap:group cut');
+        }
+
+        // The document itself: the sessions the cap kept, in order, the shares of those renormalised to sum to 1 in the proportion they had, and the index of the active pane (the last when it was cut).
+        const written = document.layout?.tools[toolId];
+        if (kept.length < 2) {
+          expect(written, `seed ${String(seed)}: ${toolId} is not written with fewer than two saved panes`).toBeUndefined();
+        } else {
+          const heldShares = group.panes.flatMap((pane, index) => (saved.has(pane.session) ? [group.ratios[index]] : []));
+          const heldTotal = heldShares.reduce((sum, one) => sum + one, 0);
+          expect(written?.sessions, `seed ${String(seed)}: ${toolId} saved sessions`).toEqual(kept.map((pane) => pane.session));
+          expect(Math.abs((written?.ratios.reduce((sum, one) => sum + one, 0) ?? 0) - 1), `seed ${String(seed)}: ${toolId} saved shares sum to 1`).toBeLessThanOrEqual(EPSILON);
+          written?.ratios.forEach((one, index) => {
+            expect(one, `seed ${String(seed)}: ${toolId} saved share ${String(index)}`).toBeCloseTo(heldShares[index] / heldTotal, 9);
+          });
+          const activeAt = kept.findIndex((pane) => pane.id === group.active);
+          expect(written?.active, `seed ${String(seed)}: ${toolId} saved active index`).toBe(activeAt === -1 ? kept.length - 1 : activeAt);
+        }
+
         const back = Object.hasOwn(restored.state.panes, toolId) ? restored.state.panes[toolId] : undefined;
         if (kept.length < 2) {
           expect(back, `seed ${String(seed)}: ${toolId} has fewer than two saved panes`).toBeUndefined();
@@ -293,7 +323,7 @@ describe('the panes under random operations', () => {
       'equalise:done': 20, 'equalise:noop': 50, 'equalise:refused': 50,
       'fit:done': 8, 'fit:noop': 50, 'fit:refused': 50,
       'close:in a pane': 100, 'close:in no pane': 100, 'close:dissolved a group': 50, 'activate:maybe swapped': 100,
-      'layout:2 panes': 1000, 'layout:3 panes': 500, 'layout:4 panes': 200, 'min:checked': 500, 'restore:group whole': 40, 'old:panes stripped': 30,
+      'layout:2 panes': 1000, 'layout:3 panes': 500, 'layout:4 panes': 200, 'min:checked': 500, 'restore:group whole': 40, 'cap:group cut': 3, 'old:panes stripped': 30,
     };
     for (const [event, floor] of Object.entries(floors)) {
       expect(tally.get(event) ?? 0, `event ${event}`).toBeGreaterThan(floor);

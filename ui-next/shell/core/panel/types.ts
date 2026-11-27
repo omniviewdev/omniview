@@ -171,6 +171,8 @@ export type RefusedReason =
   | 'held'
   /** The tool has no room for another pane: each pane needs its minimum along the axis (`PANE_MIN_PX`). */
   | 'full'
+  /** The tool's panes are laid out on the other axis: a group has one axis, as a terminal group does. */
+  | 'axis'
   /** The person named the session (`renameSession`): its owner may not name it again. */
   | 'pinned';
 export type Refused = { readonly status: 'refused'; readonly reason: RefusedReason; readonly message: string };

@@ -11,7 +11,7 @@ export type { SplitOptions } from './panes';
 export { PANE_MIN_PX, RATIO_EPSILON, equalRatios, fitRatios, minRatio, moveBoundary } from './ratios';
 export { COLLAPSE_BELOW, MIN_HEIGHT, ROOM_ABOVE, collapses, defaultHeight, heightKey, limitsOf, resolveHeight } from './height';
 export type { HeightKey, HeightLimits } from './height';
-export { restorePanel, serialise, MIGRATIONS, RESTORED_CAUSE } from './persist';
+export { restorePanel, serialise, LAYOUT_MIGRATIONS, MIGRATIONS, RESTORED_CAUSE } from './persist';
 export type { MigrateResult, Migration, RestoreOptions, RestoreResult } from './persist';
 export { createPanelSaver } from './saver';
 export type { PanelSaverOptions } from './saver';
