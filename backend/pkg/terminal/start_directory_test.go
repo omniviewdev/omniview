@@ -5,7 +5,6 @@ package terminal
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -57,7 +56,7 @@ func TestAStartDirectoryThatIsAFileOrGoneOrRelativeStartsNothing(t *testing.T) {
 			_, err := m.Start(Options{Command: []string{sh(t)}, Cwd: cwd}, nil)
 			problem := appErr(t, err)
 			assert.Equal(t, "INVALID_REQUEST", problem.Code)
-			assert.True(t, strings.Contains(problem.Detail, "cwd"), "the detail names cwd: %q", problem.Detail)
+			assert.Contains(t, problem.Detail, "cwd", "the detail names cwd")
 			assert.Len(t, m.running(), before)
 		})
 	}
