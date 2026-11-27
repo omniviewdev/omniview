@@ -127,8 +127,8 @@ export type ScreenCommands = {
   readonly revision: () => string;
   readonly state: () => { readonly count: number; readonly output: boolean; readonly rerun: string | undefined };
   readonly jump: (direction: 'previous' | 'next', options?: { readonly select?: boolean }) => void;
-  /** Moves the view to the command with this id and says where it went: whether the screen holds it. */
-  readonly reveal: (command: string, generation?: number) => boolean;
+  /** Moves the view to the command with this id and says where it went. Held until the screen has placed the marks it holds (the feed's held output and the markers of its replay), then done once: a command the placed screen does not hold is said to be gone, once. */
+  readonly reveal: (command: string, generation?: number) => void;
   readonly selectOutput: () => void;
   readonly copyOutput: () => Promise<boolean>;
   /** Types the target's command line into the shell (and Enter only for a line the shell proved). */
@@ -287,11 +287,39 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
       if (markWrites === 0 && replayHeld !== undefined && pending === 0) {
         schedule();
       }
+
+      flushReveal();
     });
   }
 
   /** The writes that make markers that the emulator has not run yet: a replay is not begun while one waits (it would let go of the gutter under it). */
   let markWrites = 0;
+  /** The screen has read everything the feed held and the markers of it are made: a command can be asked for. A request made before is held (one: the newest) and done at that point. */
+  let placedOnce = false;
+  let heldReveal: { readonly command: string; readonly generation: number | undefined } | undefined;
+  const placed = (): boolean => placedOnce && engine !== undefined && markWrites === 0 && replaying === undefined && replayHeld === undefined;
+  const doReveal = (command: string, generation: number | undefined): void => {
+    if (engine?.alternate() === true) {
+      sayCommands(SCREEN_TAKEN);
+      return;
+    }
+
+    // The gutter says where it went, or that the command is gone.
+    if (gutter === undefined) {
+      sayCommands(NO_SUCH_COMMAND);
+    } else {
+      gutter.reveal(command, generation);
+    }
+  };
+
+  const flushReveal = (): void => {
+    if (heldReveal !== undefined && placed()) {
+      const { command, generation } = heldReveal;
+      heldReveal = undefined;
+      doReveal(command, generation);
+    }
+  };
+
   const commandListeners = new Set<(event: GutterEvent) => void>();
 
   const set = (change: Partial<ScreenSnapshot>) => {
@@ -370,6 +398,8 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
       if (markWrites === 0 && replayHeld !== undefined && pending === 0) {
         schedule();
       }
+
+      flushReveal();
     });
   }
 
@@ -608,6 +638,8 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
       return;
     }
 
+    placedOnce = false;
+
     // Shown, a frame takes its whole share; hidden, a smaller one: nothing is drawn then and the parse is all the work, kept to a bounded part of every frame all the same.
     const share = visible ? FLOW.frame : FLOW.hiddenFrame;
     let taken = 0;
@@ -662,11 +694,15 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
       taken += out.bytes;
     }
 
+    placedOnce = true;
     tellEnd(engine);
+    flushReveal();
   }
 
   /** The feed told us something: a new status is applied, and whatever it is the output it holds is drawn in the next frame. */
   function heard(): void {
+    // The feed holds something that has not been read: the marks it holds are not placed until the next frame has read them.
+    placedOnce = false;
     const status = feed.getSnapshot();
     if (status !== lastStatus) {
       lastStatus = status;
@@ -987,17 +1023,8 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
       gutter?.jump(direction, options);
     },
     reveal: (command, generation) => {
-      if (engine?.alternate() === true) {
-        sayCommands(SCREEN_TAKEN);
-        return false;
-      }
-
-      if (gutter === undefined) {
-        sayCommands(NO_SUCH_COMMAND);
-        return false;
-      }
-
-      return gutter.reveal(command, generation) !== undefined;
+      heldReveal = { command, generation };
+      flushReveal();
     },
     selectOutput: () => {
       if (engine?.alternate() === true) {
