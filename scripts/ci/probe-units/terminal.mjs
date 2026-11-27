@@ -269,6 +269,17 @@ export const units = [
     seconds: 60,
   },
 
+  // Where a terminal opens and what it is called (issue #695 steps 2 to 5): the menu beside the + that lists the shells (rows, keys, the choice), the title a program sets on the tab (bounded, as text) and the rename in place, the lane of an
+  // ended terminal that offers Restart, and axe (the sections are in terminal-where.mjs; the host is the probe's own, whose synthetic shell speaks the title frame). WebKit and Chromium at both viewports. 200 s is an ESTIMATE from the laptop
+  // (the probe took 194 s with the build of the fixture, load 8.6): the nightly corrects it.
+  {
+    id: 'terminal-where',
+    name: 'Probe that the shell menu, the program title, the rename and the Restart of an ended terminal are drawn and work',
+    script: 'ui-next/shell/probes/terminal-where-probe.mjs',
+    env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/terminal-where-probe.json' },
+    seconds: 200,
+  },
+
   // T3a: find in the scrollback, the context menu of the terminal and the links in its output (the sections are in terminal-find.mjs, the fixture is terminal-fixture.tsx, the mock's bar is measured by
   // mock-terminal-find-measure.mjs), four probes of their own, WebKit and Chromium at both viewports. The seconds are the laptop's measure times 1.3: the sections wait on what the page shows and on counters, with no clock,
   // so they take 1 to 5 s each at each of the four sizes.
@@ -365,5 +376,15 @@ export const units = [
     controls: ['gutter-covers-text', 'gutter-alt-shown', 'gutter-marks-never', 'gutter-tip-stuck', 'gutter-tip-never', 'gutter-jump-lost', 'gutter-clipboard-dropped', 'gutter-reload-forgets', 'gutter-axe'],
     plants: 'page',
     seconds: 120,
+  },
+  {
+    id: 'terminal-controls-where',
+    name: 'Probe that the where probe sees a menu with no default, one that loses the keyboard, a wrong shell asked for, a title kept after its program, a title that was never cleaned, a rename a title takes, a Restart that is not drawn, a transcript that is gone, and a violation',
+    script: 'ui-next/shell/probes/terminal-probe.mjs',
+    env: { FONT_DELAY_MS: '40' },
+    controls: ['where-menu-default-unmarked', 'where-menu-focus-lost', 'where-menu-wrong-shell', 'where-title-kept', 'where-title-raw', 'where-rename-unpinned', 'where-restart-hidden', 'where-restart-transcript-lost', 'where-axe'],
+    plants: 'page',
+    // An ESTIMATE from the laptop, to be set from the first nightly figure.
+    seconds: 200,
   },
 ];

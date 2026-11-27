@@ -64,6 +64,7 @@ import { AXE } from './harness.mjs';
 import { createFindSections, FIND_CONTROLS, FIND_PARTS } from './terminal-find.mjs';
 import { createGutterSections, GUTTER_CONTROLS, GUTTER_PARTS } from './terminal-gutter.mjs';
 import { createReattachSections, REATTACH_CONTROLS, REATTACH_PARTS } from './terminal-reattach.mjs';
+import { createWhereSections, WHERE_CONTROLS, WHERE_PARTS } from './terminal-where.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '../../..');
@@ -197,6 +198,7 @@ const CONTROLS = {
   // The T3a assertions: find in the scrollback, the context menu, the links in the output. Their sections, their parts and their controls are in terminal-find.mjs.
   ...FIND_CONTROLS,
   ...GUTTER_CONTROLS,
+  ...WHERE_CONTROLS,
 };
 if (CONTROL !== '' && CONTROL !== 'all' && CONTROLS[CONTROL] === undefined) throw new Error(`NEGATIVE_CONTROL must be all or one of ${Object.keys(CONTROLS).join(', ')}`);
 
@@ -1808,7 +1810,7 @@ async function screenreaderCost(ctx) {
   await page.context().close();
 }
 
-const SECTIONS = { geometry, words, title, ended, start: refusals, keys, close, resize, size, bundle, paint, axe, screenreader, 'screenreader-cost': screenreaderCost, hidden, idle, commits, flood, latency, memory, order, ...createReattachSections({ check, note, report, runAxe }), ...createFindSections({ check, note, report, runAxe }), ...createGutterSections({ check, note, report, runAxe }) };
+const SECTIONS = { geometry, words, title, ended, start: refusals, keys, close, resize, size, bundle, paint, axe, screenreader, 'screenreader-cost': screenreaderCost, hidden, idle, commits, flood, latency, memory, order, ...createReattachSections({ check, note, report, runAxe }), ...createFindSections({ check, note, report, runAxe }), ...createGutterSections({ check, note, report, runAxe }), ...createWhereSections({ check, note, report, runAxe }) };
 /** The two parts the probe is run in, by the units of CI: the sections of the page (what a person sees and does) and those of the data path (what flows, and what it costs). Every section is in one and only one. */
 const PARTS = {
   view: ['geometry', 'words', 'title', 'ended', 'start', 'keys', 'close', 'resize', 'size', 'bundle', 'paint', 'axe', 'screenreader', 'screenreader-cost'],
@@ -1816,6 +1818,7 @@ const PARTS = {
   ...REATTACH_PARTS,
   ...FIND_PARTS,
   ...GUTTER_PARTS,
+  ...WHERE_PARTS,
 };
 {
   const named = Object.values(PARTS).flat();
