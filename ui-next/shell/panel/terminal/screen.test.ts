@@ -3159,3 +3159,38 @@ describe('review of #791: a restart over a replay that is still being applied, a
     expect(next.replies()).toEqual(['reply of the new shell']);
   });
 });
+
+describe('review of #791: replies to the new feed\'s output while old bytes are still pending (#695 step 5)', () => {
+  it('reaches the new feed: the barrier after the old writes ends the muting, and a query in the new output is answered', async () => {
+    const r = rig({ auto: false, answers: [['\u001b[6n', '\u001b[1;1R']] });
+    r.screen.mount(r.host);
+    r.screen.show();
+    await r.settle();
+    r.frame();
+    r.feed.push('old bytes');
+    r.frame();
+    expect(r.engine().pendingWrites()).toBeGreaterThan(0);
+    const next = fakeTerminalFeed({ state: 'running', takeReplay: true });
+    r.screen.continueWith(next);
+    next.push('\u001b[6n');
+    r.frame();
+    r.engine().complete();
+    r.frame();
+    r.engine().complete();
+    expect(next.replies()).toEqual(['\u001b[1;1R']);
+  });
+
+  it('still mutes what the old queued bytes make the emulator answer', async () => {
+    const r = rig({ auto: false, answers: [['\u001b[6n', '\u001b[1;1R']] });
+    r.screen.mount(r.host);
+    r.screen.show();
+    await r.settle();
+    r.frame();
+    r.feed.push('\u001b[6n');
+    r.frame();
+    const next = fakeTerminalFeed({ state: 'running', takeReplay: true });
+    r.screen.continueWith(next);
+    r.engine().complete();
+    expect(next.replies()).toEqual([]);
+  });
+});

@@ -669,3 +669,19 @@ describe('running again a command of the terminal before a restart (#695 step 5)
     expect(gutter.rerun(fresh)).toEqual({ text: 'ls', enter: true });
   });
 });
+
+describe('review of #791: an old command with a line break is not typed (#695 step 5)', () => {
+  it('refuses the line of an earlier terminal\'s proven command when it has a line break: it is typed without Enter, and with bracketed paste off a pasted line feed is a carriage return that runs its first line', async () => {
+    const { gutter, run } = setup();
+    await run('echo a\necho b', 'a\r\nb\r\n', { id: 'c1', exit: 0 });
+    gutter.seal();
+    const [old] = gutter.commands();
+    expect(gutter.rerun(old)).toBeUndefined();
+  });
+
+  it('still runs a multi-line proven command of the terminal that runs, as before: the shell proved it and Enter is pressed', async () => {
+    const { gutter, run } = setup();
+    await run('echo a\necho b', 'a\r\nb\r\n', { id: 'c1', exit: 0 });
+    expect(gutter.rerun()).toEqual({ text: 'echo a\necho b', enter: true });
+  });
+});

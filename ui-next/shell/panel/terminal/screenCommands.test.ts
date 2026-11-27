@@ -461,3 +461,17 @@ describe('what a restart must not lose of the gutter (#695 step 5)', () => {
     expect(events.at(-1)).toEqual({ kind: 'said', words: 'The command line is typed from the terminal before the restart; press Enter to run it' });
   });
 });
+
+describe('review of #791: nothing with a line break reaches the new shell from an old command (#695 step 5)', () => {
+  it('types nothing of an earlier terminal\'s multi-line command, with bracketed paste off or on', async () => {
+    const { feed, frame, screen, engine } = await rig();
+    feed.push('$ a\r\n', [placed(0, A()), placed(2, B()), placed(5, C('touch /tmp/x\necho b')), placed(5, D(0))]);
+    frame();
+    feed.set({ state: 'ended', exit: { code: 0 } });
+    const next = fakeTerminalFeed({ state: 'running', takeReplay: true });
+    screen.continueWith(next);
+    screen.commands.rerun();
+    expect(engine().pastes).toEqual([]);
+    expect(next.typed().join('')).not.toMatch(/[\r\n]/);
+  });
+});
