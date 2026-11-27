@@ -48,6 +48,9 @@ export function createPluginPages(read: SettingsClient['inventory'], create: (pl
     const mine = ++generation;
     if (snapshot.phase === 'failed') {
       publish({ ...snapshot, phase: 'loading' });
+      if (disposed || mine !== generation) {
+        return;
+      }
     }
 
     void read().then((inventory) => {
@@ -81,6 +84,11 @@ export function createPluginPages(read: SettingsClient['inventory'], create: (pl
           scopes.set(id, session);
           session.subscribe(schemaChanged);
           session.load();
+        }
+
+        // A synchronous subscriber can close Settings or start a newer inventory refresh.
+        if (disposed || mine !== generation) {
+          return;
         }
 
         entries.push({ id: pluginPageId(id), pluginId: id, title: name.trim() || id, description, icon, session });

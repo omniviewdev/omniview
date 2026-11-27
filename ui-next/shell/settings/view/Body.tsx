@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalS
 import type { FormStore } from '../../core/fields';
 import type { PageMemory } from '../host';
 import type { SettingsModel } from '../model/adapter';
-import type { SettingsSession } from '../model/session';
+import type { SessionState, SettingsSession } from '../model/session';
 import { Nav, type NavNotice } from './Nav';
 import { Page, type HeadingLevel, type PageView } from './Page';
 import { focusSetting } from './SettingRow';
@@ -40,20 +40,29 @@ function clearSecrets(model: SettingsModel, form: FormStore): void {
 
 function Ready({ headingLevel, model, form, session, memory }: ReadyProps) {
   const plugins = useSyncExternalStore(session.plugins.subscribe, session.plugins.getSnapshot);
-  const { pages, notices, loading } = useMemo(() => {
+  const { pages, notices, loading, unavailable } = useMemo(() => {
     const pages: PageView[] = model.pages.map(page => ({ ...page, branch: 'core', form, session }));
     const notices: NavNotice[] = [];
-    const loading = new Set<string>();
+    const unavailable = new Map<string, Exclude<SessionState, { phase: 'ready' }>>();
+    let loading = plugins.phase === 'loading';
     if (plugins.phase === 'failed') {
       notices.push({ id: 'notice:inventory', label: 'Couldn’t list plugins. Retry', retry: session.plugins.refresh });
     }
 
     for (const plugin of plugins.entries) {
       const state = plugin.session.getState();
+      if (state.phase !== 'ready') {
+        unavailable.set(plugin.id, state);
+      }
+
       if (state.phase === 'loading') {
-        loading.add(plugin.id);
+        loading = true;
+        if (state.warning) {
+          notices.push({ id: `warning:${plugin.id}`, label: `${plugin.title}: ${state.warning}` });
+        }
       } else if (state.phase === 'failed') {
-        notices.push({ id: `retry:${plugin.id}`, label: `Couldn’t load settings for ${plugin.title}. Retry`, retry: plugin.session.load });
+        const message = state.warning ? `${plugin.title}: ${state.warning}` : `Couldn’t load settings for ${plugin.title}.`;
+        notices.push({ id: `retry:${plugin.id}`, label: `${message} Retry`, retry: plugin.session.load });
       } else {
         const declared = state.model.pages[0];
         if (declared) {
@@ -71,17 +80,19 @@ function Ready({ headingLevel, model, form, session, memory }: ReadyProps) {
       }
     }
 
-    if (plugins.phase === 'loading' || loading.size > 0) {
+    if (loading) {
       notices.push({ id: 'notice:loading', label: 'Loading plugin settings…' });
     }
 
-    return { pages, notices, loading };
+    return { pages, notices, loading, unavailable };
   }, [model, form, session, plugins]);
 
   const [selected, setSelected] = useState<string | undefined>(() => memory.get() ?? pages[0]?.id);
   const wanted = pages.find(candidate => candidate.id === selected);
-  // A remembered plugin can arrive after Core. Don't replace its selection until discovery actually settles.
-  const waiting = selected !== undefined && selected.startsWith('plugin/') && (plugins.phase === 'loading' || loading.has(selected));
+  const selectedState = selected === undefined ? undefined : unavailable.get(selected);
+  const warning = selectedState?.warning;
+  // Keep a recovering plugin selected, including while its Retry action is available.
+  const waiting = selected !== undefined && selected.startsWith('plugin/') && (plugins.phase === 'loading' || selectedState?.phase === 'loading' || warning !== undefined);
   const page = wanted ?? (waiting ? undefined : pages[0]);
   const pageId = page?.id;
   if (!waiting && pageId !== selected) {
@@ -161,7 +172,7 @@ function Ready({ headingLevel, model, form, session, memory }: ReadyProps) {
   }, [jump]);
   const announcements = (page?.session ?? session).announcements;
   const said = useSyncExternalStore(announcements.subscribe, announcements.getSnapshot);
-  const pageState = waiting || plugins.phase === 'loading' || loading.size > 0 ? 'loading' : notices.length > 0 ? 'unavailable' : 'empty';
+  const pageState = selectedState?.phase === 'failed' && warning ? 'unavailable' : loading ? 'loading' : notices.length > 0 ? 'unavailable' : 'empty';
 
   return (
     <>
@@ -180,8 +191,8 @@ function Ready({ headingLevel, model, form, session, memory }: ReadyProps) {
         <div key={pageId} className={styles.content} data-settings-part="content">
           {page ? <Page page={page} headingLevel={headingLevel} /> : (
             <div className={styles.state} role="status" data-settings-part="state" data-settings-state={pageState}>
-              {pageState === 'loading' ? <Text tone="muted">Loading settings…</Text> : (
-                <Text>{pageState === 'empty' ? 'The host has no settings to show.' : 'Couldn’t load plugin settings. Retry from the sidebar.'}</Text>
+              {pageState === 'loading' ? <Text tone="muted">{warning ?? 'Loading settings…'}</Text> : (
+                <Text>{pageState === 'empty' ? 'The host has no settings to show.' : `${warning ?? 'Couldn’t load plugin settings.'} Retry from the sidebar.`}</Text>
               )}
             </div>
           )}

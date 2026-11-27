@@ -9,11 +9,16 @@ type Slot = number | 'new';
 export function ListControl({ field, form }: { readonly field: FieldState; readonly form: FormStore }) {
   const binding = useField();
   const add = useRef<HTMLTextAreaElement>(null);
-  const [draft, setDraft] = useState<{ readonly slot: Slot; readonly value: string }>();
+  const [draft, setDraft] = useState<{ readonly base: FieldState['value']; readonly slot: Slot; readonly value: string }>();
   // The field model accepts only string arrays for this kind.
   const items: readonly string[] = Array.isArray(field.value) ? field.value : [];
   const noun = field.spec.item === 'path' ? 'path' : 'value';
   const locked = binding?.disabledReason ?? (field.readonly ? 'Read-only.' : undefined);
+
+  // Slots belong to one immutable list. A new list invalidates even a draft whose slot still exists.
+  if (draft && draft.base !== field.value) {
+    setDraft(undefined);
+  }
 
   function entry(slot: Slot, item: string) {
     const adding = slot === 'new';
@@ -26,7 +31,7 @@ export function ListControl({ field, form }: { readonly field: FieldState; reado
       }
 
       setDraft(undefined);
-      if (locked !== undefined || pending.value === item) {
+      if (locked !== undefined || pending.value === item || form.field(field.id)?.value !== pending.base) {
         return;
       }
 
@@ -51,7 +56,7 @@ export function ListControl({ field, form }: { readonly field: FieldState; reado
           placeholder={adding && !locked ? `Add a ${noun}` : undefined}
           value={pending?.value ?? item}
           onChange={event => {
-            setDraft({ slot, value: event.currentTarget.value });
+            setDraft({ base: field.value, slot, value: event.currentTarget.value });
           }}
           onBlur={commit}
           onKeyDown={event => {

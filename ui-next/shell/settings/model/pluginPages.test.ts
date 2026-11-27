@@ -264,6 +264,36 @@ describe('installed settings providers', () => {
     expect(clock.pending()).toBe(0);
   });
 
+  it('does not start another provider after a retry notification closes Settings', async () => {
+    const host = fakeHost();
+    host.plugin(metadata('first'), [field('a')]);
+    const clock = manualClock();
+    const reads: string[] = [];
+    const session = createSettingsSession({
+      scheduler: clock.scheduler,
+      client: {
+        ...host.client,
+        snapshot: async (which) => {
+          if (which.kind === 'plugin') {
+            reads.push(which.pluginId);
+            throw new Error('Unavailable');
+          }
+
+          return host.client.snapshot(which);
+        },
+      },
+    });
+    await clock.flush();
+    expect(plugin(session, 'first').getState().phase).toBe('failed');
+    session.plugins.subscribe(() => {
+      session.dispose();
+    });
+    host.plugin(metadata('second'), [field('b')]);
+    await clock.flush();
+    expect(reads).not.toContain('second');
+    expect(clock.pending()).toBe(0);
+  });
+
   it('recovers independently from inventory and provider failures without guessing a schema', async () => {
     const host = fakeHost();
     host.plugin(metadata('sometimes'), [field('real')]);

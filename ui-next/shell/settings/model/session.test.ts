@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { deferred, manualClock, SENTINEL, type ManualClock } from '../../core/fields/testing';
+import { committed, deferred, manualClock, SENTINEL, type ManualClock } from '../../core/fields/testing';
 import type { FieldState } from '../../core/fields';
-import { createSettingsSession, type SettingsSession } from './session';
-import { fakeHost, hostSnapshot, type FakeHost } from './testing';
-import { HOST_SCOPE, type HostCommit, type HostSnapshot, type SettingsClient } from './types';
+import { createSettingsSession, type ScopeSession, type SettingsSession } from './session';
+import { category, fakeHost, hostSnapshot, setting, type FakeHost } from './testing';
+import { HOST_SCOPE, type HostCommit, type HostSetting, type HostSnapshot, type SettingsClient } from './types';
 
 // The session is the sheet's whole dealing with the host: it reads the snapshot, makes the form from it, sends what the person changes (one setting at a time, as it is changed), asks the host about a typed value,
 // and follows what changes elsewhere. These tests run the REAL form model over a host that answers from memory (`testing.ts`); nothing here is a mock of the model.
@@ -18,7 +18,7 @@ async function rig(initial: Record<string, unknown> = {}, stored: Record<string,
   return { session, host, clock };
 }
 
-function ready(session: SettingsSession) {
+function ready(session: ScopeSession) {
   const state = session.getState();
   if (state.phase !== 'ready') {
     throw new Error(`the session is ${state.phase}`);
@@ -85,6 +85,174 @@ describe('loading', () => {
     first.resolve(hostSnapshot());
     await clock.flush();
     expect(host.calls.snapshot).toBe(2);
+  });
+
+  it('still retries a failed replacement read of Core without publishing the superseded snapshot', async () => {
+    const host = fakeHost();
+    const first = deferred<HostSnapshot>();
+    host.next.snapshot = async () => first.promise;
+    const clock = manualClock();
+    const session = createSettingsSession({ client: host.client, scheduler: clock.scheduler });
+    host.change('editor.fontSize', 20);
+    host.next.snapshot = async () => {
+      throw new Error('Offline');
+    };
+
+    first.resolve(hostSnapshot());
+    await clock.flush();
+    expect(session.getState().phase).toBe('failed');
+    await clock.advance(500);
+    expect(fieldOf(session, 'editor.fontSize').value).toBe(20);
+    expect(host.calls.snapshot).toBe(3);
+    session.dispose();
+  });
+});
+
+describe('plugin snapshot handoff', () => {
+  const provider = { id: 'provider', name: 'Provider', description: '', icon: '' };
+  const name = setting('name', 'text', 'Name', '', 'original');
+  const enabled = setting('enabled', 'toggle', 'Enabled', '', false);
+  const scope = { kind: 'plugin', pluginId: provider.id } as const;
+  const snapshot = (...fields: HostSetting[]): HostSnapshot => ({ categories: { plugin: category('plugin', 'Plugin', '', '', fields) } });
+
+  async function open(fields: HostSetting[], customize: (client: SettingsClient) => Partial<SettingsClient>) {
+    const host = fakeHost();
+    host.plugin(provider, fields);
+    const clock = manualClock();
+    const session = createSettingsSession({ client: { ...host.client, ...customize(host.client) }, scheduler: clock.scheduler });
+    await clock.flush();
+    const entry = session.plugins.getSnapshot().entries.find((item) => item.pluginId === provider.id);
+    if (!entry) {
+      throw new Error('Expected the plugin page.');
+    }
+
+    return { session, page: entry.session, clock, host };
+  }
+
+  it('acknowledges a persisted write without confirming the draft, and retries only the snapshot', async () => {
+    const warning = 'Settings were saved, but the provider is reloading. Its current view is unavailable.';
+    const readback = deferred<HostSnapshot>();
+    const writes: Array<Readonly<Record<string, unknown>>> = [];
+    let reads = 0;
+    const { session, page, clock } = await open([name], (client) => ({
+      commit: async (_scope, values) => {
+        writes.push(values);
+        // No changed event arrives. The missing readback alone requires another read.
+        return { snapshot: { categories: {} }, applied: true, uncertain: false, message: warning };
+      },
+      snapshot: async (which) => {
+        if (which.kind === 'plugin' && ++reads > 1) {
+          return reads === 2 ? readback.promise : snapshot({ ...name, value: 'canonical' });
+        }
+
+        return client.snapshot(which);
+      },
+    }));
+    const { form } = ready(page);
+    const confirmed: unknown[] = [];
+    form.subscribe(() => {
+      const field = form.field('name')!;
+      if (!field.dirty) {
+        confirmed.push(field.value);
+      }
+    });
+    form.setValue('name', SENTINEL);
+    expect(await form.commit('name')).toEqual({ status: 'applied' });
+    expect(confirmed).not.toContain(SENTINEL);
+    expect(page.getState()).toEqual({ phase: 'loading', warning });
+    expect(reads).toBe(2);
+    expect(form.setValue('name', 'stale')).toEqual({ status: 'refused', reason: 'disposed' });
+    expect(session.getState().phase).toBe('ready');
+
+    readback.reject(new Error('Provider restarting.'));
+    await clock.flush();
+    expect(page.getState()).toEqual({ phase: 'failed', warning });
+    page.load();
+    expect(page.getState()).toEqual({ phase: 'loading', warning });
+    await clock.flush();
+    expect(ready(page).form.field('name')).toMatchObject({ value: 'canonical', dirty: false });
+    expect(writes).toEqual([{ name: SENTINEL }]);
+    expect(reads).toBe(3);
+    session.dispose();
+  });
+
+  it('finishes the accepted save before replacing a reloaded schema, without waiting for another read', async () => {
+    const accepted = deferred<HostCommit>();
+    const writes: Array<Readonly<Record<string, unknown>>> = [];
+    const { session, page, host } = await open([enabled], () => ({
+      commit: async (_scope, values) => {
+        writes.push(values);
+        return accepted.promise;
+      },
+    }));
+    const { form } = ready(page);
+    const order: string[] = [];
+    form.subscribeTo((state) => state.fields.some((field) => field.busy), (busy) => {
+      if (!busy) {
+        order.push('settled');
+      }
+    });
+    page.subscribe(() => {
+      if (page.getState().phase === 'ready') {
+        order.push('replaced');
+      }
+    });
+    const first = committed(form.setValue('enabled', true));
+    const queued = committed(form.reset('enabled'));
+    accepted.resolve({ snapshot: snapshot({ ...enabled, value: true }, name), applied: true, uncertain: false, message: '' });
+    expect(await first).toEqual({ status: 'applied' });
+    expect(await queued).toEqual({ status: 'refused', reason: 'disposed' });
+    expect(order).toEqual(['settled', 'replaced']);
+    expect(form.setValue('enabled', false)).toEqual({ status: 'refused', reason: 'disposed' });
+    const next = ready(page);
+    expect(next.form.field('enabled')).toMatchObject({ value: true, dirty: false });
+    expect(next.form.field('name')?.value).toBe('original');
+    expect(writes).toEqual([{ enabled: true }]);
+    expect(host.pluginCalls.snapshot).toEqual([provider.id]);
+    session.dispose();
+  });
+
+  it('never publishes an initial schema superseded by a change, even while its replacement fails and retries', async () => {
+    const first = deferred<HostSnapshot>();
+    const second = deferred<HostSnapshot>();
+    let reads = 0;
+    const { session, page, host, clock } = await open([name], (client) => ({
+      snapshot: async (which) => {
+        if (which.kind === 'plugin') {
+          reads += 1;
+          if (reads === 1) {
+            return first.promise;
+          }
+
+          if (reads === 2) {
+            return second.promise;
+          }
+        }
+
+        return client.snapshot(which);
+      },
+    }));
+    const published: string[][] = [];
+    page.subscribe(() => {
+      const state = page.getState();
+      if (state.phase === 'ready') {
+        published.push(state.form.getSnapshot().fields.map((field) => field.id));
+      }
+    });
+    await host.client.commit(scope, { name: 'fresh' });
+    first.resolve(snapshot(enabled));
+    await clock.flush();
+    expect(reads).toBe(2);
+    expect(page.getState().phase).toBe('loading');
+    expect(published).toEqual([]);
+    second.reject(new Error('Provider restarting.'));
+    await clock.flush();
+    expect(page.getState().phase).toBe('failed');
+    page.load();
+    await clock.flush();
+    expect(published).toEqual([['name']]);
+    expect(ready(page).form.field('name')?.value).toBe('fresh');
+    session.dispose();
   });
 });
 

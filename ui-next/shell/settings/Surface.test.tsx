@@ -283,8 +283,7 @@ describe('each setting has the control its kind asks for', () => {
     expect(screen.getByRole('textbox', { name: 'Default Shell' })).toHaveValue('/bin/zsh');
   });
 
-  it('edits, appends and removes plugin paths as ordered arrays without committing keystrokes', async () => {
-    const original = ['/etc/example,config', '/work/my project/config'];
+  async function openPluginPaths(original: string[]) {
     const paths = setting('config.paths', 'text', 'Config Paths', 'The configuration files to load.', original, {
       fileSelection: { enabled: true, multiple: true, allowFolders: false, relative: false },
     });
@@ -295,6 +294,12 @@ describe('each setting has the control its kind asks for', () => {
     });
     await m.user.type(search(), 'Config Paths{Enter}');
     const list = within(screen.getByRole('group', { name: 'Config Paths' }));
+    return { m, list, paths };
+  }
+
+  it('edits, appends and removes plugin paths as ordered arrays without committing keystrokes', async () => {
+    const original = ['/etc/example,config', '/work/my project/config'];
+    const { m, list, paths } = await openPluginPaths(original);
     const first = list.getByRole('textbox', { name: 'Config Paths' });
     const add = list.getByRole('textbox', { name: 'Add a path to Config Paths' });
     expect(first).toHaveFocus();
@@ -318,6 +323,26 @@ describe('each setting has the control its kind asks for', () => {
     expect(m.host.pluginCalls.validate).toEqual(edits.map(value => ['example', paths.id, value]));
     expect(m.host.pluginCalls.commit).toEqual(edits.map(value => ['example', { [paths.id]: value }]));
     expect(m.host.calls.commit).toEqual([]);
+  });
+
+  it('discards an unfinished path edit when another window changes the list', async () => {
+    const { m, list, paths } = await openPluginPaths(['/a', '/b']);
+    const second = list.getByRole('textbox', { name: 'Config Paths, path 2' });
+    await m.user.type(second, '2');
+    expect(second).toHaveValue('/b2');
+
+    const external = { [paths.id]: ['/b', '/c'] };
+    await act(async () => {
+      await m.host.client.commit({ kind: 'plugin', pluginId: 'example' }, external);
+    });
+    await settle(m.clock);
+    expect(list.getByRole('textbox', { name: 'Config Paths' })).toHaveValue('/b');
+    expect(second).toHaveFocus();
+    expect(second).toHaveValue('/c');
+    await m.user.keyboard('{Enter}{Tab}');
+    await settle(m.clock);
+    expect(m.host.pluginCalls.validate).toEqual([]);
+    expect(m.host.pluginCalls.commit).toEqual([['example', external]]);
   });
 
   it('says what the host says of each: the description is the control\'s description', async () => {

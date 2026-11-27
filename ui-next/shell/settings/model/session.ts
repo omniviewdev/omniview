@@ -10,9 +10,12 @@ export type { PluginPage, PluginInventory } from './pluginPages';
 // sends what the person changes one setting at a time, asks the host about a typed value, and follows what changes elsewhere. Plain TypeScript over the `SettingsClient` seam: no React, no DOM; its only timers are the form's own,
 // on the scheduler it is given. One session lives from the opening of Settings (the sheet's, or the window's load) to its closing, and `dispose` leaves nothing behind.
 
+type Loading = { readonly phase: 'loading'; readonly warning?: string };
+type Replacement = { readonly model: SettingsModel; readonly key: string } | Loading;
+
 export type SessionState =
-  | { readonly phase: 'loading' }
-  | { readonly phase: 'failed' }
+  | Loading
+  | { readonly phase: 'failed'; readonly warning?: string }
   | { readonly phase: 'ready'; readonly model: SettingsModel; readonly form: FormStore };
 
 /** The settings that were changed elsewhere while the person has a draft of them: the id and the value the host holds now. Gone with the draft. */
@@ -53,7 +56,7 @@ export type SessionOptions = {
   readonly scheduler: Scheduler;
 };
 
-const LOADING: SessionState = Object.freeze({ phase: 'loading' });
+const LOADING: Loading = Object.freeze({ phase: 'loading' });
 const FAILED: SessionState = Object.freeze({ phase: 'failed' });
 const NONE: Readonly<Record<string, Json>> = Object.freeze({});
 
@@ -69,6 +72,8 @@ const RETRY_WAITS = [500, 1000, 2000, 4000, 8000] as const;
 
 function createScopeSession({ client, scheduler }: SessionOptions, scope: SettingsScope): ScopeSession & { changed: () => void } {
   let state: SessionState = LOADING;
+  // A stale form can be hidden before its in-flight writes have finished. Keep ownership until their results settle.
+  let ownedForm: FormStore | undefined;
   let disposed = false;
   let generation = 0;
   let wantsRefresh = false;
@@ -87,6 +92,7 @@ function createScopeSession({ client, scheduler }: SessionOptions, scope: Settin
   const unapplied = new Set<string>();
   let hostWaiting: readonly string[] = [];
   let schemaKey = '';
+  let replacement: Replacement | undefined;
   let notes: Readonly<Record<string, Json>> = NONE;
   let said: Announcement = Object.freeze({ text: '', serial: 0 });
   const listeners = new Set<() => void>();
@@ -144,7 +150,20 @@ function createScopeSession({ client, scheduler }: SessionOptions, scope: Settin
     return { valid: answer.valid, ...(answer.message === undefined || answer.message === '' ? {} : { message: answer.message }), ...(answer.code === undefined || answer.code === '' ? {} : { code: answer.code }) };
   };
 
-  const commitPatch = async (values: Readonly<Record<string, Json>>): Promise<Record<string, Json>> => {
+  const schemaKeyOf = (model: SettingsModel): string => scope.kind === 'plugin' ? JSON.stringify([model.schema, model.wireKeys]) : '';
+
+  const replaceAfterSave = (form: FormStore, next: Replacement): void => {
+    replacement = next;
+    const loading = 'model' in next ? LOADING : next;
+    form.setFormLock({ source: 'store', readonly: false, reason: loading.warning ?? 'The plugin settings have changed.' });
+    if (!disposed) {
+      setState(loading);
+    }
+  };
+
+  const commitPatch = async (values: Readonly<Record<string, Json>>): Promise<Record<string, Json> | null> => {
+    inflight += 1;
+    epoch += 1;
     if (disposed || state.phase !== 'ready') {
       throw new Error('Settings unavailable.');
     }
@@ -154,49 +173,77 @@ function createScopeSession({ client, scheduler }: SessionOptions, scope: Settin
     const patch = Object.keys(values).some((id) => Object.hasOwn(keys, id))
       ? Object.fromEntries(Object.entries(values).map(([id, value]) => [keys[id] ?? id, value]))
       : values;
-    inflight += 1;
+    // A refusal is a throw. A successful write need not come with a usable readback.
+    const result = await client.commit(scope, patch);
+    if (disposed || ownedForm !== before.form) {
+      return null;
+    }
+
+    if (scope.kind === 'plugin' && !result.snapshot.categories.plugin) {
+      const warning = result.message || 'Settings were saved, but the current settings view is unavailable.';
+      replaceAfterSave(before.form, { phase: 'loading', warning });
+      return null;
+    }
+
+    // A previously lost readback still needs a fresh read after all writes settle.
+    if (replacement && !('model' in replacement)) {
+      return null;
+    }
+
+    const after = modelOf(result.snapshot, scope);
+    if (scope.kind === 'plugin') {
+      const key = schemaKeyOf(after);
+      if (key !== schemaKey) {
+        // Do not interpret the new field IDs in the old form. Overlapping writes can also make this snapshot stale.
+        replaceAfterSave(before.form, inflight === 1 ? { model: after, key } : LOADING);
+        return null;
+      }
+    }
+
+    const canonical: Record<string, Json> = {};
+    for (const id of Object.keys(values)) {
+      const value = after.initial[id];
+      if (value !== undefined) {
+        canonical[id] = value;
+        applied[id] = value;
+      }
+
+      // The host saved it and could not take it into effect: it waits for a restart, as one that declares so does.
+      if (result.applied && !result.uncertain) {
+        unapplied.delete(id);
+      } else {
+        unapplied.add(id);
+      }
+    }
+
+    hostWaiting = after.pendingRestart;
+    before.form.rebase({}, { pendingRestart: waiting() });
+    return canonical;
+  };
+
+  const finishPatch = (): void => {
+    inflight -= 1;
     epoch += 1;
-    try {
-      // A refusal is a throw, and the form says it on the field in its own words.
-      const result = await client.commit(scope, patch);
-      if (disposed || state !== before) {
-        return {};
-      }
+    if (disposed || inflight !== 0) {
+      return;
+    }
 
-      const after = modelOf(result.snapshot, scope);
-      if (scope.kind === 'plugin' && result.snapshot.categories.plugin && installIfChanged(after)) {
-        return {};
-      }
+    // Every submitting field has consumed its result. Replacing its form or starting a queued read is now safe.
+    const next = replacement;
+    replacement = undefined;
+    if (next && !('model' in next)) {
+      discardForm();
+      startLoad(next.warning);
+      return;
+    }
 
-      const canonical: Record<string, Json> = {};
-      for (const id of Object.keys(values)) {
-        const value = after.initial[id];
-        if (value !== undefined) {
-          canonical[id] = value;
-          applied[id] = value;
-        }
+    if (next) {
+      installIfChanged(next.model, next.key);
+    }
 
-        // The host saved it and could not take it into effect: it waits for a restart, as one that declares so does.
-        if (result.applied && !result.uncertain) {
-          unapplied.delete(id);
-        } else {
-          unapplied.add(id);
-        }
-      }
-
-      hostWaiting = after.pendingRestart;
-      if (state.phase === 'ready') {
-        state.form.rebase({}, { pendingRestart: waiting() });
-      }
-
-      return canonical;
-    } finally {
-      inflight -= 1;
-      epoch += 1;
-      if (inflight === 0 && wantsRefresh) {
-        wantsRefresh = false;
-        void refresh(0);
-      }
+    if (wantsRefresh) {
+      wantsRefresh = false;
+      void refresh(0);
     }
   };
 
@@ -212,7 +259,7 @@ function createScopeSession({ client, scheduler }: SessionOptions, scope: Settin
     form.setContext({ [RESETTING_MATERIAL]: true });
     try {
       const values = await commitPatch(defaults);
-      if (!disposed) {
+      if (!disposed && values !== null) {
         form.rebase(values);
         for (const id of MATERIAL_FIELDS) {
           if (form.field(id)?.dirty) {
@@ -226,6 +273,7 @@ function createScopeSession({ client, scheduler }: SessionOptions, scope: Settin
       return false;
     } finally {
       form.setContext({ [RESETTING_MATERIAL]: false });
+      finishPatch();
     }
   };
 
@@ -272,6 +320,16 @@ function createScopeSession({ client, scheduler }: SessionOptions, scope: Settin
     }
   };
 
+  const readSnapshot = async (withDeadline: boolean): Promise<HostSnapshot> => {
+    const read = client.snapshot(scope);
+    const snapshot = await (withDeadline ? answered(read) : read);
+    if (scope.kind === 'plugin' && !snapshot.categories.plugin) {
+      throw new Error('Plugin settings unavailable.');
+    }
+
+    return snapshot;
+  };
+
   const cancelRetry = (): void => {
     if (retryTimer !== undefined) {
       scheduler.clearTimeout(retryTimer);
@@ -279,7 +337,7 @@ function createScopeSession({ client, scheduler }: SessionOptions, scope: Settin
     }
   };
 
-  const retryLater = (): void => {
+  const retryLater = (retry: () => void): void => {
     const wait = RETRY_WAITS[retries];
     if (disposed || retryTimer !== undefined || wait === undefined) {
       return;
@@ -288,7 +346,7 @@ function createScopeSession({ client, scheduler }: SessionOptions, scope: Settin
     retries += 1;
     retryTimer = scheduler.setTimeout(() => {
       retryTimer = undefined;
-      void refresh(0);
+      retry();
     }, wait);
   };
 
@@ -311,7 +369,7 @@ function createScopeSession({ client, scheduler }: SessionOptions, scope: Settin
     const mine = asked;
     let snapshot: HostSnapshot;
     try {
-      snapshot = await answered(client.snapshot(scope));
+      snapshot = await readSnapshot(true);
     } catch {
       // The newest question was lost: what the form shows may not be what the host holds, and no event will say so. Ask again after a wait, a bounded number of times (RETRY_WAITS). A lost question that is not the newest changes nothing.
       if (!disposed && mine === asked && state.phase === 'ready' && state.form === form) {
@@ -322,7 +380,9 @@ function createScopeSession({ client, scheduler }: SessionOptions, scope: Settin
           return;
         }
 
-        retryLater();
+        retryLater(() => {
+          void refresh(0);
+        });
       }
 
       return;
@@ -354,9 +414,8 @@ function createScopeSession({ client, scheduler }: SessionOptions, scope: Settin
 
   function discardForm(): void {
     schemaKey = '';
-    if (state.phase === 'ready') {
-      state.form.dispose();
-    }
+    ownedForm?.dispose();
+    ownedForm = undefined;
 
     applied = {};
     unapplied.clear();
@@ -371,8 +430,7 @@ function createScopeSession({ client, scheduler }: SessionOptions, scope: Settin
   }
 
   /** Preserve ordinary drafts across value changes. Replace the whole form when its provider changes schema or redaction. */
-  function installIfChanged(model: SettingsModel): boolean {
-    const nextKey = scope.kind === 'plugin' ? JSON.stringify([model.schema, model.wireKeys]) : '';
+  function installIfChanged(model: SettingsModel, nextKey = schemaKeyOf(model)): boolean {
     if (state.phase === 'ready' && schemaKey === nextKey) {
       return false;
     }
@@ -395,6 +453,7 @@ function createScopeSession({ client, scheduler }: SessionOptions, scope: Settin
       presence: model.presence,
       pendingRestart: model.pendingRestart,
       submit,
+      onApplySettled: finishPatch,
       validators: { host: check },
       scheduler,
       announce,
@@ -409,8 +468,59 @@ function createScopeSession({ client, scheduler }: SessionOptions, scope: Settin
         }
       },
     );
+    ownedForm = form;
     setState({ phase: 'ready', model, form });
     return true;
+  }
+
+  function startLoad(warning?: string, superseding = false): void {
+    if (disposed) {
+      return;
+    }
+
+    cancelRetry();
+    generation += 1;
+    const mine = generation;
+    wantsRefresh = false;
+    if (state.phase !== 'loading' || state.warning !== warning) {
+      setState(warning === undefined ? LOADING : { phase: 'loading', warning });
+      if (disposed || mine !== generation) {
+        return;
+      }
+    }
+
+    void readSnapshot(scope.kind === 'plugin' || superseding).then(
+      (snapshot) => {
+        if (disposed || mine !== generation) {
+          return;
+        }
+
+        if (wantsRefresh) {
+          startLoad(warning, true);
+          return;
+        }
+
+        retries = 0;
+        installIfChanged(modelOf(snapshot, scope));
+      },
+      () => {
+        if (!disposed && mine === generation) {
+          if (wantsRefresh) {
+            startLoad(warning, true);
+            return;
+          }
+
+          // As before, a lost replacement read of Core retries on the clock; a failed plugin read offers Retry.
+          if (superseding && scope.kind === 'host') {
+            retryLater(() => {
+              startLoad(warning, true);
+            });
+          }
+
+          setState(warning === undefined ? FAILED : { phase: 'failed', warning });
+        }
+      },
+    );
   }
 
   function load(): void {
@@ -418,35 +528,7 @@ function createScopeSession({ client, scheduler }: SessionOptions, scope: Settin
       return;
     }
 
-    generation += 1;
-    const mine = generation;
-    wantsRefresh = false;
-    if (state.phase !== 'loading') {
-      setState(LOADING);
-    }
-
-    const read = client.snapshot(scope);
-    (scope.kind === 'plugin' ? answered(read) : read).then(
-      (snapshot) => {
-        if (disposed || mine !== generation) {
-          return;
-        }
-
-        installIfChanged(modelOf(snapshot, scope));
-        if (wantsRefresh) {
-          wantsRefresh = false;
-          void refresh(0);
-        }
-      },
-      () => {
-        if (!disposed && mine === generation) {
-          setState(FAILED);
-          if (wantsRefresh) {
-            load();
-          }
-        }
-      },
-    );
+    startLoad(state.warning);
   }
 
   const changed = (): void => {
@@ -509,9 +591,9 @@ function createScopeSession({ client, scheduler }: SessionOptions, scope: Settin
       }
 
       deadlines.clear();
-      if (state.phase === 'ready') {
-        state.form.dispose();
-      }
+      ownedForm?.dispose();
+      ownedForm = undefined;
+      replacement = undefined;
 
       listeners.clear();
       noteListeners.clear();
