@@ -240,6 +240,8 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
   let pending = 0;
   /** A restart came while bytes of the ended feed's replay were still queued in the emulator: what it answers to them is not for the new shell. */
   let draining = false;
+  /** The restarts so far: the barrier of a restart ends the muting only when no newer restart came after it (the middle feed's queued bytes are still being parsed then). */
+  let restarts = 0;
   let blocked = false;
   /** A replay the feed gave while the emulator was still parsing what came before it: applied once it has, so that what the emulator says of those bytes is the shell's and what it says of the replay is not. */
   let replayHeld: TerminalReplay | undefined;
@@ -271,10 +273,12 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
    */
   function sealAfterQueued(emulator: Engine): void {
     markWrites += 1;
+    restarts += 1;
+    const mine = restarts;
     emulator.write(NOTHING, () => {
       markWrites -= 1;
       // Everything queued before the restart is parsed: what the emulator answers from here on is for the new shell.
-      draining = false;
+      draining = restarts !== mine;
       gutter?.seal();
       if (markWrites === 0 && replayHeld !== undefined && pending === 0) {
         schedule();

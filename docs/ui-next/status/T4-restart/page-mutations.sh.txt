@@ -326,15 +326,23 @@ run screen-earlier-words-dropped "$P/screen.ts" \
 
 run gutter-old-multiline-command-typed "$P/gutter/commandGutter.ts" \
   's/if \(earlier && \/\[\\r\\n\]\/\.test\(entry\.command\)\) \{/if (false) {/' \
-  'refuses the line of an earlier terminal'"'"'s proven command when it has a line break|types nothing of an earlier terminal'"'"'s multi-line command'
+  'refuses the line of an earlier terminal'"'"'s proven command when it has a line break|types nothing of an earlier terminal'"'"'s multi-line command|types nothing into the new shell: the emulator'"'"'s paste turns the line feed into a carriage return'
 
 run screen-draining-never-cleared "$P/screen.ts" \
-  's/^      draining = false;$/      draining = draining;/' \
+  's/^      draining = restarts !== mine;$/      draining = true;/' \
   'reaches the new feed: the barrier after the old writes ends the muting|writes no more of the ended feed'"'"'s replay after the restart|answers a cursor position query of the NEW feed'
 
 run screen-draining-not-set "$P/screen.ts" \
   's/^      draining = true;$/      draining = false;/' \
   'still mutes what the old queued bytes make the emulator answer|writes no more of the ended feed'"'"'s replay after the restart|does not send to the new feed what the OLD feed'
+
+run screen-barrier-ignores-newer-restart "$P/screen.ts" \
+  's/^      draining = restarts !== mine;$/      draining = false;/' \
+  'sends nothing the middle feed'"'"'s queued bytes make the emulator answer to the third feed'
+
+run guard-multiline-bracketed-paste-off "$P/gutter/commandGutter.ts" \
+  's/if \(earlier \&\& \/\[\\r\\n\]\/\.test\(entry\.command\)\) \{/if (false) {/' \
+  'types nothing into the new shell: the emulator'"'"'s paste turns the line feed into a carriage return|refuses the line of an earlier terminal'"'"'s proven command when it has a line break|types nothing of an earlier terminal'"'"'s multi-line command'
 
 if [ -n "$only" ] && [ "$matched" -eq 0 ]; then echo "no control named $only"; exit 2; fi
 exit $bad
