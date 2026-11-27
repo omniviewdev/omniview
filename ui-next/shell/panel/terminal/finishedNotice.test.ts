@@ -20,7 +20,9 @@ function rig(): Rig {
   const show = vi.fn<(session: string, command: string, generation: number) => void>();
   const front = new Set<string>();
   const notices = createFinishedNotices({ notices: fixture.store, shown: (session) => front.has(session), show, nameOf: (session) => (session === 's1' ? 'zsh' : session === 's2' ? 'zsh (2)' : undefined) });
-  return { fixture, show, front, finished: (session, finished, generation = 0) => { notices.finished(session, finished, generation); }, records: () => fixture.store.selectors.recent() };
+  return { fixture, show, front, finished: (session, finished, generation = 0) => {
+    notices.finished(session, finished, generation); 
+  }, records: () => fixture.store.selectors.recent() };
 }
 
 describe('the notice of a command that finished', () => {
