@@ -334,3 +334,10 @@ func (l *Log) noteCwd(dir []byte, trusted bool) string {
 	}
 	return *slot
 }
+
+// forgetCwd makes the directory unknown: a directory the shell moved to could not be read (see Scanner.unknownCwd).
+func (l *Log) forgetCwd() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.trusted, l.loose = "", ""
+}

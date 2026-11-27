@@ -168,6 +168,13 @@ if [ -n "${__omniview_nonce+set}" ] && [ "${#__omniview_nonce}" -gt 0 ]; then
     __omniview_histcmd=${HISTCMD:-0}
     __omniview_skipped=0
     __omniview_armed=1
+    # bash-preexec installs itself at the first prompt, from the middle of the prompt commands, and ends its install by marking the
+    # prompt as shown ("interactive mode"). Our last hook runs after that, and bash-preexec's DEBUG trap takes it for a prompt
+    # command and puts the mode out again: the first command of the session is then no command to it, so the user's preexec and
+    # our trap (which it calls) never see it. The prompt is shown when this hook ends: say so.
+    case "${PROMPT_COMMAND[*]-}" in
+      *__bp_precmd_invoke_cmd*) __bp_preexec_interactive_mode=on ;;
+    esac
     __omniview_hup_off
     if [ "$__omniview_xtrace" = 1 ]; then set -x; fi
     if [ "${__omniview_errexit:-0}" = 1 ]; then

@@ -385,9 +385,24 @@ func TestADirectoryWhoseNameHoldsAnEscapeByteNeitherEndsTheCwdMarkEarlyNorGivesA
 			require.NoError(t, err)
 			assert.Equal(t, want, answer.Path, "GetCwd names the real directory")
 			// 3. The name forged nothing: no record has the end mark's code or the command line the name tried to make.
+			// fish prints the directory's name raw in its own title (OSC 0), so the name's `133;D;9` reaches the stream from fish and
+			// not from the integration: a forged low-trust end mark that the host cannot tell from fish's own. The integration is held
+			// to what it prints: a control run with the setting off is the proof that the mark is fish's, not ours.
+			shellPrintsTheName := false
+			if c.shell == "fish" {
+				off := newIntegrationFixture(t, c.shell, integrationShell(t, c.shell))
+				off.m.SetIntegration(func() (bool, error) { return false, nil })
+				require.NoError(t, os.Mkdir(filepath.Join(off.home, name), 0o700))
+				offInfo := off.started()
+				off.run(offInfo.ID, "cd esc*")
+				off.run(offInfo.ID, "true")
+				for _, r := range off.scanned(offInfo.ID).Records() {
+					shellPrintsTheName = shellPrintsTheName || (r.HasExitCode && r.ExitCode == 9)
+				}
+			}
 			for _, r := range log.Records() {
 				assert.NotEqual(t, "forged", r.CommandLine)
-				if r.HasExitCode {
+				if r.HasExitCode && !shellPrintsTheName {
 					assert.NotEqual(t, int32(9), r.ExitCode, "the name's own `133;D;9` ended no command")
 				}
 			}

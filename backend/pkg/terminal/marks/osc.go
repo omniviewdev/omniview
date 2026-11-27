@@ -183,7 +183,10 @@ func (s *Scanner) readCwdProperty(rest []byte, out []Mark) []Mark {
 		return out
 	}
 	s.ourPrompt = true
-	dir := stripControls(unescape(field[len(key):i]))
+	dir := unescape(field[len(key):i])
+	if hasControl(dir) {
+		return s.unknownCwd(out)
+	}
 	return s.emitCwd(dir, true, out)
 }
 
@@ -201,7 +204,21 @@ func (s *Scanner) readCwdURL(url []byte, out []Mark) []Mark {
 		s.malformed.Add(1)
 		return out
 	}
-	return s.emitCwd(decodePercent(rest[i:]), false, out)
+	dir, clean := decodePercent(rest[i:])
+	if !clean {
+		return s.unknownCwd(out)
+	}
+	return s.emitCwd(dir, false, out)
+}
+
+// unknownCwd is a directory whose name holds a control byte (a directory can be named with an ESC): stripping the byte would
+// name another directory, or none, and a terminal must not be made to read it. The mark is dropped and counted, and what the log
+// knows of the directory becomes unknown, so that neither a wrong path nor the one from before the `cd` is believed. The next
+// sound directory sets it again.
+func (s *Scanner) unknownCwd(out []Mark) []Mark {
+	s.malformed.Add(1)
+	s.log.forgetCwd()
+	return out
 }
 
 // emitCwd makes the mark of a directory read from the sequence being finished.
@@ -278,10 +295,11 @@ func hexDigit(c byte) (byte, bool) {
 	return 0, false
 }
 
-// decodePercent decodes %HH in place and drops every control byte, the encoded ones too: no directory has an ESC in
-// it that a terminal could be made to read. A '%' that is no escape is kept.
-func decodePercent(b []byte) []byte {
+// decodePercent decodes %HH in place. clean is false when the path holds a control byte, the encoded ones too: no
+// directory is believed that a terminal could be made to read as a sequence. A '%' that is no escape is kept.
+func decodePercent(b []byte) (path []byte, clean bool) {
 	w := 0
+	clean = true
 	for r := 0; r < len(b); r++ {
 		c := b[r]
 		if c == '%' && r+2 < len(b) {
@@ -293,23 +311,20 @@ func decodePercent(b []byte) []byte {
 			}
 		}
 		if c < c0Limit || c == delByte {
-			continue
+			clean = false
 		}
 		b[w] = c
 		w++
 	}
-	return b[:w]
+	return b[:w], clean
 }
 
-// stripControls drops every control byte in place.
-func stripControls(b []byte) []byte {
-	w := 0
+// hasControl says whether b holds a control byte.
+func hasControl(b []byte) bool {
 	for _, c := range b {
 		if c < c0Limit || c == delByte {
-			continue
+			return true
 		}
-		b[w] = c
-		w++
 	}
-	return b[:w]
+	return false
 }

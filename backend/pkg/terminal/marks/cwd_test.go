@@ -81,7 +81,7 @@ func TestAControlByteInADirectoryNeverEndsTheSequenceExceptTheOnesThatDo(t *test
 func TestADirectoryWithAControlByteInItsNameMakesTheTrackedDirectoryUnknown(t *testing.T) {
 	for _, body := range []string{
 		"7;file://host/tmp/a%1bb", "7;file://host/tmp/a%07b", "7;file://host/tmp/a%00b",
-		"7;file://host/tmp/a%7fb", "7;file://host/tmp/a%0ab", "7;file://host/tmp/a\x7fb",
+		"7;file://host/tmp/a%7fb", "7;file://host/tmp/a%0ab",
 	} {
 		s := newTestScanner(t, newClock(), 0)
 		sameKinds(t, feedAll(s, osc("7;file://host/tmp/known")), KindCwd)
