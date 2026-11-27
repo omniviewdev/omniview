@@ -216,7 +216,14 @@ function closePane(state: PanelState, session: Session, group: PaneGroup): Step<
   const panes = group.panes.filter((_, index) => index !== at);
   const others = group.ratios.filter((_, index) => index !== at);
   const total = others.reduce((sum, ratio) => sum + ratio, 0);
-  const active = group.panes[at]?.id === group.active ? (panes[at] ?? panes[at - 1]) : panes.find((pane) => pane.id === group.active);
+  const shows = (pane: { readonly session: SessionId }): boolean => {
+    const held = own(state.sessions, pane.session);
+    return held !== undefined && sessionVisible(state, held);
+  };
+
+  // The focus passes to the next VISIBLE pane, else the previous visible one (a hidden pane cannot be shown, and the tool would fall back to a session outside its group); with none visible, the neighbour.
+  const active =
+    group.panes[at]?.id === group.active ? (panes.slice(at).find(shows) ?? panes.slice(0, at).reverse().find(shows) ?? panes[at] ?? panes[at - 1]) : panes.find((pane) => pane.id === group.active);
   if (active === undefined) {
     throw new Error('a group of panes has two panes or more');
   }

@@ -42,7 +42,7 @@ export function splitPane(state: PanelState, tool: ToolId, input: Omit<SessionIn
 
   const group = groupOf(state, id);
   const beside = effectiveSession(state, id);
-  if (beside === null) {
+  if (beside === null && group === undefined) {
     const opened = openSession(state, { ...input, tool: id }, ctx);
     return opened.result.status === 'done' ? { state: opened.state, result: { status: 'done', id: opened.result.id, pane: slot(1) } } : { state, result: opened.result };
   }
@@ -62,7 +62,7 @@ export function splitPane(state: PanelState, tool: ToolId, input: Omit<SessionIn
   }
 
   const made = opened.result.id;
-  const base: PaneGroup = group ?? { axis: options.axis ?? 'row', panes: [{ id: slot(1), session: beside }], ratios: [1], active: slot(1), seq: 1 };
+  const base: PaneGroup = group ?? { axis: options.axis ?? 'row', panes: [{ id: slot(1), session: beside ?? made }], ratios: [1], active: slot(1), seq: 1 };
   const after = Math.max(0, base.panes.findIndex((pane) => pane.id === base.active));
   const pane = { id: slot(base.seq + 1), session: made };
   const panes = [...base.panes.slice(0, after + 1), pane, ...base.panes.slice(after + 1)];

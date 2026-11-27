@@ -36,12 +36,13 @@ export function serialise(state: PanelState): PersistedPanel {
   const active = Object.fromEntries(Object.entries(state.active).filter(([, id]) => saved.has(id)));
 
   const layout = layoutOf(state, saved);
-  // A tool with a saved group is on the session of its active pane, as `restorePanel` brings it back: the document says so itself (a session the cap cut cannot be the choice).
+  // A tool with a saved group is on the session of its active pane, as `restorePanel` brings it back: the document says so itself (a session the cap cut cannot be the choice). Entries, not assignment: a tool called `__proto__` is an own entry.
+  const chosen = new Map(Object.entries(active));
   for (const [tool, one] of Object.entries(layout?.tools ?? {})) {
-    active[tool] = one.sessions[one.active];
+    chosen.set(tool, one.sessions[one.active]);
   }
 
-  return { version: PANEL_VERSION, open: state.open, height: state.height, tool: state.tool, active, sessions, ...(layout === undefined ? {} : { layout }) };
+  return { version: PANEL_VERSION, open: state.open, height: state.height, tool: state.tool, active: Object.fromEntries(chosen), sessions, ...(layout === undefined ? {} : { layout }) };
 }
 
 /**
