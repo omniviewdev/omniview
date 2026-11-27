@@ -72,6 +72,7 @@ describe('the notice of a command that finished', () => {
     r.finished('s1', { id: 'c1', durationMs: 20_000, timeMs: 100 });
     r.finished('s1', { id: 'c1', durationMs: 20_000, timeMs: 100 });
     expect(r.records(), 'the same command twice').toHaveLength(1);
+    expect(r.records()[0]?.count, 'and the shell\'s notices were told once, not twice and folded').toBe(1);
     r.finished('s2', { id: 'c1', durationMs: 20_000, timeMs: 100 });
     expect(r.records(), 'the same id in another terminal').toHaveLength(2);
     r.finished('s1', { id: 'c1', durationMs: 25_000, timeMs: 900_000 });

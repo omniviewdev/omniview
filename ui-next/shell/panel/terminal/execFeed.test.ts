@@ -3467,7 +3467,8 @@ describe('a command that finished while the page watched (`finished`)', () => {
   it('has no command line when the shell did not prove it, and no duration when the shell sent none', async () => {
     const r = await running({ end: 0, integration: { state: 'on' } });
     r.stream().output(0, 'x'.repeat(100));
-    r.stream().marks(start(40, { trust: 'unverified', command: undefined }), finish(60, { duration_ms: undefined, time_ms: undefined, exit: undefined }));
+    // A start that anything could have printed, with a line in it: the page takes no line from it.
+    r.stream().marks(start(40, { trust: 'unverified', command: 'rm -rf /' }), finish(60, { duration_ms: undefined, time_ms: undefined, exit: undefined }));
     const { finished } = r.feed.getSnapshot();
     expect(finished).toEqual({ id: 'c1' });
     expect(Object.hasOwn(finished ?? {}, 'command')).toBe(false);
