@@ -36,3 +36,10 @@
 - No test in `exec` for the controller's log line or the pass-through of the typed error: `closeWait` is not injectable from that package.
 - The page: `ui-next/shell/panel/terminal/terminalChannel.ts` `close` lets `CLOSE_TIMEOUT` reach its caller as any other error; its handling (showing the terminal as ending) was not changed or tried.
 - The directory check and the start are two steps: a path swapped between them is not guarded (stated in 2.8.3).
+
+## Follow-up after the independent review (FIX FIRST)
+
+- Item 7, bash: `PWD` was the unchanged `link/..` and bash cleaned it into `work`. `workingDirectory` (`env.go`) gives a `..` path as `EvalSymlinks`. Red `bb661e9d0` (sh, bash; zsh passed and stays in the test), green `71cec5cb3`.
+- Item 2, page: `terminalChannel.ts` forgets the capability on `CLOSE_TIMEOUT` and `close` resolves; the legacy drawer (`provider.tsx`) no longer `log.error`s it. Red `d6ebbf73d`, green `ba22d66e0`.
+- P3: `terminal_credit_test.go` (exec): a client that reads and never acknowledges, watchdog off, 5 MiB; a sink that never credits holds the shell (red under the mutant after 60 s). Commit `4fed2194c`.
+- Controls: five more pairs in `controls.sh` (PWD, exec credit, page close, legacy drawer); the script runs the vitest ones by mutating the tracked file in place and a trap puts it back.
