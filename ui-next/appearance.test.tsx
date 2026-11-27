@@ -93,6 +93,7 @@ describe('committed window appearance', () => {
       });
       expect(root).toHaveAttribute('data-ov-motion', motion);
     }
+
     expect(commits).toHaveBeenCalledTimes(before);
     mounted.unmount();
     expect(root).not.toHaveAttribute('data-ov-motion');

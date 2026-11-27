@@ -33,7 +33,9 @@
     border-radius: var(--ov-radius-control);
     background: var(--ov-bg-island);
     color: var(--ov-fg);
-    font: var(--ov-fs-13) / var(--ov-lh-16) var(--ov-font-ui);
+    font-family: var(--ov-font-ui);
+    font-size: var(--ov-fs-13);
+    line-height: var(--ov-lh-16);
     resize: vertical;
   }
 

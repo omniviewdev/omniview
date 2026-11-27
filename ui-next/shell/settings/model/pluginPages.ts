@@ -30,21 +30,43 @@ export function createPluginPages(read: SettingsClient['inventory'], create: (pl
 
   const publish = (next: PluginInventory): void => {
     snapshot = next;
-    for (const listener of listeners) listener();
+    for (const listener of listeners) {
+      listener();
+    }
+  };
+
+  // A new or removed field changes the navigation/search index; typing in a field does not.
+  const schemaChanged = (): void => {
+    publish({ ...snapshot });
   };
 
   const refresh = (): void => {
-    if (disposed) return;
+    if (disposed) {
+      return;
+    }
+
     const mine = ++generation;
-    if (snapshot.phase === 'failed') publish({ ...snapshot, phase: 'loading' });
+    if (snapshot.phase === 'failed') {
+      publish({ ...snapshot, phase: 'loading' });
+    }
+
     void read().then((inventory) => {
-      if (disposed || mine !== generation) return;
+      if (disposed || mine !== generation) {
+        return;
+      }
+
       const installed = new Map<string, (typeof inventory)[number]>();
       for (const plugin of inventory) {
-        if (plugin.id !== '') installed.set(plugin.id, plugin);
+        if (plugin.id !== '') {
+          installed.set(plugin.id, plugin);
+        }
       }
+
       for (const [id, session] of scopes) {
-        if (installed.has(id)) continue;
+        if (installed.has(id)) {
+          continue;
+        }
+
         scopes.delete(id);
         session.dispose();
       }
@@ -57,21 +79,24 @@ export function createPluginPages(read: SettingsClient['inventory'], create: (pl
         } else {
           session = create(id);
           scopes.set(id, session);
-          // A new or removed field changes the navigation/search index; typing in a field does not.
-          session.subscribe(() => publish({ ...snapshot, entries: [...snapshot.entries] }));
+          session.subscribe(schemaChanged);
           session.load();
         }
+
         entries.push({ id: pluginPageId(id), pluginId: id, title: name.trim() || id, description, icon, session });
       }
+
       entries.sort((a, b) => a.title.localeCompare(b.title, 'en') || a.pluginId.localeCompare(b.pluginId, 'en'));
       if (snapshot.phase !== 'ready' || entries.length !== snapshot.entries.length || entries.some((entry, index) => {
-        const previous = snapshot.entries[index]!;
+        const previous = snapshot.entries[index];
         return entry.session !== previous.session || entry.title !== previous.title || entry.description !== previous.description || entry.icon !== previous.icon;
       })) {
         publish({ phase: 'ready', entries });
       }
     }, () => {
-      if (!disposed && mine === generation) publish({ ...snapshot, phase: 'failed' });
+      if (!disposed && mine === generation) {
+        publish({ ...snapshot, phase: 'failed' });
+      }
     });
   };
 
@@ -79,13 +104,18 @@ export function createPluginPages(read: SettingsClient['inventory'], create: (pl
     getSnapshot: () => snapshot,
     subscribe: (listener: () => void) => {
       listeners.add(listener);
-      return () => { listeners.delete(listener); };
+      return () => {
+        listeners.delete(listener);
+      };
     },
     refresh,
     changed: (pluginId: string) => scopes.get(pluginId)?.changed(),
     dispose: () => {
       disposed = true;
-      for (const session of scopes.values()) session.dispose();
+      for (const session of scopes.values()) {
+        session.dispose();
+      }
+
       scopes.clear();
       listeners.clear();
     },

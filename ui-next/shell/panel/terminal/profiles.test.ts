@@ -215,7 +215,7 @@ describe('the list of the app', () => {
     const stop = appShellList().subscribe(() => undefined);
     await vi.dynamicImportSettled();
     await turns();
-    const change = changedClient.onChanged.mock.calls[0]![0];
+    const change = changedClient.onChanged.mock.calls[0][0];
     changedClient.list.mockClear();
     change({ kind: 'plugin', pluginId: 'terminal' });
     await turns();

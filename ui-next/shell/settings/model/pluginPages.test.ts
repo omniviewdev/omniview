@@ -10,13 +10,19 @@ const scope = (pluginId: string) => ({ kind: 'plugin', pluginId } as const);
 
 function plugin(session: SettingsSession, id: string): ScopeSession {
   const page = session.plugins.getSnapshot().entries.find((entry) => entry.pluginId === id);
-  if (!page) throw new Error(`Missing plugin ${id}`);
+  if (!page) {
+    throw new Error(`Missing plugin ${id}`);
+  }
+
   return page.session;
 }
 
 function ready(session: ScopeSession) {
   const state = session.getState();
-  if (state.phase !== 'ready') throw new Error(`Unexpected phase: ${state.phase}`);
+  if (state.phase !== 'ready') {
+    throw new Error(`Unexpected phase: ${state.phase}`);
+  }
+
   return state;
 }
 
@@ -27,7 +33,7 @@ describe('installed settings providers', () => {
     host.plugin(metadata('two', 'Alpha'), []);
     const pending = deferred<readonly SettingsPlugin[]>();
     const clock = manualClock();
-    const session = createSettingsSession({ client: { ...host.client, inventory: () => pending.promise }, scheduler: clock.scheduler });
+    const session = createSettingsSession({ client: { ...host.client, inventory: async () => pending.promise }, scheduler: clock.scheduler });
     await clock.flush();
     expect(ready(session).model.pages.length).toBeGreaterThan(0);
     expect(session.plugins.getSnapshot()).toEqual({ phase: 'loading', entries: [] });
@@ -112,6 +118,7 @@ describe('installed settings providers', () => {
       expect(Object.entries(host.pluginCalls.commit.at(-1)![1])).toEqual([[key, 'nondefault']]);
       expect(form.field(id)?.dirty).toBe(false);
     }
+
     session.dispose();
   });
 
@@ -122,11 +129,12 @@ describe('installed settings providers', () => {
     let failFirst = true;
     const client: SettingsClient = {
       ...host.client,
-      snapshot: (which) => {
+      snapshot: async (which) => {
         if (which.kind === 'plugin' && failFirst) {
           failFirst = false;
           return stale.promise;
         }
+
         return host.client.snapshot(which);
       },
     };
@@ -161,7 +169,10 @@ describe('installed settings providers', () => {
 
   it('refreshes only the scope named by a change, preserves its draft, and follows all installed scopes on reconnect', async () => {
     const host = fakeHost();
-    for (const id of ['a', 'b']) host.plugin(metadata(id), [field('raw.key', 'old')]);
+    for (const id of ['a', 'b']) {
+      host.plugin(metadata(id), [field('raw.key', 'old')]);
+    }
+
     const clock = manualClock();
     const session = createSettingsSession({ client: host.client, scheduler: clock.scheduler });
     await clock.flush();
@@ -224,8 +235,8 @@ describe('installed settings providers', () => {
     let reads = 0;
     const client: SettingsClient = {
       ...host.client,
-      inventory: () => ++reads === 1 ? old.promise : host.client.inventory(),
-      snapshot: (which) => which.kind === 'plugin' ? late.promise : host.client.snapshot(which),
+      inventory: async () => ++reads === 1 ? old.promise : host.client.inventory(),
+      snapshot: async (which) => which.kind === 'plugin' ? late.promise : host.client.snapshot(which),
     };
     const clock = manualClock();
     const session = createSettingsSession({ client, scheduler: clock.scheduler });
@@ -252,8 +263,20 @@ describe('installed settings providers', () => {
     const clock = manualClock();
     const client: SettingsClient = {
       ...host.client,
-      inventory: async () => { if (inventoryDown) throw new Error('Offline'); return host.client.inventory(); },
-      snapshot: async (which) => { if (pluginDown && which.kind === 'plugin') throw new Error('Unavailable'); return host.client.snapshot(which); },
+      inventory: async () => {
+        if (inventoryDown) {
+          throw new Error('Offline');
+        }
+
+        return host.client.inventory();
+      },
+      snapshot: async (which) => {
+        if (pluginDown && which.kind === 'plugin') {
+          throw new Error('Unavailable');
+        }
+
+        return host.client.snapshot(which);
+      },
     };
     const session = createSettingsSession({ client, scheduler: clock.scheduler });
     await clock.flush();

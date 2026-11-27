@@ -72,17 +72,30 @@ type Drawn = { readonly kind: FieldKind; readonly options?: readonly Option[] };
 /** What kind a setting is drawn as, or `undefined` when no part of this slice can draw it. */
 function drawnAs(setting: HostSetting): Drawn | undefined {
   // Check classification before reading any value-bearing metadata, including the shape of a value.
-  if (setting.type === 'password') return { kind: 'secret' };
-  if (setting.sensitive) return setting.type === 'text' || setting.type === 'select' ? { kind: 'secret' } : undefined;
+  if (setting.type === 'password') {
+    return { kind: 'secret' };
+  }
+
+  if (setting.sensitive) {
+    return setting.type === 'text' || setting.type === 'select' ? { kind: 'secret' } : undefined;
+  }
+
   const arrayValue = Array.isArray(setting.value) || Array.isArray(setting.default);
   if (arrayValue || (setting.fileSelection?.enabled && setting.fileSelection.multiple)) {
     // The SDK's text type also carries string arrays. A path list is not one path, even when empty.
-    if (setting.type !== 'text' || setting.options?.length) return undefined;
-    for (const value of [setting.value, setting.default]) {
-      if (value != null && (!Array.isArray(value) || value.length > LIMITS.items || !value.every((item: unknown) => typeof item === 'string' && item.length <= LIMITS.value))) return undefined;
+    if (setting.type !== 'text' || setting.options?.length) {
+      return undefined;
     }
+
+    for (const value of [setting.value, setting.default]) {
+      if (value != null && (!Array.isArray(value) || value.length > LIMITS.items || !value.every((item: unknown) => typeof item === 'string' && item.length <= LIMITS.value))) {
+        return undefined;
+      }
+    }
+
     return { kind: 'list' };
   }
+
   switch (setting.type) {
     case 'toggle':
       return { kind: 'boolean' };
@@ -110,7 +123,7 @@ function specOf(id: string, key: string, setting: HostSetting, drawn: Drawn, app
   const fallback = secret ? undefined : readValue(kind, setting.default, false);
   const presentation = appearance && id === THEME_FIELD && kind === 'text' ? { display: 'theme-picker' }
     : appearance && kind === 'select' && LAYOUT_FIELDS.includes(id) ? { display: id === TEXT_SIZE ? 'slider' : 'segmented' }
-    : materialPage ? materialField(id) : undefined;
+      : materialPage ? materialField(id) : undefined;
   const paths = kind === 'path' || (kind === 'list' && setting.fileSelection?.enabled === true);
   const constraints: Constraints | undefined = paths
     ? { pathKind: setting.fileSelection?.allowFolders ? 'directory' : 'file', ...(kind === 'list' ? { item: 'path' } : {}) }
@@ -159,7 +172,10 @@ export function modelOf(snapshot: HostSnapshot, scope: SettingsScope = HOST_SCOP
 
   for (const entry of orderOf(snapshot.categories)) {
     const fields: FieldSpec[] = [];
-    if (!host && entry.id !== 'plugin') continue;
+    if (!host && entry.id !== 'plugin') {
+      continue;
+    }
+
     const appearance = host && entry.id === 'appearance';
     const materialPage = appearance && entry.settings.windowMaterial !== undefined;
     for (const key of Object.keys(entry.settings).toSorted(byCode)) {

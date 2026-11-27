@@ -210,7 +210,6 @@ import { AGAIN_LABEL, buildConnectionsProcess, buildPortsProcess, buildProcess, 
 import { ASKED, LAPSE_MS, LAPSE_WORDS, LAPSED_LABEL, LONG_ID_LABEL, MANY_LABEL, STOP_ALL_LABEL } from '../fixture/src/ports.ts';
 import { startWithPortRetry } from './hostStart.mjs';
 import { uninstallWords } from '../../shell/plugins-page/core/words.ts';
-import { appearanceOrder } from '../../shell/settings/model/material.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const server = path.join(root, 'bin/Omniview-server');
@@ -6884,6 +6883,8 @@ async function settingsTruth(c) {
   await asserting(
     'settings-reach',
     async () => {
+      // The first press returns before its host commit and the other window's refresh. Freeze the sheet only after that change arrived, or the stale snapshot can already contain the next press's value.
+      assert.ok(await reaches(sheet, 2000), `${engine}: before the fault, the sheet received the first change from the Settings window`);
       putBack = await standIn(sheet, staleSnapshot(JSON.stringify(await c.snapshot())), 'host');
       await change();
     },
@@ -7195,9 +7196,13 @@ async function settingsPopups(c) {
 
   // Type-ahead in a native select inside the sheet: the first letters of an option choose it, and the host takes the choice.
   const cursorStyle = dialog.getByRole('combobox', { name: 'Cursor Style' });
-  const typeAhead = async () => {
+  const typeAhead = async (disable = false) => {
+    // A native select keeps a type-ahead prefix between key presses. Give each attempt a fresh field, not the prefix left by the previous attempt.
+    await settingsPage(dialog, 'general').click();
     await c.commit({ 'terminal.cursorStyle': 'block' });
+    await settingsPage(dialog, 'terminal').click();
     assert.ok(await c.until(5000, async () => (await cursorStyle.inputValue()) === 'block'), `${engine}: the sheet follows the host to the first option of the select`);
+    if (disable) await cursorStyle.evaluate((element) => { element.disabled = true; });
     await cursorStyle.focus();
     await page.keyboard.type('Under', { delay: 30 });
   };
@@ -7205,17 +7210,10 @@ async function settingsPopups(c) {
   await asserting(
     'settings-typeahead',
     async () => {
-      await cursorStyle.evaluate((element) => {
-        element.disabled = true;
-      });
-      await typeAhead();
+      assert.ok(await c.until(5000, async () => (await c.held('terminal.cursorStyle')) === 'underline'), `${engine}: before the fault, the host received the first type-ahead choice`);
+      await typeAhead(true);
     },
-    async () => {
-      await cursorStyle.evaluate((element) => {
-        element.disabled = false;
-      });
-      await typeAhead();
-    },
+    () => typeAhead(),
     async () => {
       assert.equal(await cursorStyle.inputValue(), 'underline', `${engine}: typing the first letters of an option in the sheet's select chooses it`);
     },

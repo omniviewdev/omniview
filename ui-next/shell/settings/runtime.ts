@@ -1,6 +1,7 @@
 import { PluginManager, SettingsService, WindowClient } from '@omniviewdev/runtime/api';
 import { PluginCapability } from '@omniviewdev/runtime/models';
 import { Events, onEventsReconnect } from '@omniviewdev/runtime/runtime';
+import { readRunning, STATE_CHANGE_EVENT } from '../../plugins/host/lifecycle';
 import { pageClock } from './clock';
 import { createSettingsSession, type SettingsSession } from './model/session';
 import { HOST_SCOPE, type SettingsClient, type SettingsRequest, type SettingsWindowClient } from './model/types';
@@ -19,16 +20,25 @@ export function runtimeClient(): SettingsClient {
     onInventoryChanged: (listener) => {
       const stops = INVENTORY_EVENTS.map((name) => Events.On(name, listener));
       // A normal reload completes with this transition, not a dev-install or inventory event.
-      stops.push(Events.On('plugin/state_change', (event) => {
-        if (event.data?.to === 'Running') listener();
+      stops.push(Events.On(STATE_CHANGE_EVENT, ({ data }) => {
+        if (readRunning(data) !== undefined) {
+          listener();
+        }
       }));
-      return () => stops.forEach((stop) => stop());
+      return () => {
+        for (const stop of stops) {
+          stop();
+        }
+      };
     },
     onReconnect: (listener) => onEventsReconnect(listener),
     onChanged: (listener) =>
       Events.On('settings/changed', (event) => {
         const scope: unknown = event.data;
-        if (typeof scope !== 'object' || scope === null || !('kind' in scope)) return;
+        if (typeof scope !== 'object' || scope === null || !('kind' in scope)) {
+          return;
+        }
+
         if (scope.kind === 'host' && (!('pluginId' in scope) || scope.pluginId === '')) {
           listener(HOST_SCOPE);
         } else if (scope.kind === 'plugin' && 'pluginId' in scope && typeof scope.pluginId === 'string' && scope.pluginId !== '') {

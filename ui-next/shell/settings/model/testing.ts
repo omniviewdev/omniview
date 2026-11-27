@@ -202,12 +202,18 @@ export function fakeHost(initial: Readonly<Record<string, unknown>> = {}, stored
 
   const pluginSnapshot = (id: string): HostSnapshot => {
     const entry = installed.get(id);
-    if (!entry) throw new Error('Plugin unavailable.');
+    if (!entry) {
+      throw new Error('Plugin unavailable.');
+    }
+
     const settings = Object.fromEntries(Object.entries(entry.schema.settings).map(([key, one]) => {
-      if (!one) return [key, undefined];
+      if (!one) {
+        return [key, undefined];
+      }
+
       const value = entry.values.has(key) ? entry.values.get(key) : one.value;
-      const pendingRestart = one.pendingRestart || (one.requiresRestart === true && !Object.is(value, one.value));
-      return [key, one.sensitive || one.type === 'password'
+      const pendingRestart = one.pendingRestart === true || (one.requiresRestart === true && !Object.is(value, one.value));
+      return [key, one.sensitive === true || one.type === 'password'
         ? { ...one, sensitive: true, value: '[REDACTED]', default: '[REDACTED]', options: [], fileSelection: null, pendingRestart }
         : { ...one, value, pendingRestart }];
     }));
@@ -221,13 +227,16 @@ export function fakeHost(initial: Readonly<Record<string, unknown>> = {}, stored
     },
     onInventoryChanged: (listener) => {
       inventoryListeners.add(listener);
-      return () => { inventoryListeners.delete(listener); };
+      return () => {
+        inventoryListeners.delete(listener);
+      };
     },
     snapshot: async (scope) => {
       if (scope.kind === 'plugin') {
         pluginCalls.snapshot.push(scope.pluginId);
         return pluginSnapshot(scope.pluginId);
       }
+
       calls.snapshot += 1;
       const answer = next.snapshot;
       next.snapshot = undefined;
@@ -238,6 +247,7 @@ export function fakeHost(initial: Readonly<Record<string, unknown>> = {}, stored
         pluginCalls.validate.push([scope.pluginId, id, value]);
         return { valid: Object.hasOwn(installed.get(scope.pluginId)?.schema.settings ?? {}, id) };
       }
+
       calls.validate.push([id, value]);
       const answer = next.validate;
       next.validate = undefined;
@@ -250,10 +260,18 @@ export function fakeHost(initial: Readonly<Record<string, unknown>> = {}, stored
         if (!entry || Object.keys(given).some((key) => !Object.hasOwn(entry.schema.settings, key))) {
           throw new Error('Unknown plugin setting.');
         }
-        for (const [key, value] of Object.entries(given)) entry.values.set(key, value);
-        for (const listener of listeners) listener(scope);
+
+        for (const [key, value] of Object.entries(given)) {
+          entry.values.set(key, value);
+        }
+
+        for (const listener of listeners) {
+          listener(scope);
+        }
+
         return { snapshot: pluginSnapshot(scope.pluginId), applied: true, uncertain: false, message: '' };
       }
+
       calls.commit.push({ ...given });
       const answer = next.commit;
       next.commit = undefined;
@@ -300,11 +318,15 @@ export function fakeHost(initial: Readonly<Record<string, unknown>> = {}, stored
     pluginCalls,
     plugin: (plugin, settings) => {
       installed.set(plugin.id, { plugin, schema: category('plugin', 'Plugin', '', '', settings), values: installed.get(plugin.id)?.values ?? new Map() });
-      for (const listener of inventoryListeners) listener();
+      for (const listener of inventoryListeners) {
+        listener();
+      }
     },
     removePlugin: (id) => {
       installed.delete(id);
-      for (const listener of inventoryListeners) listener();
+      for (const listener of inventoryListeners) {
+        listener();
+      }
     },
     inventoryListeners: () => inventoryListeners.size,
     change: (id, value) => {

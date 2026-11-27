@@ -284,18 +284,22 @@ describe('each setting has the control its kind asks for', () => {
   });
 
   it('edits, appends and removes plugin paths as ordered arrays without committing keystrokes', async () => {
-    const original = ['/etc/kube,config', '/work/my cluster/config'];
-    const paths = setting('config.paths', 'text', 'Kubeconfig Paths', 'The kubeconfigs to load.', original, {
+    const original = ['/etc/example,config', '/work/my project/config'];
+    const paths = setting('config.paths', 'text', 'Config Paths', 'The configuration files to load.', original, {
       fileSelection: { enabled: true, multiple: true, allowFolders: false, relative: false },
     });
-    const m = await mount({ prepare: host => host.plugin({ id: 'kubernetes', name: 'Kubernetes', description: '', icon: '' }, [paths]) });
-    await m.user.type(search(), 'Kubeconfig Paths{Enter}');
-    const list = within(screen.getByRole('group', { name: 'Kubeconfig Paths' }));
-    const first = list.getByRole('textbox', { name: 'Kubeconfig Paths' });
-    const add = list.getByRole('textbox', { name: 'Add a path to Kubeconfig Paths' });
+    const m = await mount({
+      prepare: host => {
+        host.plugin({ id: 'example', name: 'Example', description: '', icon: '' }, [paths]);
+      },
+    });
+    await m.user.type(search(), 'Config Paths{Enter}');
+    const list = within(screen.getByRole('group', { name: 'Config Paths' }));
+    const first = list.getByRole('textbox', { name: 'Config Paths' });
+    const add = list.getByRole('textbox', { name: 'Add a path to Config Paths' });
     expect(first).toHaveFocus();
     expect(first).toHaveValue(original[0]);
-    expect(list.getByRole('textbox', { name: 'Kubeconfig Paths, path 2' })).toHaveValue(original[1]);
+    expect(list.getByRole('textbox', { name: 'Config Paths, path 2' })).toHaveValue(original[1]);
     await m.user.clear(first);
     await m.user.type(first, '/tmp/reverted{Escape}');
     expect(first).toHaveValue(original[0]);
@@ -307,12 +311,12 @@ describe('each setting has the control its kind asks for', () => {
     await settle(m.clock);
     await m.user.type(add, '/tmp/external{Enter}');
     await settle(m.clock);
-    await m.user.click(list.getByRole('button', { name: 'Remove path 2 from Kubeconfig Paths' }));
+    await m.user.click(list.getByRole('button', { name: 'Remove path 2 from Config Paths' }));
     await settle(m.clock);
     expect(add).toHaveFocus();
     const edits = [['/etc/updated', original[1]], ['/etc/updated', original[1], '/tmp/external'], ['/etc/updated', '/tmp/external']];
-    expect(m.host.pluginCalls.validate).toEqual(edits.map(value => ['kubernetes', paths.id, value]));
-    expect(m.host.pluginCalls.commit).toEqual(edits.map(value => ['kubernetes', { [paths.id]: value }]));
+    expect(m.host.pluginCalls.validate).toEqual(edits.map(value => ['example', paths.id, value]));
+    expect(m.host.pluginCalls.commit).toEqual(edits.map(value => ['example', { [paths.id]: value }]));
     expect(m.host.calls.commit).toEqual([]);
   });
 

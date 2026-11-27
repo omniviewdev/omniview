@@ -63,7 +63,9 @@ describe('Colors', () => {
     expect(unavailable).toBeChecked();
     expect(unavailable).toBeDisabled();
     expect(group.getByRole('radio', { name: 'Void' })).not.toBeChecked();
-    act(() => { m.host.change('appearance.theme', 'light'); });
+    act(() => {
+      m.host.change('appearance.theme', 'light');
+    });
     await settle(m.clock);
     expect(group.getByRole('radio', { name: 'Light' })).toBeChecked();
     expect(group.queryByRole('radio', { name: /Unavailable/ })).toBeNull();
@@ -72,7 +74,10 @@ describe('Colors', () => {
 
   it('restores the applied theme after a refused save and describes the error on the group', async () => {
     const m = await mount({ values: { 'appearance.theme': 'obsidian' } });
-    m.host.next.commit = () => { throw new Error('disk unavailable'); };
+    m.host.next.commit = () => {
+      throw new Error('disk unavailable');
+    };
+
     const group = screen.getByRole('radiogroup', { name: 'Theme' });
     await m.user.click(within(group).getByRole('radio', { name: 'Dark' }));
     await settle(m.clock);
@@ -87,7 +92,10 @@ describe('Colors', () => {
 
   it('keeps the saved theme when its reset is refused, and a later policy lock prevents any choice', async () => {
     const m = await mount({ values: { 'appearance.theme': 'light' } });
-    m.host.next.commit = () => { throw new Error('disk unavailable'); };
+    m.host.next.commit = () => {
+      throw new Error('disk unavailable');
+    };
+
     await m.user.click(screen.getByRole('button', { name: 'Reset Theme to default' }));
     await settle(m.clock);
     const group = screen.getByRole('radiogroup', { name: 'Theme' });
@@ -98,7 +106,9 @@ describe('Colors', () => {
       throw new Error('Settings not ready');
     }
 
-    act(() => { ready.form.setFieldLock('appearance.theme', { source: 'managed', readonly: false, reason: 'Managed by policy.' }); });
+    act(() => {
+      ready.form.setFieldLock('appearance.theme', { source: 'managed', readonly: false, reason: 'Managed by policy.' });
+    });
     expect(group).toHaveAttribute('aria-disabled', 'true');
     expect(group).toHaveAccessibleDescription(/Managed by policy/);
     await m.user.click(within(group).getByRole('radio', { name: 'Void' }));
@@ -152,14 +162,19 @@ describe('Layout and text', () => {
   it('does not change the saved size on a rejected adjustment or after a cancelled drag', async () => {
     const m = await mount();
     const input = range('UI Text Size');
-    m.host.next.commit = () => { throw new Error('disk unavailable'); };
+    m.host.next.commit = () => {
+      throw new Error('disk unavailable');
+    };
+
     move(input, 4);
     await settle(m.clock);
     expect(input).toHaveAttribute('aria-valuetext', '100%');
     expect(input).toHaveAttribute('aria-invalid', 'true');
     fireEvent.pointerDown(input, drag);
     move(input, 0);
-    act(() => { m.host.change('appearance.textSize', '110'); });
+    act(() => {
+      m.host.change('appearance.textSize', '110');
+    });
     await settle(m.clock);
     fireEvent.keyDown(input, { key: 'Escape' });
     fireEvent.pointerUp(input, drag);

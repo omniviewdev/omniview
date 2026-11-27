@@ -43,14 +43,16 @@ export function ListControl({ field, form }: { readonly field: FieldState; reado
           id={first ? binding?.controlId : undefined}
           aria-label={first ? undefined : adding ? `Add a ${noun} to ${field.label}` : `${field.label}, ${noun} ${slot + 1}`}
           aria-describedby={binding?.describedBy}
-          aria-invalid={binding?.invalid || undefined}
+          aria-invalid={binding?.invalid ? true : undefined}
           aria-disabled={binding?.disabledReason ? true : undefined}
           readOnly={locked !== undefined}
           data-mono={field.spec.mono || undefined}
           spellCheck={field.spec.mono ? false : undefined}
           placeholder={adding && !locked ? `Add a ${noun}` : undefined}
           value={pending?.value ?? item}
-          onChange={event => setDraft({ slot, value: event.currentTarget.value })}
+          onChange={event => {
+            setDraft({ slot, value: event.currentTarget.value });
+          }}
           onBlur={commit}
           onKeyDown={event => {
             if (event.nativeEvent.isComposing || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
@@ -60,7 +62,7 @@ export function ListControl({ field, form }: { readonly field: FieldState; reado
             if (event.key === 'Enter') {
               event.preventDefault();
               commit();
-            } else if (event.key === 'Escape' && (pending || field.dirty)) {
+            } else if (event.key === 'Escape' && (pending !== undefined || field.dirty)) {
               event.preventDefault();
               event.stopPropagation();
               setDraft(undefined);

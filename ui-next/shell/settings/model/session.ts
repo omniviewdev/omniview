@@ -136,13 +136,19 @@ function createScopeSession({ client, scheduler }: SessionOptions, scope: Settin
   const waiting = (): readonly string[] => [...new Set([...hostWaiting, ...unapplied])];
 
   const check: RemoteValidator = async ({ id, value }) => {
-    if (disposed || state.phase !== 'ready') throw new Error('Settings unavailable.');
+    if (disposed || state.phase !== 'ready') {
+      throw new Error('Settings unavailable.');
+    }
+
     const answer = await client.validate(scope, state.model.wireKeys[id] ?? id, value);
     return { valid: answer.valid, ...(answer.message === undefined || answer.message === '' ? {} : { message: answer.message }), ...(answer.code === undefined || answer.code === '' ? {} : { code: answer.code }) };
   };
 
   const commitPatch = async (values: Readonly<Record<string, Json>>): Promise<Record<string, Json>> => {
-    if (disposed || state.phase !== 'ready') throw new Error('Settings unavailable.');
+    if (disposed || state.phase !== 'ready') {
+      throw new Error('Settings unavailable.');
+    }
+
     const before = state;
     const keys = before.model.wireKeys;
     const patch = Object.keys(values).some((id) => Object.hasOwn(keys, id))
@@ -153,9 +159,15 @@ function createScopeSession({ client, scheduler }: SessionOptions, scope: Settin
     try {
       // A refusal is a throw, and the form says it on the field in its own words.
       const result = await client.commit(scope, patch);
-      if (disposed || state !== before) return {};
+      if (disposed || state !== before) {
+        return {};
+      }
+
       const after = modelOf(result.snapshot, scope);
-      if (scope.kind === 'plugin' && result.snapshot.categories.plugin && installIfChanged(after)) return {};
+      if (scope.kind === 'plugin' && result.snapshot.categories.plugin && installIfChanged(after)) {
+        return {};
+      }
+
       const canonical: Record<string, Json> = {};
       for (const id of Object.keys(values)) {
         const value = after.initial[id];
@@ -309,6 +321,7 @@ function createScopeSession({ client, scheduler }: SessionOptions, scope: Settin
           setState(FAILED);
           return;
         }
+
         retryLater();
       }
 
@@ -334,26 +347,36 @@ function createScopeSession({ client, scheduler }: SessionOptions, scope: Settin
 
     retries = 0;
     const model = modelOf(snapshot, scope);
-    if (!installIfChanged(model)) follow(form, model);
+    if (!installIfChanged(model)) {
+      follow(form, model);
+    }
   }
 
   function discardForm(): void {
     schemaKey = '';
-    if (state.phase === 'ready') state.form.dispose();
+    if (state.phase === 'ready') {
+      state.form.dispose();
+    }
+
     applied = {};
     unapplied.clear();
     hostWaiting = [];
     setNotes(NONE);
     if (said.text !== '') {
       said = { text: '', serial: said.serial + 1 };
-      for (const listener of sayListeners) listener();
+      for (const listener of sayListeners) {
+        listener();
+      }
     }
   }
 
   /** Preserve ordinary drafts across value changes. Replace the whole form when its provider changes schema or redaction. */
   function installIfChanged(model: SettingsModel): boolean {
     const nextKey = scope.kind === 'plugin' ? JSON.stringify([model.schema, model.wireKeys]) : '';
-    if (state.phase === 'ready' && schemaKey === nextKey) return false;
+    if (state.phase === 'ready' && schemaKey === nextKey) {
+      return false;
+    }
+
     discardForm();
     schemaKey = nextKey;
     const compiled = compileSchema(model.schema);
@@ -418,7 +441,9 @@ function createScopeSession({ client, scheduler }: SessionOptions, scope: Settin
       () => {
         if (!disposed && mine === generation) {
           setState(FAILED);
-          if (wantsRefresh) load();
+          if (wantsRefresh) {
+            load();
+          }
         }
       },
     );
@@ -501,11 +526,17 @@ export function createSettingsSession(options: SessionOptions): SettingsSession 
   const core = createScopeSession(options, HOST_SCOPE);
   const plugins = createPluginPages(client.inventory, (pluginId) => createScopeSession(options, { kind: 'plugin', pluginId }));
   const offChanged = client.onChanged((scope) => {
-    if (scope.kind === 'host') core.changed();
-    else plugins.changed(scope.pluginId);
+    if (scope.kind === 'host') {
+      core.changed();
+    } else {
+      plugins.changed(scope.pluginId);
+    }
   });
   const offInventory = client.onInventoryChanged(plugins.refresh);
-  const offReconnect = client.onReconnect?.(() => { core.changed(); plugins.refresh(); });
+  const offReconnect = client.onReconnect?.(() => {
+    core.changed();
+    plugins.refresh();
+  });
   let disposed = false;
   core.load();
   plugins.refresh();
@@ -513,9 +544,15 @@ export function createSettingsSession(options: SessionOptions): SettingsSession 
   return {
     ...core,
     plugins,
-    refresh: () => { core.refresh(); plugins.refresh(); },
+    refresh: () => {
+      core.refresh();
+      plugins.refresh();
+    },
     dispose: () => {
-      if (disposed) return;
+      if (disposed) {
+        return;
+      }
+
       disposed = true;
       offChanged();
       offInventory();

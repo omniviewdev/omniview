@@ -37,6 +37,7 @@ if (params.get('plugins') === 'installed') {
     setting('watch.autoRefresh', 'toggle', 'Refresh resource watches', 'Reconnect watches when the resource inventory changes.', true),
   ]);
 }
+
 Reflect.set(window, '__host', host);
 
 // The functions that stop what Settings listens to, in the order it started to listen: the probe calls them to see what a page that stopped listening to its host does (`window.__stops`).
@@ -78,9 +79,15 @@ if (HOST === 'held') {
 const client: SettingsClient = HOST === 'down' || HOST === 'empty' ? {
   ...host.client,
   snapshot: async (scope) => {
-    if (scope.kind !== 'host') return host.client.snapshot(scope);
+    if (scope.kind !== 'host') {
+      return host.client.snapshot(scope);
+    }
+
     host.calls.snapshot += 1;
-    if (HOST === 'down') throw new Error('The host did not answer.');
+    if (HOST === 'down') {
+      throw new Error('The host did not answer.');
+    }
+
     return { categories: {}, stored: {} };
   },
 } : host.client;

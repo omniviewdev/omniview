@@ -97,6 +97,7 @@ function Control({ field, form, choose, unavailableOption }: { readonly field: F
           choose(option.value);
         }
       };
+
       if (field.spec.display === 'segmented') {
         return (
           <SegmentedControl label={field.label} value={value} onValueChange={chooseOption} options={options.map(option => ({
@@ -249,7 +250,7 @@ export function SettingRow({ form, session, id, concise, rollback, disabledReaso
   const drafted = field.dirty || field.secret?.changed === true;
   const note = drafted && Object.hasOwn(notes, id) ? (field.secret === undefined ? elsewhereNote(notes[id]) : SECRET_ELSEWHERE) : undefined;
   return (
-    <div ref={row} className={styles.row} tabIndex={-1} data-settings-row={id} data-settings-concise={concise || undefined}>
+    <div ref={row} className={styles.row} tabIndex={-1} data-settings-row={id} data-settings-concise={concise ? true : undefined}>
       <Field
         layout="row"
         label={field.label}

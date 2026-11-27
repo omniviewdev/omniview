@@ -26,7 +26,7 @@ export function ThemePicker({ label, value, onChoose }: ThemePickerProps) {
     }
 
     event.preventDefault();
-    const id = event.key === 'Home' ? THEMES[0].id : THEMES[THEMES.length - 1]!.id;
+    const id = event.key === 'Home' ? THEMES[0].id : THEMES[THEMES.length - 1].id;
     const radio = event.currentTarget.querySelector<HTMLInputElement>(`input[value="${id}"]`);
     radio?.focus();
     radio?.click();
@@ -39,10 +39,10 @@ export function ThemePicker({ label, value, onChoose }: ThemePickerProps) {
       aria-label={field ? undefined : label}
       aria-labelledby={field?.labelId}
       aria-describedby={describedBy}
-      aria-invalid={field?.invalid || undefined}
+      aria-invalid={field?.invalid ? true : undefined}
       aria-disabled={field?.disabledReason ? true : undefined}
-      aria-readonly={field?.readOnly || undefined}
-      aria-required={field?.required || undefined}
+      aria-readonly={field?.readOnly ? true : undefined}
+      aria-required={field?.required ? true : undefined}
       tabIndex={locked ? 0 : undefined}
       onKeyDown={onKeyDown}
     >
@@ -63,7 +63,9 @@ export function ThemePicker({ label, value, onChoose }: ThemePickerProps) {
               checked={checked}
               tabIndex={index === stop ? 0 : -1}
               disabled={locked}
-              onChange={() => onChoose(theme.id)}
+              onChange={() => {
+                onChoose(theme.id);
+              }}
             />
             <span className={styles.body}>
               <Text>{theme.name}</Text>

@@ -7,7 +7,9 @@ const transport = vi.hoisted(() => {
     list: vi.fn<() => Promise<unknown>>(), snapshot: vi.fn(), validate: vi.fn(), commit: vi.fn(), listeners,
     on: (name: string, listener: (event: { data: unknown }) => void) => {
       listeners.set(name, listener);
-      return () => { listeners.delete(name); };
+      return () => {
+        listeners.delete(name);
+      };
     },
   };
 });
@@ -26,15 +28,15 @@ afterEach(() => {
 describe('settings transport', () => {
   it('discovers the backend-negotiated settings provider, not a manifest declaration or built-in frontend', async () => {
     transport.list.mockResolvedValueOnce([
-      { id: 'kubernetes', capabilities: ['exec', 'resource', 'settings'], lastError: 'Diagnostic text stays out of settings.',
-        metadata: { name: 'Kubernetes', description: 'Cluster tools', icon: 'LuBox', capabilities: ['resource', 'exec'] } },
+      { id: 'example', capabilities: ['exec', 'resource', 'settings'], lastError: 'Diagnostic text stays out of settings.',
+        metadata: { name: 'Example', description: 'Example tools', icon: 'LuBox', capabilities: ['resource', 'exec'] } },
       { id: 'builtin-without-provider', capabilities: [], origin: 'builtin', metadata: { capabilities: ['ui', 'settings'] } },
       { id: 'builtin-with-provider', capabilities: ['settings'], origin: 'builtin', metadata: { name: 'Built in', description: '', icon: '' } },
       { id: 'not-started', capabilities: null, metadata: { capabilities: ['settings'] } },
     ]).mockResolvedValueOnce(null);
     const client = runtimeClient();
     expect(await client.inventory()).toEqual([
-      { id: 'kubernetes', name: 'Kubernetes', description: 'Cluster tools', icon: 'LuBox' },
+      { id: 'example', name: 'Example', description: 'Example tools', icon: 'LuBox' },
       { id: 'builtin-with-provider', name: 'Built in', description: '', icon: '' },
     ]);
     expect(await client.inventory()).toEqual([]);
@@ -43,7 +45,7 @@ describe('settings transport', () => {
 
   it('passes the same scope and opaque key to the service for read, validation, and durable commit', async () => {
     const client = runtimeClient();
-    const scope = { kind: 'plugin', pluginId: 'kubernetes' } as const;
+    const scope = { kind: 'plugin', pluginId: 'example' } as const;
     const key = 'connections.context.timeout';
     const patch = { [key]: 17 };
     await client.snapshot(scope);
@@ -61,18 +63,20 @@ describe('settings transport', () => {
     const stop = client.onChanged(changed);
     const stopInventory = client.onInventoryChanged(inventory);
     const send = (name: string, data: unknown) => transport.listeners.get(name)?.({ data });
-    for (const data of [null, {}, { kind: 'plugin' }, { kind: 'plugin', pluginId: '' }, { kind: 'host', pluginId: 'kubernetes' }]) {
+    for (const data of [null, {}, { kind: 'plugin' }, { kind: 'plugin', pluginId: '' }, { kind: 'host', pluginId: 'example' }]) {
       send('settings/changed', data);
     }
+
     expect(changed).not.toHaveBeenCalled();
-    send('settings/changed', { kind: 'plugin', pluginId: 'kubernetes' });
+    send('settings/changed', { kind: 'plugin', pluginId: 'example' });
     send('settings/changed', { kind: 'host' });
-    expect(changed.mock.calls).toEqual([[{ kind: 'plugin', pluginId: 'kubernetes' }], [{ kind: 'host' }]]);
-    send('plugin/state_change', { to: 'Starting' });
+    expect(changed.mock.calls).toEqual([[{ kind: 'plugin', pluginId: 'example' }], [{ kind: 'host' }]]);
+    send('plugin/state_change', { pluginID: 'example', to: 'Starting' });
+    send('plugin/state_change', { to: 'Running' });
     expect(inventory).not.toHaveBeenCalled();
     send('plugin/inventory_changed', undefined);
-    send('plugin/unloaded', { pluginID: 'kubernetes', cause: 'reloaded' });
-    send('plugin/state_change', { to: 'Running' });
+    send('plugin/unloaded', { pluginID: 'example', cause: 'reloaded' });
+    send('plugin/state_change', { pluginID: 'example', to: 'Running' });
     expect(inventory).toHaveBeenCalledTimes(3);
     stop();
     stopInventory();
