@@ -350,11 +350,13 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
       return;
     }
 
-    // close all the selected sessions
-    Promise.all(closing.filter(isTerminalSessionTab).map(async (tab) => ExecClient.CloseSession(tab.id)))
-      .catch((err: unknown) => {
-        if (err instanceof Error && !isClosing(err)) {
-          log.error(err, { event: 'terminate_sessions' });
+    // close all the selected sessions: each real failure is reported, and a close that timed out (the session is ending) is not one
+    void Promise.allSettled(closing.filter(isTerminalSessionTab).map(async (tab) => ExecClient.CloseSession(tab.id)))
+      .then((results) => {
+        for (const result of results) {
+          if (result.status === 'rejected' && result.reason instanceof Error && !isClosing(result.reason)) {
+            log.error(result.reason, { event: 'terminate_sessions' });
+          }
         }
       });
 
