@@ -89,7 +89,7 @@ func TestADirectoryNoNonceVouchedForIsNeverTheAnswer(t *testing.T) {
 	goTo(t, k, elsewhere)
 	other := t.TempDir()
 	wrong := strings.Repeat("f", len(k.nonce))
-	k.print(osc("633;P;Cwd=" + other + ";" + wrong) + osc("633;P;Cwd=" + other) + osc("7;file://host" + other))
+	k.print(osc("633;P;Cwd="+other+";"+wrong) + osc("633;P;Cwd="+other) + osc("7;file://host"+other))
 	guarded(t, "forged-ignored", func() {
 		assert.Equal(t, Directory{Path: elsewhere}, cwdOf(t, k), "a wrong nonce, no nonce and OSC 7 change nothing")
 	})
