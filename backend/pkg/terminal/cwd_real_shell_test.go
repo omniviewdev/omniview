@@ -31,7 +31,7 @@ func realDir(t *testing.T, base, name string) string {
 	return resolved
 }
 
-// The replacement's prompt is spelled so that the echo of the typed line cannot match it (`P''> ` is `P> ` only after the shell has parsed it): the wait is for the new shell's own prompt.
+// The replacement's prompt is typed as P, two single quotes, then "> ", so the echo of the typed line cannot match it: the shell turns it into "P> " only after it has parsed it. The wait is for the new shell's own prompt.
 // A shell that is replaced (`exec`) by one with no integration tells nothing from then on: the last proof names a directory it has left.
 func TestAReplacedShellWithNoIntegrationIsAnsweredByTheSystemNotByTheLastProof(t *testing.T) {
 	for _, tc := range []struct{ shell, replacement string }{
