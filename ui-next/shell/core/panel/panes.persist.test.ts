@@ -237,4 +237,21 @@ describe('a layout that cannot be read', () => {
     const restored = restore(JSON.parse(JSON.stringify(document)));
     expect(restored).toMatchObject({ ok: true, repaired: false });
   });
+
+  it('shares the space of a dropped pane among the others in the document itself: what is saved sums to 1', () => {
+    const h = terminalWith(3);
+    h.store.moveSash('terminal', 0, 0.125, EXTENT);
+    for (let i = 0; i < 48; i += 1) {
+      h.store.openSession(session('logs', 'host', `log ${String(i)}`), { reveal: false });
+    }
+
+    const document = h.store.serialise();
+    expect(document.sessions).toHaveLength(50);
+    expect(document.sessions[0]?.id).toBe('s2');
+    const saved = document.layout?.tools.terminal;
+    expect(saved?.sessions).toEqual(['s2', 's3']);
+    expect(saved?.ratios.reduce((total, one) => total + one, 0)).toBeCloseTo(1, 12);
+    const ratios = h.snapshot().panes.terminal?.ratios ?? [];
+    expect(saved?.ratios[0]).toBeCloseTo(ratios[1] / (ratios[1] + ratios[2]), 12);
+  });
 });
