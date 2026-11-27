@@ -51,6 +51,8 @@ export type CommandGutter = {
   readonly target: () => GutterCommand | undefined;
   /** Moves the view to the previous or the next command, and says where it went. `select` selects its output too. */
   readonly jump: (direction: 'previous' | 'next', options?: { readonly select?: boolean }) => GutterCommand | undefined;
+  /** Moves the view to the command with this id (a notice that says "this command finished" brings the person to it), makes it the target and says where it went; `undefined`, and says so, for a command the gutter does not hold (it scrolled out or the screen was cleared). */
+  readonly reveal: (id: string) => GutterCommand | undefined;
   /** Selects the output of a command (the target by default); false, and says so, when there is none to select. */
   readonly selectOutput: (command?: GutterCommand) => boolean;
   /** The text of the output of a command (the target by default): `undefined` when it printed none or its lines are gone. */
@@ -482,6 +484,7 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
       return entry === undefined ? undefined : viewOf(entry);
     },
     jump,
+    reveal: () => undefined,
     selectOutput: (command) => select(entryOf(command)),
     output,
     hasOutput,

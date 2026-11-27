@@ -1,5 +1,5 @@
 import { HOST, type PanelStore, type Session, type SessionId } from '../../core/panel';
-import { offersTakeBack, type TerminalFeedHandle, type TerminalFeedSnapshot, type TerminalRestart, type TerminalTarget } from './feed';
+import { offersTakeBack, type TerminalFeedHandle, type TerminalFeedSnapshot, type TerminalFinished, type TerminalRestart, type TerminalTarget } from './feed';
 import { sessionStateOf } from './state';
 import { TERMINAL_TOOL_ID } from './tool';
 
@@ -67,6 +67,11 @@ export type TerminalSessionsOptions = {
    * is drawn (`canOpenExternal`). The registry gives it only http and https addresses, once for each follow; a way that throws or rejects is one warning, and nothing is tried again.
    */
   readonly openExternal?: ((url: string) => void | Promise<void>) | undefined;
+  /**
+   * A command finished in a session's terminal (`TerminalFeedSnapshot.finished`: a live end mark, in the producer's times), told once for each, in the order the feed says them. What the host makes of it (a notice) is the window's: the registry
+   * only passes it on. A listener that throws is one warning.
+   */
+  readonly finished?: ((session: SessionId, finished: TerminalFinished) => void) | undefined;
 };
 
 export type OpenTerminalOptions = {
@@ -148,6 +153,17 @@ export type TerminalSessions = {
    * a click. Does nothing when the window gave no way (`canOpenExternal`).
    */
   readonly openExternal: (uri: string) => void;
+  /**
+   * Asks for the view of a session's terminal to be moved to a command and the keyboard put in it (a notice's Show): kept until the terminal's body takes it, and answered `false` for a session the registry does not hold. A later
+   * request for the session replaces the earlier. The registry moves nothing itself: the body that shows the session does it, when its screen is there.
+   */
+  readonly requestJump: (session: SessionId, command: string) => boolean;
+  /** The command a session's view is asked to move to and nobody has taken: the same value until it is taken or replaced (an external store with `subscribeJumps`). */
+  readonly pendingJump: (session: SessionId) => string | undefined;
+  /** Takes the request of a session, once: the second call finds none. */
+  readonly takeJump: (session: SessionId) => string | undefined;
+  /** Follows the requests: the listener is called, with nothing, after each one is made, replaced, taken or dropped (a session that goes drops its request). */
+  readonly subscribeJumps: (listener: () => void) => () => void;
 };
 
 type Entry = {
@@ -725,6 +741,14 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
     },
 
     takeFocus: (session) => wanted.delete(session),
+
+    requestJump: () => false,
+
+    pendingJump: () => undefined,
+
+    takeJump: () => undefined,
+
+    subscribeJumps: () => () => undefined,
 
     canTakeBack: (session) => lostEntry(session) !== undefined,
 

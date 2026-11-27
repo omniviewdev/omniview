@@ -127,6 +127,8 @@ export type ScreenCommands = {
   readonly revision: () => string;
   readonly state: () => { readonly count: number; readonly output: boolean; readonly rerun: string | undefined };
   readonly jump: (direction: 'previous' | 'next', options?: { readonly select?: boolean }) => void;
+  /** Moves the view to the command with this id and says where it went: whether the screen holds it. */
+  readonly reveal: (command: string) => boolean;
   readonly selectOutput: () => void;
   readonly copyOutput: () => Promise<boolean>;
   /** Types the target's command line into the shell (and Enter only for a line the shell proved). */
@@ -984,6 +986,7 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
     jump: (direction, options) => {
       gutter?.jump(direction, options);
     },
+    reveal: () => false,
     selectOutput: () => {
       if (engine?.alternate() === true) {
         sayCommands(NO_OUTPUT);
