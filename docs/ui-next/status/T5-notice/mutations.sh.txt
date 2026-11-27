@@ -42,5 +42,5 @@ run forged-ignored backend/pkg/terminal/channel_marks.go 'trust != marks.TrustNo
 			dir = ""' 'trust != marks.TrustNonce && false {
 			dir = ""'
 run fallback-missing,fallback-a-file backend/pkg/terminal/channel_marks.go 'if info, err := os.Stat(dir); err != nil || !info.IsDir() {' 'if info, err := os.Stat(dir); false && (err != nil || !info.IsDir()) {'
-run fallback-relative backend/pkg/terminal/channel_marks.go 'if dir == "" || !filepath.IsAbs(dir) {' 'if dir == "" {'
+run fallback-relative backend/pkg/terminal/channel_marks.go 'if dir == "" || !filepath.IsAbs(dir) {' 'if dir == "" || (!filepath.IsAbs(dir) && false) {'
 exit $BAD
