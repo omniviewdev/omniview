@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { EngineAppearance } from './engine';
+import type { Engine, EngineAppearance } from './engine';
 import type { PlacedMark, TerminalMark } from './feed';
 import { createScreen } from './screen';
 import { createScreenReaderChoice } from './screenReader';
@@ -28,7 +28,15 @@ const flush = async () => {
 async function rig() {
   const feed = fakeTerminalFeed({ takeReplay: true });
   const queue: Array<() => void> = [];
-  const real = createXtermEngine({ cols: 80, rows: 6, scrollback: 100, appearance: APPEARANCE, screenReaderMode: false });
+  const inner = createXtermEngine({ cols: 80, rows: 6, scrollback: 100, appearance: APPEARANCE, screenReaderMode: false });
+  const scrolls: number[] = [];
+  const real: Engine = {
+    ...inner,
+    scrollTo: (line) => {
+      scrolls.push(line);
+      inner.scrollTo(line);
+    },
+  };
   // Writes whose callbacks the test lets the emulator run, as the real one does: after it has parsed, on its own timer.
   const screen = createScreen({
     feed,
@@ -57,13 +65,6 @@ async function rig() {
   screen.commands.onEvent((event) => {
     events.push(event);
   });
-  const scrolls: number[] = [];
-  const original = real.scrollTo;
-  real.scrollTo = (line) => {
-    scrolls.push(line);
-    original(line);
-  };
-
   return {
     screen,
     feed,
@@ -80,7 +81,7 @@ async function rig() {
     }),
     done: () => {
       screen.dispose();
-      real.dispose();
+      inner.dispose();
       host.remove();
     },
   };
