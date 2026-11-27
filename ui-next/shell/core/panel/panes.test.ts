@@ -183,7 +183,52 @@ describe('the active pane', () => {
   });
 });
 
+describe('a group whose sessions are all hidden', () => {
+  /** acme:one holds a group of two sessions of beta; beta then leaves, so the tool has a group and nothing visible. */
+  function hidden(): Harness {
+    const h = boot({ hostTools: HOST_TOOLS, plugins: { acme: [tool('one', 'One', 30)], beta: [] } });
+    h.store.openSession(session('acme:one', 'beta', 'a'));
+    h.store.splitPane('acme:one', { plugin: 'beta', title: 'b' }, { extent: EXTENT });
+    h.store.syncPlugins([{ id: 'acme', tools: [tool('one', 'One', 30)] }]);
+    return h;
+  }
+
+  it('is still a group: a split goes through the group (axis, room, the pane it reports is the pane it is in)', () => {
+    const h = hidden();
+    expect(h.snapshot().panes['acme:one']?.panes).toHaveLength(2);
+    const before = h.snapshot();
+    expect(h.store.splitPane('acme:one', { plugin: 'acme', title: 'c' }, { extent: EXTENT, axis: 'column' })).toMatchObject({ status: 'refused', reason: 'axis' });
+    expect(h.store.splitPane('acme:one', { plugin: 'acme', title: 'c' }, { extent: 160 })).toMatchObject({ status: 'refused', reason: 'full' });
+    expect(h.snapshot()).toBe(before);
+    const result = h.store.splitPane('acme:one', { plugin: 'acme', title: 'c' }, { extent: EXTENT });
+    expect(result.status).toBe('done');
+    if (result.status === 'done') {
+      const group = h.snapshot().panes['acme:one'];
+      expect(group?.panes.find((one) => one.session === result.id)?.id).toBe(result.pane);
+      expect(group?.panes).toHaveLength(3);
+      expect(group?.ratios).toEqual([1 / 3, 1 / 3, 1 / 3]);
+      expect(group?.active).toBe(result.pane);
+    }
+
+    expect(checkInvariants(h.snapshot())).toEqual([]);
+  });
+});
+
 describe('closing', () => {
+  it('the active pane passes the focus to a VISIBLE pane: a hidden neighbour is not chosen, so the tool does not fall back to a session outside its group', () => {
+    const h = boot({ hostTools: HOST_TOOLS, plugins: { acme: [tool('one', 'One', 30)], beta: [] } });
+    h.store.openSession(session('acme:one', 'acme', 'x'));
+    h.store.openSession(session('acme:one', 'acme', 'a'));
+    h.store.splitPane('acme:one', { plugin: 'acme', title: 'b' }, { extent: EXTENT });
+    h.store.splitPane('acme:one', { plugin: 'beta', title: 'c' }, { extent: EXTENT });
+    expect(h.snapshot().panes['acme:one']?.panes.map((one) => one.session)).toEqual(['s2', 's3', 's4']);
+    h.store.focusPane('acme:one', 'p2');
+    h.store.syncPlugins([{ id: 'acme', tools: [tool('one', 'One', 30)] }]);
+    expect(h.store.closeSession('s3')).toMatchObject({ status: 'done', closed: 's3', active: 's2' });
+    expect(h.snapshot().active['acme:one']).toBe('s2');
+    expect(checkInvariants(h.snapshot())).toEqual([]);
+  });
+
   it('a session of a pane takes its pane with it and gives the share to the others in proportion', () => {
     const h = terminalWith(3);
     h.store.moveSash('terminal', 0, 0.2, EXTENT);

@@ -135,6 +135,30 @@ describe('a window saved before panes', () => {
   });
 });
 
+describe('a tool named like a member of every object, saved after the cap cut its chosen session', () => {
+  it('has its own entry in the document\'s active choices: the document is what a restore saves again', () => {
+    const h = boot({ hostTools: [tool('__proto__', 'Proto', 10), tool('logs', 'Logs', 20)] });
+    h.store.openSession(session('__proto__', 'host', 'one'), { reveal: false });
+    h.store.splitPane('__proto__', { plugin: 'host', title: 'two' }, { extent: EXTENT });
+    h.store.splitPane('__proto__', { plugin: 'host', title: 'three' }, { extent: EXTENT });
+    h.store.focusPane('__proto__', 'p1');
+    for (let i = 0; i < 48; i += 1) {
+      h.store.openSession(session('logs', 'host', `log ${String(i)}`), { reveal: false });
+    }
+
+    const document = JSON.parse(JSON.stringify(h.store.serialise())) as PersistedPanel;
+    expect(document.sessions[0]?.id).toBe('s2');
+    expect(Object.hasOwn(document.active, '__proto__')).toBe(true);
+    expect(JSON.parse(JSON.stringify(document.active)).__proto__).toBe('s3');
+    const restored = restore(document);
+    if (!restored.ok) {
+      throw new Error('not readable');
+    }
+
+    expect(JSON.parse(JSON.stringify(serialise(restored.state)))).toEqual(document);
+  });
+});
+
 describe('the layout\'s own migrations', () => {
   it('are a table of their own, empty at version 1', () => {
     expect(Object.keys(LAYOUT_MIGRATIONS)).toEqual([]);
