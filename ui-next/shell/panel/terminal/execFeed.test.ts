@@ -3503,6 +3503,35 @@ describe('a command that finished while the page watched (`finished`)', () => {
     expect(r.feed.getSnapshot().finished).toMatchObject({ id: 'c8', durationMs: 20_000, command: 'make' });
   });
 
+  it('is not the end mark of the bytes a reconnect continues from before the page came back: no replay is gathered, but the commands finished while it was away', async () => {
+    const r = await running({ end: 0, integration: { state: 'on' } });
+    r.stream().output(0, 'x'.repeat(100));
+    r.stream().marks(start(40));
+    r.stream().drop();
+    const again = reconnect(r);
+    again.ready({ start: 100, end: 160 });
+    again.output(100, 'y'.repeat(60));
+    again.marks(finish(160, { id: 'c1' }));
+    expect(r.feed.getSnapshot().finished, 'finished at or before the end the host advertised').toBeUndefined();
+    again.output(160, 'z'.repeat(60));
+    again.marks(start(180, { id: 'c2' }), finish(220, { id: 'c2' }));
+    expect(r.feed.getSnapshot().finished?.id, 'one beyond it is news').toBe('c2');
+  });
+
+  it('tells every command that finished in one frame of marks, one after the other', async () => {
+    const r = await running({ end: 0, integration: { state: 'on' } });
+    r.stream().output(0, 'x'.repeat(200));
+    const seen: string[] = [];
+    r.feed.subscribe(() => {
+      const id = r.feed.getSnapshot().finished?.id;
+      if (id !== undefined && seen.at(-1) !== id) {
+        seen.push(id);
+      }
+    });
+    r.stream().marks(start(40), finish(60), start(80, { id: 'c2' }), finish(100, { id: 'c2' }));
+    expect(seen).toEqual(['c1', 'c2']);
+  });
+
   it('is not the end mark of a replay the host brings after a loss either (the page was away: no word of what finished then)', async () => {
     const r = await running({ end: 0, integration: { state: 'on' } });
     r.stream().output(0, 'x'.repeat(60));

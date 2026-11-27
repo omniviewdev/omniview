@@ -125,6 +125,22 @@ describe('a request to show a command', () => {
     expect(page.getByText('That command is no longer in the terminal')).toBeInTheDocument();
   });
 
+  it('waits for the screen to have placed the command when its marks are still held: a request that comes before the first frame is not lost', async () => {
+    const m = mount();
+    await settle();
+    act(() => {
+      m.feed.push('$ make\r\nout1\r\n', [
+        placed(0, mark('prompt-start', { id: 'c1' })),
+        placed(2, mark('input-start', { id: 'c1' })),
+        placed(8, mark('command-start', { id: 'c1', trust: 'nonce', command: 'make' })),
+        placed(16, mark('command-end', { id: 'c1', exit: 0, durationMs: 31_000 })),
+      ]);
+      m.sessions.requestJump(m.id, 'c1');
+    });
+    await settle();
+    expect(m.loader.engines[0]?.scrolls).toEqual([0]);
+  });
+
   it('is taken once: a second request for the same command moves the view again, and nothing moves with no request', async () => {
     const m = await withCommand();
     const engine = m.loader.engines[0];
