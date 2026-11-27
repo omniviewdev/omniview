@@ -6,7 +6,7 @@ import type { TabsStore } from '../core/tabs';
 
 const TabsContext = createContext<TabsStore | null>(null);
 
-export function TabsProvider({ store, children }: { readonly store: TabsStore; readonly children: ReactNode }) {
+export function TabsProvider({ store, children }: { readonly store: TabsStore | null; readonly children: ReactNode }) {
   return <TabsContext value={store}>{children}</TabsContext>;
 }
 

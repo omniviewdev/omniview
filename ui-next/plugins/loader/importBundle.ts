@@ -37,9 +37,30 @@ function configure(): void {
   registerShared(systemJs);
   const hooks = systemJs as unknown as SystemHooks;
   const plugins = `${origin()}/_/plugins/`;
+  const shared = new Set<string>(SHARED_SPECIFIERS_V1);
+  const pinnedRoot = (url: string | undefined): string | undefined => {
+    if (!url?.startsWith(plugins)) {
+      return undefined;
+    }
+
+    const match = /^[^/]+\/verified\/[^/]+\/[^/]+\/assets\//.exec(url.slice(plugins.length));
+    return match ? plugins + match[0] : undefined;
+  };
+
+  const resolve = systemJs.resolve.bind(systemJs);
+  systemJs.resolve = (name, parent) => {
+    const resolved = resolve(name, parent);
+    const base = pinnedRoot(parent);
+    if (base && !shared.has(name) && !resolved.startsWith(base)) {
+      throw new Error('A verified owner page cannot import an unpinned module');
+    }
+
+    return resolved;
+  };
+
   hooks.shouldFetch = (url) => url.startsWith(plugins);
   hooks.fetch = async (url, init) => {
-    const response = await fetch(url, init);
+    const response = await fetch(url, pinnedRoot(url) ? { ...init, redirect: 'error' } : init);
     if (!response.ok) {
       return response;
     }
@@ -77,9 +98,12 @@ async function within<Value>(work: Promise<Value>, milliseconds: number): Promis
 }
 
 /** Fetches, links and evaluates a plugin's bundle and answers its exports. Rejects with the loader's own errors or whatever the bundle threw. */
-export async function importBundle(id: string, timeoutMs: number = IMPORT_TIMEOUT_MS): Promise<unknown> {
+export async function importBundle(id: string, timeoutMs: number = IMPORT_TIMEOUT_MS, artifact?: { readonly pin: string; readonly generation: string }): Promise<unknown> {
   configure();
-  return within(systemJs.import(entryUrl(id)), timeoutMs);
+  const url = artifact
+    ? `${root(id)}verified/${encodeURIComponent(artifact.pin)}/${encodeURIComponent(artifact.generation)}/assets/entry.js`
+    : entryUrl(id);
+  return within(systemJs.import(url), timeoutMs);
 }
 
 /**

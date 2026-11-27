@@ -3,6 +3,7 @@ import type { LogSessionV1, LogTargetV1, PanelHostV1 } from '../contract/v1';
 import { routeInputOf } from './panel';
 import { MAX_FORWARDS_PER_CONNECTION, MAX_FORWARDS_PER_WINDOW, portsOf, type PortForwarding } from './portForward';
 import { createForwardLedger } from './portLedger';
+import type { ResourceShells } from './resourceShells';
 
 // The plugin's side of the panel handle (contract/v1.ts, `ContextV1.panel`): what a plugin asks of the window's bottom panel, bound to the plugin that asks. The Logs registry (ui-next/shell/panel/logs) is
 // the host's; this only writes the plugin's words in the host's: a target with no plugin id (the handle knows whose it is, so a plugin cannot open a session in another's name) and a `RouteV1` for the
@@ -46,7 +47,7 @@ type PluginHandles = { readonly logs: PanelHostV1['logs']; readonly byConnection
  * one) and share a handle with no ports member. With no `forwarding` the window has no port-forward service and no handle has one, as on a host that predates it. Every handle and every member is frozen. The count of the forwards the
  * window has started (`portLedger.ts`) is made once here and shared by every handle, whatever its plugin and connection: the caps on a plugin's forwards in a connection and on the window's are what that one count says.
  */
-export function panelHostsOf(streams: LogStreams, forwarding?: PortForwarding): (plugin: string, connection?: string) => PanelHostV1 {
+export function panelHostsOf(streams: LogStreams, forwarding?: PortForwarding, shells?: ResourceShells): (plugin: string, connection?: string) => PanelHostV1 {
   const plugins = new Map<string, PluginHandles>();
   const counted = forwarding === undefined ? undefined : { forwarding, ledger: createForwardLedger(forwarding, { connection: MAX_FORWARDS_PER_CONNECTION, window: MAX_FORWARDS_PER_WINDOW }) };
   return (plugin, connection) => {
@@ -58,8 +59,9 @@ export function panelHostsOf(streams: LogStreams, forwarding?: PortForwarding): 
 
     const scope = connection ?? '';
     let host = handles.byConnection.get(scope);
-    if (host === undefined) {
-      host = Object.freeze(counted === undefined || scope === '' ? { logs: handles.logs } : { logs: handles.logs, ports: portsOf(counted.forwarding, counted.ledger, plugin, scope) });
+    const terminal = scope === '' ? undefined : shells?.handle(plugin, scope);
+    if (host === undefined || host.terminal !== terminal) {
+      host = Object.freeze({ logs: handles.logs, ...(counted === undefined || scope === '' ? {} : { ports: portsOf(counted.forwarding, counted.ledger, plugin, scope) }), ...(terminal ? { terminal } : {}) });
       handles.byConnection.set(scope, host);
     }
 

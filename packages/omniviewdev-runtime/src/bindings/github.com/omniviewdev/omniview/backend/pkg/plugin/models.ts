@@ -48,6 +48,31 @@ export class DeprecatedProtocolPayload {
 }
 
 /**
+ * InventoryChangedPayload invalidates only the affected source; the next
+ * inventory read, never the event, supplies its authoritative contents.
+ */
+export class InventoryChangedPayload {
+    "pluginID": string;
+
+    /** Creates a new InventoryChangedPayload instance. */
+    constructor($$source: Partial<InventoryChangedPayload> = {}) {
+        if (!("pluginID" in $$source)) {
+            this["pluginID"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new InventoryChangedPayload instance from a string or object.
+     */
+    static createFrom($$source: any = {}): InventoryChangedPayload {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new InventoryChangedPayload($$parsedSource as Partial<InventoryChangedPayload>);
+    }
+}
+
+/**
  * LoadPluginOptions configures how a plugin is loaded.
  */
 export class LoadPluginOptions {

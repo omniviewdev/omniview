@@ -99,6 +99,24 @@ func (f AuthorizeFunc) Authorize(p Principal, op string, target Target) error {
 
 type Boundary struct{ authorizer Authorizer }
 
+// CoversResourceGets certifies the host-policy layer only: every object Get
+// in this acquisition scope is allowed. Asking Authorize for an empty object
+// does not imply this. Unknown policies can authorize individual Gets but
+// cannot certify absence; the native owner must independently prove its rights.
+func (b *Boundary) CoversResourceGets(ctx context.Context, target Target) bool {
+	request, ok := FromContext(ctx)
+	if !ok || ctx.Err() != nil || request.boundary != b || !request.OwnedBy(ctx) || request.principal.origin != TrustedUI ||
+		target.Provider == "" || target.Connection == "" || target.ResourceType == "" || target.Object != "" ||
+		target.Provider != request.target.Provider || target.Connection != request.target.Connection {
+		return false
+	}
+	if b == nil || b.authorizer == nil {
+		return false // No independent scope attestation installed.
+	}
+	policy, ok := b.authorizer.(interface{ CoversResourceGets(Principal, Target) bool })
+	return ok && policy.CoversResourceGets(request.principal, target.clone())
+}
+
 // Delegation is a host-created, invocation-bound resource grant.
 type Delegation struct {
 	Consumer   string

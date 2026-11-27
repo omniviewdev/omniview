@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createPanelStore } from '../core/panel';
 import { boot as bootPanel, session as panelSession, tool } from '../core/panel/testing';
+import { STATE_VERSION as TABS_VERSION } from '../core/tabs';
 import { boot as bootTabs, cloudPage, stackPage } from '../core/tabs/testing';
 import { MIGRATIONS, readSession, serialiseSession, SESSION_VERSION } from './document';
 
@@ -30,7 +31,7 @@ describe('what the session writes', () => {
     const document = serialiseSession({ tabs: bootTabs({ home: false }).state(), panel: createPanelStore().getSnapshot(), rail: null, terminalScreenReader: false });
     expect(document).toEqual({
       version: SESSION_VERSION,
-      tabs: { version: 1, active: null, tabs: [] },
+      tabs: { version: TABS_VERSION, active: null, tabs: [] },
       rail: null,
       panel: { version: 1, open: false, height: null, tool: null, active: {}, sessions: [] },
       terminalScreenReader: false,

@@ -5,6 +5,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	"github.com/omniviewdev/omniview/backend/extensionpolicy"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/pluginlog"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
@@ -28,7 +29,8 @@ func init() {
 	application.RegisterEvent[UpdateErrorPayload](EventUpdateError)
 	application.RegisterEvent[UpdatePayload](EventUpdateComplete)
 	application.RegisterEvent[application.Void](EventInitComplete)
-	application.RegisterEvent[application.Void](EventInventoryChanged)
+	application.RegisterEvent[InventoryChangedPayload](EventInventoryChanged)
+	application.RegisterEvent[extensionpolicy.Change](extensionpolicy.Event)
 	application.RegisterEvent[PluginErrorPayload](EventCrash)
 	application.RegisterEvent[PluginErrorPayload](EventCrashRecoveryFailed)
 	application.RegisterEvent[PluginErrorPayload](EventRecovered)
@@ -86,6 +88,12 @@ const (
 	// Process logging.
 	EventProcessLog = "plugin/process/log"
 )
+
+// InventoryChangedPayload invalidates only the affected source; the next
+// inventory read, never the event, supplies its authoritative contents.
+type InventoryChangedPayload struct {
+	PluginID string `json:"pluginID"`
+}
 
 // StateChangePayload is sent with EventStateChange.
 type StateChangePayload struct {

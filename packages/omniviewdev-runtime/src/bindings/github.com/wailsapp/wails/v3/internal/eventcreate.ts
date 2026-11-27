@@ -8,6 +8,9 @@ import { Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as extensionpolicy$0 from "../../../../omniviewdev/omniview/backend/extensionpolicy/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as plugin$0 from "../../../../omniviewdev/omniview/backend/pkg/plugin/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -57,25 +60,27 @@ function configure() {
         "plugin/install_error": $$createType9,
         "plugin/install_finished": $$createType9,
         "plugin/install_started": $$createType9,
-        "plugin/process/log": $$createType15,
+        "plugin/inventory_changed": $$createType15,
+        "plugin/process/log": $$createType16,
         "plugin/recovered": $$createType6,
-        "plugin/state_change": $$createType16,
-        "plugin/state_write_error": $$createType17,
-        "plugin/unloaded": $$createType18,
-        "plugin/update_complete": $$createType19,
-        "plugin/update_error": $$createType20,
-        "plugin/update_started": $$createType19,
-        "resource/connection/metadata": $$createType21,
-        "settings/changed": $$createType22,
-        "settings/state": $$createType23,
-        "source/STATE": $$createType24,
-        "windows/changed": $$createType25,
-        "windows/closed": $$createType26,
-        "windows/drag/begin": $$createType27,
-        "windows/drag/drop": $$createType28,
-        "windows/drag/end": $$createType29,
-        "windows/drag/hover": $$createType28,
-        "windows/drag/leave": $$createType30,
+        "plugin/state_change": $$createType17,
+        "plugin/state_write_error": $$createType18,
+        "plugin/unloaded": $$createType19,
+        "plugin/update_complete": $$createType20,
+        "plugin/update_error": $$createType21,
+        "plugin/update_started": $$createType20,
+        "resource/connection/metadata": $$createType22,
+        "settings/changed": $$createType23,
+        "settings/state": $$createType24,
+        "source/STATE": $$createType25,
+        "ui-extensions:policy-invalidated": $$createType26,
+        "windows/changed": $$createType27,
+        "windows/closed": $$createType28,
+        "windows/drag/begin": $$createType29,
+        "windows/drag/drop": $$createType30,
+        "windows/drag/end": $$createType31,
+        "windows/drag/hover": $$createType30,
+        "windows/drag/leave": $$createType32,
     }));
 }
 
@@ -95,21 +100,23 @@ const $$createType11 = devserver$0.DevServerErrorPayload.createFrom;
 const $$createType12 = devserver$0.LogEntry.createFrom;
 const $$createType13 = $Create.Array($$createType12);
 const $$createType14 = devserver$0.DevServerState.createFrom;
-const $$createType15 = pluginlog$0.LogEntry.createFrom;
-const $$createType16 = plugin$0.StateChangePayload.createFrom;
-const $$createType17 = plugin$0.StateWriteErrorPayload.createFrom;
-const $$createType18 = plugin$0.UnloadedPayload.createFrom;
-const $$createType19 = plugin$0.UpdatePayload.createFrom;
-const $$createType20 = plugin$0.UpdateErrorPayload.createFrom;
-const $$createType21 = resource$0.HostConnectionMetadata.createFrom;
-const $$createType22 = settings$0.Scope.createFrom;
-const $$createType23 = window$0.SettingsState.createFrom;
-const $$createType24 = resource$0.HostSourceStateEvent.createFrom;
-const $$createType25 = window$0.WindowsChangedEvent.createFrom;
-const $$createType26 = window$0.WindowClosedEvent.createFrom;
-const $$createType27 = window$0.DragBeginEvent.createFrom;
-const $$createType28 = window$0.DragPointerEvent.createFrom;
-const $$createType29 = window$0.DragEndEvent.createFrom;
-const $$createType30 = window$0.DragLeaveEvent.createFrom;
+const $$createType15 = plugin$0.InventoryChangedPayload.createFrom;
+const $$createType16 = pluginlog$0.LogEntry.createFrom;
+const $$createType17 = plugin$0.StateChangePayload.createFrom;
+const $$createType18 = plugin$0.StateWriteErrorPayload.createFrom;
+const $$createType19 = plugin$0.UnloadedPayload.createFrom;
+const $$createType20 = plugin$0.UpdatePayload.createFrom;
+const $$createType21 = plugin$0.UpdateErrorPayload.createFrom;
+const $$createType22 = resource$0.HostConnectionMetadata.createFrom;
+const $$createType23 = settings$0.Scope.createFrom;
+const $$createType24 = window$0.SettingsState.createFrom;
+const $$createType25 = resource$0.HostSourceStateEvent.createFrom;
+const $$createType26 = extensionpolicy$0.Change.createFrom;
+const $$createType27 = window$0.WindowsChangedEvent.createFrom;
+const $$createType28 = window$0.WindowClosedEvent.createFrom;
+const $$createType29 = window$0.DragBeginEvent.createFrom;
+const $$createType30 = window$0.DragPointerEvent.createFrom;
+const $$createType31 = window$0.DragEndEvent.createFrom;
+const $$createType32 = window$0.DragLeaveEvent.createFrom;
 
 configure();

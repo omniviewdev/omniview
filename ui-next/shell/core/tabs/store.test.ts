@@ -1,14 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { checkInvariants, createTabsStore, STATE_VERSION } from './index';
-import { boot, cloudPage, dest, doneId, hostPage, makeWorld, stackPage, tabOf, type Harness } from './testing';
+import { boot, cloudPage, dest, doneId, hostPage, makeWorld, pageTabOf as tab, stackPage, type Harness } from './testing';
 
 // The store: one immutable snapshot, subscribe, and a selector per consumer so that each re-renders for its own slice only (docs/ui-next/optimisations.md HSH-24, MNR-K2).
 
 const sound = (h: Harness) => {
   expect(checkInvariants(h.state())).toEqual([]); 
 };
-
-const tab = tabOf;
 
 describe('the snapshot', () => {
   it('is plain data with a version, frozen all the way down, and survives JSON', () => {

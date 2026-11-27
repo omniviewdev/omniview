@@ -41,7 +41,7 @@ func (pm *pluginManager) finishUninstall(ctx context.Context, id string) error {
 	// a plugin installed again under the ID gets roots on its own new ones. This
 	// cannot fail and is repeated by a retry.
 	pm.releasePluginState(id)
-	return pm.notifyUninstalled(ctx, id)
+	return errors.Join(pm.removeExtensionReceipt(id), pm.notifyUninstalled(ctx, id))
 }
 
 // releasePluginState tells whoever caches handles on the plugin's state

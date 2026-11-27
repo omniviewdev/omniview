@@ -183,7 +183,7 @@ if (CONNECTION) {
   // plugin's hook answered, which names the connection.
   const state = tabs.getSnapshot();
   const shown = state.active === null ? undefined : state.tabs[state.active]?.location.route;
-  if (shown !== undefined) {
+  if (shown !== undefined && shown.kind === undefined) {
     const face = contributions.describe(shown);
     frames.publish(routeKey(shown), {
       tab: { title: face?.title ?? 'Item', icon: 'box' },

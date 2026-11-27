@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { checkInvariants, LIMITS, restoreTabs, STATE_VERSION, type Json, type Tab, type TabsState } from './index';
-import { boot, cloudPage, FIXTURE_PLUGINS, hostPage, stackPage, tabOf, type Harness } from './testing';
+import { boot, cloudPage, FIXTURE_PLUGINS, hostPage, pageTabOf as tab, stackPage, type Harness } from './testing';
 
 // What a tab's history keeps of the page (H7, docs/ui-next/status/H7.md). A history entry carries the page state of the page it LEFT: Back and Forward give it back. A navigation to a place starts with a
 // clean page, but for a place the tab has been at before, which opens as it was left, except where it was scrolled (the mock keeps a list's state per tab while the list is the same,
@@ -10,7 +10,6 @@ const sound = (h: Harness) => {
   expect(checkInvariants(h.state())).toEqual([]);
 };
 
-const tab = tabOf;
 const list = cloudPage('instances');
 const item = (name: string) => cloudPage('instances', { item: name });
 const bytes = (value: Json) => new TextEncoder().encode(JSON.stringify(value)).length;

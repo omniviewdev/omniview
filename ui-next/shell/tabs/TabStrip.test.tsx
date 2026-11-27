@@ -210,6 +210,24 @@ describe('the roving tab stop', () => {
     expect(screen.getAllByRole('tab').map((element) => element.tabIndex)).toEqual([-1, 0, -1]);
   });
 
+  it('gives a background-only view a keyboard stop without selecting or mounting it', async () => {
+    const { h, user } = mount({ pages: [] });
+    act(() => {
+      h.store.open({ route: { kind: 'extension-view', plugin: 'owner', point: 'tools', offer: 'peer/manager' } }, { how: 'background' });
+    });
+    const item = screen.getByRole('tab');
+    expect(item).toHaveAttribute('tabindex', '0');
+    expect(item).toHaveAttribute('aria-selected', 'false');
+    expect(item).not.toHaveFocus();
+    expect(screen.queryByRole('tabpanel')).toBeNull();
+    act(() => {
+      item.focus();
+    });
+    await user.keyboard('{Enter}');
+    expect(item).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tabpanel')).toHaveTextContent(`page of ${h.current()}`);
+  });
+
   it('follows the focus inside the strip, and goes back to the tab on screen when the focus leaves', async () => {
     const { user } = mount({ active: 1 });
     act(() => {

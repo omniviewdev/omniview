@@ -115,9 +115,12 @@ export function closeMany(state: TabsState, scope: CloseScope, id: TabId | null,
   return ids.length === 0 ? unchanged(state) : closeGuarded(state, ids, guard);
 }
 
-/** Every tab of a plugin: an uninstall closes them, and they are offered under Recently closed (ch16 S136). */
+/** Uninstall closes ordinary pages of a plugin. Mounted locations remain addressable even after their owner or peer disappears. */
 export function closePlugin(state: TabsState, plugin: string, guard: Guard = {}): Step<CloseResult> {
-  const ids = state.order.filter((id) => state.tabs[id]?.location.route.plugin === plugin);
+  const ids = state.order.filter((id) => {
+    const route = state.tabs[id]?.location.route;
+    return route?.plugin === plugin && route.kind === undefined;
+  });
   return ids.length === 0 ? unchanged(state) : closeGuarded(state, ids, guard);
 }
 
@@ -154,7 +157,7 @@ function bringBack(state: TabsState, ctx: Context, entry: ClosedTab, route: Clos
   const key = looked.described || !same ? looked.key : entry.location.key;
   const base = patch(state, { closed: Object.freeze(state.closed.filter((other) => other !== entry)) });
   if (face.singleton) {
-    const hit = findByKey(base, key);
+    const hit = findByKey(base, key, route.kind);
     if (hit) {
       return { state: show(base, hit.id), result: { status: 'done', id: hit.id } };
     }

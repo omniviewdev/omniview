@@ -1,5 +1,5 @@
 import type { MenuTriggerMode } from './menuTrigger';
-import { buildMenu, type MenuDefinition, type MenuModel, type MenuRegistry, type MenuRow } from './items';
+import { buildMenu, type MenuDefinition, type MenuItem, type MenuModel, type MenuRegistry, type MenuRow, type MenuSource } from './items';
 
 const hosts = new WeakSet<Document>();
 const MENU = 'data-ov-menu';
@@ -55,7 +55,7 @@ export type MenuController = {
   readonly register: (id: string, definition: MenuDefinition) => () => void;
   readonly invalidate: (id: string) => void;
   readonly attachPanel: (level: MenuLevel, element: HTMLDivElement) => () => void;
-  readonly focusInitial: (level: MenuLevel) => void;
+  readonly panelReady: (level: MenuLevel) => void;
   readonly panelBlur: (level: MenuLevel) => void;
   readonly keyDown: (level: MenuLevel, event: KeyboardEvent) => boolean;
   readonly pointerMove: (level: MenuLevel, row: MenuRow | undefined) => void;
@@ -71,9 +71,13 @@ type Session = {
   view: MenuView;
   contextKeyTime: number | undefined;
   disconnect: () => void;
+  pendingSource: MenuSource | undefined;
+  focusBeforeUpdate?: HTMLElement;
+  dismiss?: (selected?: MenuRow) => void;
 };
 
 type Panel = {
+  readonly level: MenuLevel;
   readonly element: HTMLDivElement;
   readonly buttons: NodeListOf<HTMLButtonElement>;
   prefix: string;
@@ -135,6 +139,49 @@ function tryFocus(element: HTMLElement | null): boolean {
   return element.ownerDocument.activeElement === element;
 }
 
+/** Recover just the open branch's path. IDs are unique among siblings, not across groups in navigation order. */
+function rowPath(nodes: MenuModel['nodes'], index: number): string[] | undefined {
+  for (const node of nodes) {
+    if (node.kind === 'row' && node.row.index === index) {
+      return [node.row.entry.id];
+    }
+
+    if (node.kind === 'group') {
+      const path = rowPath(node.children, index);
+      if (path !== undefined) {
+        path.push(node.id);
+        return path;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function matchingRow(previous: MenuModel, next: MenuModel, index: number): MenuRow | undefined {
+  if (previous === next) {
+    return next.rows[index];
+  }
+
+  const path = rowPath(previous.nodes, index);
+  if (path === undefined) {
+    return undefined;
+  }
+
+  let siblings = next.nodes;
+  for (let depth = path.length - 1; depth > 0; depth--) {
+    const group = siblings.find((node) => node.kind === 'group' && node.id === path[depth]);
+    if (group?.kind !== 'group') {
+      return undefined;
+    }
+
+    siblings = group.children;
+  }
+
+  const node = siblings.find((sibling) => sibling.kind === 'row' && sibling.row.entry.id === path[0]);
+  return node?.kind === 'row' ? node.row : undefined;
+}
+
 export function createMenuController(rootId: string): MenuController {
   const listeners = new Set<() => void>();
   const local = new Map<string, MenuDefinition>();
@@ -184,10 +231,10 @@ export function createMenuController(rootId: string): MenuController {
     }
   }
 
-  function finish(restore: boolean): boolean {
+  function finish(restore: boolean): Session | undefined {
     const open = session;
     if (open === undefined) {
-      return false;
+      return undefined;
     }
 
     session = undefined;
@@ -205,12 +252,18 @@ export function createMenuController(rootId: string): MenuController {
       restoreFocus(open);
     }
 
-    return true;
+    return open;
   }
 
-  function close(restore = true) {
-    if (finish(restore)) {
+  function close(restore = true, selected?: MenuRow) {
+    const open = finish(restore);
+    if (open !== undefined) {
       publish();
+      if (open.dismiss === undefined) {
+        selected?.select?.();
+      } else {
+        open.dismiss(selected);
+      }
     }
   }
 
@@ -361,7 +414,13 @@ export function createMenuController(rootId: string): MenuController {
     }
 
     const definition = definitionFor(trigger.id);
-    const items = typeof definition === 'function' ? definition(trigger.key ?? undefined) : definition;
+    let items = typeof definition === 'function' ? definition(trigger.key ?? undefined) : definition;
+    let source: MenuSource | undefined;
+    if (items != null && 'subscribe' in items) {
+      source = items;
+      items = source.items;
+    }
+
     if (items === null || items === undefined || items.length === 0 || !isLive(trigger)) {
       return false;
     }
@@ -371,7 +430,15 @@ export function createMenuController(rootId: string): MenuController {
       return false;
     }
 
-    finish(false);
+    const previous = finish(false);
+    if (previous?.dismiss !== undefined) {
+      previous.dismiss();
+      if (session !== undefined || portal === undefined || !isLive(trigger)) {
+        publish();
+        return false;
+      }
+    }
+
     const { element } = trigger;
     const doc = element.ownerDocument;
     const overlay = element.closest<HTMLElement>(OVERLAY);
@@ -403,6 +470,7 @@ export function createMenuController(rootId: string): MenuController {
       view: { mount: portal, ownerId: trigger.id, rtl: dir === 'rtl', mode: trigger.mode, levels: [level] },
       contextKeyTime: undefined,
       disconnect: () => undefined,
+      pendingSource: source,
     };
     session = open;
     open.disconnect = observe(open);
@@ -418,6 +486,61 @@ export function createMenuController(rootId: string): MenuController {
   function setLevels(open: Session, levels: readonly MenuLevel[]) {
     open.view = { ...open.view, levels };
     publish();
+  }
+
+  function update(open: Session, items: readonly MenuItem[] | null) {
+    const previous = open.view.levels;
+    const root = previous[0];
+    if (session !== open || root === undefined || live(root) !== open) {
+      return;
+    }
+
+    if (items === null) {
+      close();
+      return;
+    }
+
+    const active = open.view.mount.ownerDocument.activeElement;
+    if (active instanceof HTMLElement && open.view.mount.contains(active)) {
+      open.focusBeforeUpdate = active;
+    }
+
+    if (hoverTimer === undefined) {
+      hover = undefined;
+    }
+
+    const levels: MenuLevel[] = [];
+    let model = buildMenu(items);
+    let parent: MenuLevel | undefined;
+    for (const level of previous) {
+      let position = level.position;
+      let label = level.label;
+      if (position.kind === 'branch') {
+        const index = position.parentIndex;
+        const row = parent && matchingRow(parent.model, model, index);
+        if (row?.submenu === undefined || row.disabled) {
+          break;
+        }
+
+        model = row.submenu === parent?.model.rows[index]?.submenu ? level.model : buildMenu(row.submenu);
+        label = row.entry.label;
+        if (row.index !== index) {
+          position = { ...position, parentIndex: row.index };
+        }
+      }
+
+      // Keep the panel's React key, but retire its event handlers immediately, even before React commits the new rows.
+      const next: MenuLevel = { ...level, label, model, position, focus: 'none' };
+      const panel = panels.get(level);
+      if (panel !== undefined) {
+        panels.set(next, panel);
+      }
+
+      levels.push(next);
+      parent = level;
+    }
+
+    setLevels(open, levels);
   }
 
   function closeBranch(open: Session, level: MenuLevel) {
@@ -445,7 +568,7 @@ export function createMenuController(rootId: string): MenuController {
     const current = open.view.levels[depth];
     if (current?.position.kind === 'branch' && current.position.row === button) {
       if (focus === 'first') {
-        focusInitial(current, focus);
+        focusInitial(open, current, focus);
       }
 
       return;
@@ -480,9 +603,8 @@ export function createMenuController(rootId: string): MenuController {
     }
   }
 
-  function focusInitial(level: MenuLevel, focus = level.focus) {
-    const open = live(level);
-    if (open === undefined || focus === 'none') {
+  function focusInitial(open: Session, level: MenuLevel, focus = level.focus) {
+    if (focus === 'none') {
       return;
     }
 
@@ -498,9 +620,51 @@ export function createMenuController(rootId: string): MenuController {
     panels.get(level)?.element.focus({ preventScroll: true });
   }
 
+  function panelReady(level: MenuLevel) {
+    const open = live(level);
+    if (open === undefined) {
+      return;
+    }
+
+    focusInitial(open, level);
+    const focused = open.focusBeforeUpdate;
+    if (focused !== undefined) {
+      delete open.focusBeforeUpdate;
+      const doc = focused.ownerDocument;
+      if ((doc.activeElement === doc.body || doc.activeElement === null) && !(open.view.mount.contains(focused) && tryFocus(focused))) {
+        const deepest = open.view.levels.at(-1);
+        if (deepest !== undefined) {
+          panels.get(deepest)?.element.focus({ preventScroll: true });
+        }
+      }
+    }
+
+    const source = open.pendingSource;
+    if (source !== undefined && level.depth === 0 && session === open) {
+      open.pendingSource = undefined;
+      // A synchronous first notification (or a reentrant selection) can close before subscribe returns its cleanup.
+      let selected: MenuRow | undefined;
+      open.dismiss = (row) => {
+        selected = row;
+      };
+
+      const unsubscribe = source.subscribe((items) => {
+        update(open, items);
+      });
+      open.dismiss = (row) => {
+        unsubscribe(row?.entry.id);
+        row?.select?.();
+      };
+
+      if (session !== open) {
+        open.dismiss(selected);
+      }
+    }
+  }
+
   function select(level: MenuLevel, row: MenuRow) {
     const open = live(level);
-    if (open === undefined || row.disabled) {
+    if (open === undefined || panels.get(level)?.level !== level || row.disabled || level.model.rows[row.index] !== row) {
       return;
     }
 
@@ -508,8 +672,7 @@ export function createMenuController(rootId: string): MenuController {
     if (row.select === undefined) {
       openBranch(open, level, row, 'first');
     } else {
-      close();
-      row.select();
+      close(true, row);
     }
   }
 
@@ -540,24 +703,35 @@ export function createMenuController(rootId: string): MenuController {
     // Delay a switch while crossing the parent on the way to its child; leaving the panel cancels it.
     hoverTimer = setTimeout(() => {
       hoverTimer = undefined;
-      if (live(level) !== open) {
+      hover = undefined;
+      const latest = open.view.levels[level.depth];
+      if (button == null || latest?.epoch !== level.epoch || live(latest) !== open) {
         return;
       }
 
-      if (row.disabled) {
-        if (child !== undefined) {
-          closeBranch(open, child);
+      // A source can publish during the delay. Follow the same committed button, never the row now at its old index.
+      const panel = panels.get(latest);
+      const target = latest === level ? row : rowAt(latest, button);
+      if (panel?.level !== latest || target === undefined || panel.buttons.item(target.index) !== button) {
+        return;
+      }
+
+      hover = { level: latest, row: target };
+      const branch = open.view.levels[latest.depth + 1];
+      if (target.disabled) {
+        if (branch !== undefined) {
+          closeBranch(open, branch);
         }
 
         return;
       }
 
-      if (otherBranch) {
-        focusRow(open, level, row.index, false);
+      if (branch?.position.kind === 'branch' && branch.position.row !== button) {
+        focusRow(open, latest, target.index, false);
       }
 
-      if (row.submenu !== undefined) {
-        openBranch(open, level, row, 'none');
+      if (target.submenu !== undefined) {
+        openBranch(open, latest, target, 'none');
       }
     }, HOVER_DELAY);
   }
@@ -831,12 +1005,16 @@ export function createMenuController(rootId: string): MenuController {
       }
     },
     attachPanel(level: MenuLevel, element: HTMLDivElement): () => void {
-      panels.set(level, { element, buttons: element.querySelectorAll<HTMLButtonElement>(ITEM), prefix: '', typedAt: 0 });
+      const previous = panels.get(level);
+      panels.set(level, {
+        level, element, buttons: element.querySelectorAll<HTMLButtonElement>(ITEM),
+        prefix: previous?.prefix ?? '', typedAt: previous?.typedAt ?? 0,
+      });
       return () => {
         panels.delete(level);
       };
     },
-    focusInitial,
+    panelReady,
     panelBlur(level: MenuLevel) {
       if (session?.view.levels[level.depth] === level) {
         close(false);
@@ -845,7 +1023,7 @@ export function createMenuController(rootId: string): MenuController {
     keyDown,
     pointerMove,
     pointerLeave(level: MenuLevel) {
-      if (hover?.level === level) {
+      if (hover?.level.epoch === level.epoch) {
         clearHover();
       }
     },

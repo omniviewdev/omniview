@@ -85,7 +85,7 @@ func TestCheckTarball_NativeArchiveStartsValidation(t *testing.T) {
 	})
 	require.NoError(t, checkTarball(path))
 	destination := t.TempDir()
-	require.NoError(t, unpackPluginArchive(path, destination))
+	require.NoError(t, unpackPluginArchive(path, destination, nil))
 	require.NoError(t, validateForStart(config.PluginMeta{Capabilities: []string{"resource", "ui"}}, destination))
 }
 

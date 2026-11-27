@@ -1,6 +1,6 @@
 import type { PageHeaderCommands } from '@omniviewdev/kit';
 import { useCallback, useMemo } from 'react';
-import type { DetailSource, ListPageDefinition } from '../contract/v1';
+import type { ListPageDefinition } from '../contract/v1';
 import { useNotices } from '../../shell';
 import { failureNotice } from './notices';
 
@@ -74,11 +74,8 @@ export function useGuardedDefinition<TRow>(definition: ListPageDefinition<TRow>,
   return useMemo(() => (definition.commands === undefined ? definition : { ...definition, commands: guardCommands(definition.commands, failed) }), [definition, failed]);
 }
 
-/** A detail page's source with the commands of its view guarded. The same object while there is nothing to guard. */
-export function useGuardedSource(source: DetailSource, plugin: string): DetailSource {
+/** Guard only the commands; copying the whole view could invoke getters in an unrelated extension outlet. */
+export function useGuardedHeader(commands: Omit<PageHeaderCommands, 'utility'> | undefined, plugin: string) {
   const failed = usePageFailures(plugin);
-  return useMemo(() => {
-    const { view } = source;
-    return view?.commands === undefined ? source : { ...source, view: { ...view, commands: guardCommands(view.commands, failed) } };
-  }, [source, failed]);
+  return useMemo(() => guardCommands(commands, failed), [commands, failed]);
 }

@@ -136,7 +136,7 @@ func TestDownloadLeavesSignedArtifactURLUnchanged(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	_, err := NewClient(server.URL).DownloadPlugin(context.Background(), "plugin", "0.9.0")
+	_, _, err := NewClient(server.URL).DownloadPlugin(context.Background(), "plugin", "0.9.0")
 	if !artifactSeen || !errors.Is(err, regclient.ErrChecksumMismatch) {
 		t.Fatalf("artifactSeen=%v err=%v", artifactSeen, err)
 	}
@@ -188,7 +188,7 @@ func TestTrailingSlashRegistryBaseURL(t *testing.T) {
 			if err != nil || len(plugins) != 1 || plugins[0].LatestVer != "0.9.0" {
 				t.Fatalf("search: plugins=%v err=%v", plugins, err)
 			}
-			_, err = client.DownloadPlugin(context.Background(), "plugin", "0.9.0")
+			_, _, err = client.DownloadPlugin(context.Background(), "plugin", "0.9.0")
 			if !artifactSeen || !errors.Is(err, regclient.ErrChecksumMismatch) {
 				t.Fatalf("artifactSeen=%v err=%v", artifactSeen, err)
 			}
@@ -293,7 +293,7 @@ func TestNightlyBypassesCompatibility(t *testing.T) {
 	if err != nil || len(versions) != 1 || !versions[0].Compatible || versions[0].CompatibilityReason != "" {
 		t.Fatalf("nightly version discovery: %#v, %v", versions, err)
 	}
-	if _, err := client.DownloadPlugin(context.Background(), "plugin", "1.0.0"); err == nil {
+	if _, _, err = client.DownloadPlugin(context.Background(), "plugin", "1.0.0"); err == nil {
 		t.Fatal("expected lookup error")
 	}
 }
@@ -319,7 +319,7 @@ func TestDiscoveryDoesNotRelaxExactInstallLookup(t *testing.T) {
 	if _, err := client.GetPluginVersions(context.Background(), "kubernetes", "stable"); err != nil {
 		t.Fatal(err)
 	}
-	if path, err := client.DownloadPlugin(context.Background(), "kubernetes", "0.15.0"); err == nil || path != "" {
+	if path, _, err := client.DownloadPlugin(context.Background(), "kubernetes", "0.15.0"); err == nil || path != "" {
 		t.Fatalf("incompatible install succeeded: %q, %v", path, err)
 	}
 	if exactRequests != 1 {

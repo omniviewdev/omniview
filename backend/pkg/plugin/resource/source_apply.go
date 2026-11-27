@@ -17,6 +17,8 @@ import (
 // receive RESOURCE_LIMIT and no observations are truncated.
 const maxSourceTransientBytes = 256 << 20
 
+const sourceMemberBaseBytes = 1024 // Fixed headers, small-map buckets and member bookkeeping.
+
 // A member owns one encoded body and immutable admission headers and metadata.
 // Demanded graph extraction may shallow-copy these handles under its own budget;
 // source and view reference charges never include optional graph ownership.
@@ -40,6 +42,7 @@ type sourceMemberCost struct {
 
 type sourceMemberHeader struct {
 	key              string
+	memberRevision   string // nonsecret native receipt; shared by a committed observation batch
 	reference        resourcev2.ResourceReference
 	representation   resourcev2.Representation
 	coverage         resourcev2.Coverage
@@ -152,7 +155,7 @@ func (m sourceMember) release() {
 // sourceMemberEstimate bounds the encoded body, owned headers and canonical
 // key, including small-map buckets and membership/lifetime bookkeeping.
 func sourceMemberEstimate(o resourcev2.SourceObservation, limit int) (int, error) {
-	size := 1024
+	size := sourceMemberBaseBytes + int(unsafe.Sizeof("")) + maxSourceMemberRevisionDigits // Charge the receipt even when not shared.
 	add := func(n, multiplier int) bool {
 		if size > limit || n < 0 || n > (limit-size)/multiplier {
 			return false
@@ -426,7 +429,7 @@ func (m sourceMember) retainedHeaderBytes() int {
 		return size
 	}
 	h := m.header
-	size += int(unsafe.Sizeof(*h)) + len(h.key)
+	size += int(unsafe.Sizeof(*h)) + len(h.key) + len(h.memberRevision)
 	token := func(value *string) {
 		if value != nil {
 			size += int(unsafe.Sizeof(*value)) + len(*value)

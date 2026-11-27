@@ -4,7 +4,11 @@ The shell's tabs as plain functions over data (design chapter 16 sections C and 
 
 ## What a tab is
 
-A tab is a route plus restorable state, never DOM (S16). **A route is `{ plugin, contribution, params }`**: a plugin, one of the pages it offers, and that page's plain-JSON parameters. It is canonical (keys in order, an empty member left out) and frozen, and it is what identifies a tab: nothing in the model knows what a parameter means. What a plugin says about a route (`Contributions.describe`) becomes the tab's **face**: title (`{name} · {Kind}`), icon, scope, status path, facets, whether it is a singleton page. The face is cached in the tab and saved with it, so a restored tab draws before its plugin loads.
+A tab is a route plus restorable state, never DOM (S16). An ordinary page route is `{ plugin, contribution, params }`: a plugin, one of its pages, and canonical plain-JSON parameters. The plugin's description becomes the tab's **face**: title, icon, scope, status path, facets and singleton status. An ordinary page saves its face so it can draw before its plugin loads.
+
+The host can also record `{ kind: 'extension-view', plugin, point, offer, connection? }`. This is the **owner's** sidebar location, not a contributor page. Its full tagged tuple is its key. It is never a singleton, has no arbitrary parameters, and bypasses ordinary page completion, availability and restore. The host's optional `describeView` reads static metadata; it never loads a Body. Only the foreground host resolves current binding authority to render that Body.
+
+An explicit background open records the locator without mounting or selecting it, even in an empty strip. The first such tab is a keyboard stop, not an active page. Saving and restoring preserves that distinction.
 
 A tab record is split into the parts that different consumers read: `location` (route, key, generation: the page host), `face` and `flags` (pinned, preview, unsaved, attention: the strip), `history` (at most 50 routes, and what the page of each kept when the tab left it: H7, below), `pageState` (opaque plain data the page on screen keeps, at most 16 KiB), and `reveal` (a request left by an open for the page to answer, never saved).
 
@@ -19,6 +23,8 @@ back(id?) · forward(id?) · canBack(id?) · canForward(id?) · historyList(id?,
 ```
 
 Every operation answers a plain result (`done`, `noop`, `confirm`, `refused`, and for `open` also `window`), never a string meant for a person and never a promise. **`confirm`** means the request would discard unsaved changes (S27): ask the user, then repeat it with `confirmed: true`. **`window`** means the destination wants a window of its own (S64): the model has none and changes nothing. A `noop` returns the same snapshot object and notifies nobody.
+
+For delayed navigation capture `navigationOrigin(store.getSnapshot())` at the initiating gesture. Pass that same `origin` to `open`/`navigate` and any confirmed retry. A different active visit, tab, or location refuses the request before resolution or a history change. The host must also recheck the selected sidebar binding on every dispatch; a locator or confirmation does not carry a grant.
 
 `open` follows ch16 S26 and S64. Smart open (Enter): a singleton page that is open is shown whatever the disposition; else a tab that shows the key is shown; else the tab on screen is navigated when it is the same plugin and scope; else a new tab after the tab on screen (a preview tab when `source` is `search`). `new` never deduplicates, `background` leaves the focus and the result says `focused: false`, `here` navigates the tab on screen. `dispositionOf(event, { platform })` maps modifiers to a disposition.
 
@@ -48,7 +54,9 @@ The old shell mounted a tab on first show and kept it mounted until it closed, w
 
 ## Saved session
 
-`store.serialise()` gives `{ version, active, tabs }` (route, key, face, pinned, preview, and at most 10 history entries around the current one as routes; no page state, not the page on screen's and none of its history's, and no flag that means "now"). `restoreTabs(raw, { contributions })` reads it back and **repairs rather than discards**: a damaged tab is dropped alone, the pinned zone comes first, one preview and one tab per singleton page are kept, the tab on screen is found again, and only it is mounted. Its answer is `ok` with `repaired` and `problems`, or why not: `missing`, `unreadable`, `foreign-version`, `empty` (the session module restores a list of no tab as an empty window, and keeps aside a list of tabs none of which could be read; the window opens no page by itself, decision A17). **`migrate(raw)`** reads the version first and applies one step per version up to the current; `MIGRATIONS` is empty at version 1 and a newer version is refused, never half used. `createSaver({ store, write })` writes the last value 400 ms after the last change, skips a write that would save the same document, and `flush()` writes at once when the window closes (HSH-25, MNR-K2).
+`store.serialise()` writes `{ version, active, tabs }`. Each tab retains its locator, pin and preview flags, and at most 10 history entries around the cursor. Only ordinary pages also save their key and face. No tab saves page state, reveal requests, dirty flags, or authority. The native window service transfers the same plain JSON; the receiving window describes a mounted location from its own inventory, never a sender's face.
+
+`restoreTabs(raw, { contributions })` repairs rather than discards: a damaged tab is dropped alone, the pinned zone comes first, one preview and one tab per singleton page are kept, and only the active tab is mounted. It returns `ok` with `repaired` and `problems`, or `missing`, `unreadable`, `foreign-version`, or `empty`. Version 2 adds the tagged locator; version 1 ordinary sessions migrate unchanged. A newer version is refused. `createSaver({ store, write })` debounces changes for 400 ms, skips identical documents, and `flush()` writes at once when the window closes.
 
 A description a host marks `provisional` is a stand-in made while a plugin is loading: it names a tab that has no face, and never replaces a face a tab already has (a tab restored from a session keeps the face it was saved with until its plugin registers). The saving and restoring are wired by `../../session/` (its README).
 

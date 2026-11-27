@@ -1,7 +1,7 @@
 import { boot, type Harness } from '../tabs/testing';
 import type { Availability, Route } from '../tabs/types';
 import { createPaletteStore, type PaletteOptions, type PaletteStore } from './store';
-import type { Candidate, CommandOutcome, ProviderAnswer, Scheduler } from './types';
+import type { Candidate, CommandOutcome, Provider, ProviderAnswer, Scheduler } from './types';
 
 // Test support only: nothing in the model imports this file.
 //
@@ -149,6 +149,21 @@ export type Fixture = {
   /** The commands the host ran, in order. */
   readonly ran: Array<{ readonly id: string; readonly arg: unknown; readonly target: unknown }>;
 };
+
+/** Open tabs always switch by id. Only ordinary pages also carry a palette destination. */
+export function tabsProvider(f: Fixture): Provider {
+  return {
+    id: 'host:tabs', plugin: 'host', pluginName: 'Omniview', title: 'Tabs', section: 'tabs',
+    match: () => {
+      const { order, tabs } = f.tabs.state();
+      return order.map((id) => {
+        const tab = tabs[id];
+        const route = tab?.location.route;
+        return { id, kind: 'tab', title: tab?.face.title ?? '?', tab: id, context: 'Window 1', matchContext: '', route: route?.kind === 'extension-view' ? undefined : route };
+      });
+    },
+  };
+}
 
 /** A palette over a real tab store and a clock the test drives. Nothing is registered: a test registers the providers it needs. */
 export function makePalette(options: Partial<PaletteOptions> & { readonly clock?: ManualClock; readonly tabs?: Harness } = {}): Fixture {

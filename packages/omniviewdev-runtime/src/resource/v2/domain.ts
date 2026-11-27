@@ -1,17 +1,9 @@
 // Handwritten projection of plugin-sdk/pkg/resource/v2/domain.go.
 // Generated bindings are transport details, not public resource domain types.
 import type { ActionDescriptor, Schema } from './ancillary';
+import type { AccessRoute, ResourceReference } from './reference';
 
-export interface ScopeEntry { dimension: string; value: string }
-export interface ResourceAddress {
-  provider: string;
-  authority: string;
-  type: string;
-  scope: readonly ScopeEntry[];
-  id: string;
-}
-export interface AccessRoute { connection: string }
-export interface ResourceReference { address: ResourceAddress; incarnation?: string }
+export type { AccessRoute, ResourceAddress, ResourceReference, ScopeEntry } from './reference';
 export type ScopeConstraint =
   | { dimension: string; match: 'any' }
   | { dimension: string; match: 'oneOf'; values: readonly string[] };

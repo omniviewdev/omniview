@@ -23,8 +23,8 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.1.0
 	github.com/stretchr/testify v1.12.1
+	github.com/tdewolff/parse/v2 v2.25.0
 	github.com/tidwall/gjson v1.20.1
-	github.com/wailsapp/mimetype v1.4.1
 	github.com/wailsapp/wails/v3 v3.1.0
 	go.etcd.io/bbolt v1.5.0
 	go.opentelemetry.io/contrib/bridges/otelzap v0.21.0

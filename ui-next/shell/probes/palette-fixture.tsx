@@ -83,6 +83,7 @@ const tabsSource = (): readonly PaletteCandidate[] => {
   const { order, tabs: all, active } = tabs.getSnapshot();
   return order.map((id) => {
     const tab = all[id];
+    const route = tab?.location.route;
     const where = ['north', 'Everything', 'Window 1'].join(' · ');
     return {
       id,
@@ -92,7 +93,7 @@ const tabsSource = (): readonly PaletteCandidate[] => {
       tab: id,
       context: id === active ? `${where} · Current tab` : where,
       matchContext: where,
-      route: tab?.location.route,
+      route: route?.kind === 'extension-view' ? undefined : route,
     };
   });
 };

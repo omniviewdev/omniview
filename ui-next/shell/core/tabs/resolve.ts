@@ -1,8 +1,8 @@
 import { historyOf } from './state';
-import { normaliseRoute, sameRoute } from './route';
+import { normaliseTabRoute, sameRoute } from './route';
 import { isObject } from './json';
 import type { Plugins } from './plugins';
-import { LIMITS, type Availability, type Face, type History, type Json, type Preferences, type Route, type RouteInput, type TabId } from './types';
+import { LIMITS, type Availability, type Face, type History, type Json, type Preferences, type TabDestination, type TabRoute, type TabId } from './types';
 
 // What every operation needs besides the state, and how a destination becomes a route, a face and a key.
 
@@ -12,7 +12,7 @@ export type Context = {
   readonly preferences: () => Preferences;
 };
 
-export type Resolved = { readonly route: Route; readonly face: Face; readonly key: string };
+export type Resolved = { readonly route: TabRoute; readonly face: Face; readonly key: string };
 
 export type Resolution =
   | { readonly ok: true; readonly resolved: Resolved; readonly availability: Availability }
@@ -22,15 +22,15 @@ export type Resolution =
  * The route a destination opens, as its plugin completes it from the route the user is on, and what the plugin says about it. Refused when the route is not valid data, when
  * the plugin refuses to complete it, and when the plugin cannot serve it (ch16 S65: a degraded one opens, to a recovery page).
  */
-export function resolveDestination(ctx: Context, input: RouteInput, source: string, from: Route | undefined): Resolution {
-  const asked = normaliseRoute(input);
+export function resolveDestination(ctx: Context, input: TabDestination['route'], source: string, from: TabRoute | undefined): Resolution {
+  const asked = normaliseTabRoute(input);
   if (!asked) {
-    return { ok: false, reason: 'invalid', message: 'The destination is not a plugin, a page and plain parameters.' };
+    return { ok: false, reason: 'invalid', message: 'The destination is not a valid tab location.' };
   }
 
   const route = ctx.plugins.complete(asked, from, source);
   if (!route) {
-    return { ok: false, reason: 'unavailable', message: `${asked.plugin} did not open ${asked.contribution}.` };
+    return { ok: false, reason: 'unavailable', message: `${asked.plugin} did not open ${asked.kind === 'extension-view' ? asked.offer : asked.contribution}.` };
   }
 
   const availability = ctx.plugins.availability(route);
@@ -70,7 +70,7 @@ const statesOf = (history: History): Json[] => history.entries.map((_entry, i) =
  * holds this very route, the page starts with what the NEWEST such entry kept, except where it was scrolled (the mock keeps a list's state per tab while the list is the same, the mock's list module, docs/ui-next/status/H7.md).
  * An entry the cap drops with this very step is not held, and does not give its state.
  */
-export function pushed(history: History, route: Route, left: Json): Moved {
+export function pushed(history: History, route: TabRoute, left: Json): Moved {
   const upto = history.index + 1;
   const from = Math.max(0, upto - (LIMITS.history - 1));
   const entries = history.entries.slice(from, upto);
@@ -98,11 +98,13 @@ export function stepped(history: History, to: number, left: Json): Moved {
 }
 
 /** The current entry is another route (a change inside the page, or of its scope): what the other entries' pages kept stays with them. */
-export const replaced = (history: History, route: Route): History => historyOf(history.entries.map((entry, i) => (i === history.index ? route : entry)), history.index, history.states);
+export const replaced = (history: History, route: TabRoute): History => historyOf(history.entries.map((entry, i) => (i === history.index ? route : entry)), history.index, history.states);
+
+const historyStart = (index: number, count: number, limit: number): number => Math.min(Math.max(index - Math.floor(limit / 2), 0), Math.max(0, count - limit));
 
 /** The history a saved tab keeps: at most 10 entries, around the current one (ch16 S32). */
 export function windowHistory(history: History): History {
-  const start = Math.min(Math.max(history.index - 5, 0), Math.max(0, history.entries.length - LIMITS.persistedHistory));
+  const start = historyStart(history.index, history.entries.length, LIMITS.persistedHistory);
   return historyOf(history.entries.slice(start, start + LIMITS.persistedHistory), history.index - start);
 }
 
@@ -110,14 +112,15 @@ export function windowHistory(history: History): History {
  * A history read back from data that may be damaged: the entries that are routes (each as `mapEntry` has it, which may drop it), in order, around the entry that is the tab's own.
  * When that entry did not survive, or is not the tab's route, the history starts over at the route.
  */
-export function repairHistory(raw: unknown, current: Route, mapEntry: (route: Route) => Route | false): History {
-  const input: unknown[] = isObject(raw) && Array.isArray(raw.entries) ? raw.entries.slice(0, LIMITS.history) : [];
+export function repairHistory(raw: unknown, current: TabRoute, mapEntry: (route: TabRoute) => TabRoute | false, limit: number = LIMITS.history): History {
+  const input: readonly unknown[] = isObject(raw) && Array.isArray(raw.entries) ? raw.entries : [];
   const at: unknown = isObject(raw) ? raw.index : undefined;
   const active = typeof at === 'number' && Number.isInteger(at) ? at : input.length - 1;
-  const entries: Route[] = [];
+  const start = historyStart(active, input.length, limit);
+  const entries: TabRoute[] = [];
   let index = -1;
-  input.forEach((entry, i) => {
-    const route = normaliseRoute(entry);
+  for (let i = start, end = Math.min(input.length, start + limit); i < end; i++) {
+    const route = normaliseTabRoute(input[i]);
     const mapped = route ? mapEntry(route) : false;
     if (mapped) {
       if (i === active) {
@@ -126,7 +129,7 @@ export function repairHistory(raw: unknown, current: Route, mapEntry: (route: Ro
 
       entries.push(mapped);
     }
-  });
+  }
 
   const found = entries[index];
   if (found === undefined || !sameRoute(found, current)) {

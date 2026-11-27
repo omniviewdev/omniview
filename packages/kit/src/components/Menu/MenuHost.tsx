@@ -25,6 +25,7 @@ export function MenuHost({ menus, children }: MenuHostProps): ReactElement {
   const id = useId();
   const [controller] = useState(() => createMenuController(`${id}-menu`));
   const view = useSyncExternalStore(controller.subscribe, controller.snapshot, closed);
+  const root = view?.levels[0];
 
   useLayoutEffect(() => {
     controller.setMenus(menus);
@@ -39,10 +40,8 @@ export function MenuHost({ menus, children }: MenuHostProps): ReactElement {
   return (
     <MenuContext.Provider value={controller}>
       {children}
-      {view === null ? null : createPortal(
-        view.levels.map((level, index) => (
-          <MenuPanel key={level.epoch} controller={controller} level={level} child={view.levels[index + 1]} view={view} />
-        )),
+      {view === null || root === undefined ? null : createPortal(
+        <MenuPanel key={root.epoch} controller={controller} level={root} view={view} />,
         view.mount,
       )}
     </MenuContext.Provider>

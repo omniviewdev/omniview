@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { checkInvariants } from './index';
-import { boot, cloudPage, dest, doneId, hostPage, makeWorld, stackPage, tabOf, type Harness } from './testing';
+import { boot, cloudPage, dest, doneId, hostPage, makeWorld, pageTabOf as tab, stackPage, type Harness } from './testing';
 
 // Closing and reopening (ch16 S30, S41 to S43), the guard for unsaved changes (S27) and duplicating (S37).
 // Ported from the design lab's harness (tests/shell-model-harness/R2Store/unit.cjs).
@@ -8,8 +8,6 @@ import { boot, cloudPage, dest, doneId, hostPage, makeWorld, stackPage, tabOf, t
 const sound = (h: Harness) => {
   expect(checkInvariants(h.state())).toEqual([]); 
 };
-
-const tab = tabOf;
 
 describe('close (ch16 S30)', () => {
   it('activates the right neighbour, else the left, and keeps the closed tabs newest first with the index they had', () => {

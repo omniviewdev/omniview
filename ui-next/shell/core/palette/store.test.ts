@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { LIMITS, type Candidate, type PaletteState, type Provider, type SearchScope } from './types';
 import { createPaletteStore, seedChips } from './store';
-import { command, commands, makePalette, page, resource, type Fixture } from './testing';
+import { command, commands, makePalette, page, resource, tabsProvider, type Fixture } from './testing';
 
 // The palette's store over the providers of a small world (ch16 section D, SE1): what a query shows and in which order, the kinds and their prefixes, the chips, the empty and the
 // no-result states. A row is read as data; the DOM is nowhere. The async half has its own file (`async.test.ts`), what a row does when it is chosen is `activate.test.ts`.
@@ -12,17 +12,6 @@ const sections = (f: Fixture): string[] => f.palette.getSnapshot().sections.map(
 const state = (f: Fixture): PaletteState => f.palette.getSnapshot();
 
 const pagesOf = (names: readonly string[], extra: Partial<Candidate> = {}): Candidate[] => names.map((name) => page(name.toLowerCase().replaceAll(' ', '-'), name, extra));
-
-function tabsProvider(f: Fixture): Provider {
-  return {
-    id: 'host:tabs',
-    plugin: 'host',
-    pluginName: 'Omniview',
-    title: 'Tabs',
-    section: 'tabs',
-    match: () => f.tabs.state().order.map((id) => ({ id, kind: 'tab', title: f.tabs.state().tabs[id]?.face.title ?? '?', tab: id, context: 'Window 1', matchContext: '', route: f.tabs.state().tabs[id]?.location.route })),
-  };
-}
 
 const cloudPages: Candidate[] = [
   { id: 'home', kind: 'home', title: 'Cloud', context: 'Compute', keywords: 'cloud', icon: 'server', route: { plugin: 'cloud', contribution: 'instances' } },

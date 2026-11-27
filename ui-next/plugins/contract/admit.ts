@@ -1,3 +1,4 @@
+import { isExtensionIdSegment } from '@omniviewdev/runtime/internal/extensions-v1';
 import { ContractError } from '../loader/failure';
 import { PALETTE_LIMITS } from './paletteRows';
 import { dressed, dressProblems, readTarget } from './sidebarTargets';
@@ -349,8 +350,14 @@ function checkPanel(panel: unknown, problems: Problems): void {
       for (const [id, kind] of Object.entries(sessions)) {
         if (!isRecord(kind)) {
           problems.push(`panel.sessions.${id} is not an object`);
-        } else if (kind.card !== undefined && !isFunction(kind.card)) {
-          problems.push(`panel.sessions.${id}.card is not a function`);
+        } else {
+          if (kind.card !== undefined && !isFunction(kind.card)) {
+            problems.push(`panel.sessions.${id}.card is not a function`);
+          }
+
+          if (kind.useMenuOutlet !== undefined && (id !== 'terminal' || !isFunction(kind.useMenuOutlet))) {
+            problems.push(`panel.sessions.${id}.useMenuOutlet must be a terminal session hook`);
+          }
         }
       }
     }
@@ -488,6 +495,10 @@ function checkContribution(value: Readonly<Record<string, unknown>>): Problems {
 
     if (sidebar.useNodes !== undefined && !isFunction(sidebar.useNodes)) {
       problems.push('sidebar.useNodes is not a function');
+    }
+
+    if (sidebar.outlet !== undefined && !isExtensionIdSegment(sidebar.outlet)) {
+      problems.push('sidebar.outlet is not a local extension point ID');
     }
 
     // What the sidebar is called on a page that is read in no connection (KL7): each member that is given is a name, and one that is left out is the sidebar's own.

@@ -88,6 +88,13 @@ func (pm *pluginManager) beginArchivePersistence(id string) error {
 		pm.pendingArchiveState = make(map[string]*plugintypes.PluginStateRecord)
 	}
 	pm.pendingArchiveState[id] = previous
+	if active := pm.extensionInstalls[id]; active != nil && active.reads != nil {
+		// No call may bridge the pending-publication gap. If preparation
+		// aborts without replacing this runtime, only fresh reads can use it.
+		next := *active
+		next.reads = newExtensionReadCache()
+		pm.replaceExtensionLocked(id, &next)
+	}
 	return nil
 }
 
@@ -134,7 +141,7 @@ func (pm *pluginManager) restoreArchivePersistence(id string) error {
 //
 //nolint:nonamedreturns // Deferred telemetry records the publication state and error.
 func (pm *pluginManager) commitArchiveInventory(
-	ctx context.Context, recovery *archiveRecovery,
+	ctx context.Context, recovery *archiveRecovery, ui *extensionReceipt,
 ) (stateWritten bool, err error) {
 	ctx, span := installSpanChild(ctx, "plugin.archive.commit", recovery.ID)
 	defer func() {
@@ -155,6 +162,7 @@ func (pm *pluginManager) commitArchiveInventory(
 	err = pm.markArchiveCommitted(recovery)
 	if err == nil {
 		installSpanPhase(ctx, "marker_committed")
+		err = pm.publishExtensionReceipt(recovery, ui)
 	}
 	pm.recordsMu.Lock()
 	delete(pm.pendingArchiveState, recovery.ID)
@@ -306,8 +314,10 @@ func (pm *pluginManager) restoreArchiveRuntime(
 				return errors.New("original backend exited while its controllers were being restored")
 			}
 			pm.registerStateObserver(recovery.ID, resumed.StateMachine)
+			ui := pm.readExtensionReceipt(resumed)
 			pm.recordsMu.Lock()
 			pm.records[recovery.ID] = resumed
+			pm.setExtensionLocked(resumed, ui)
 			pm.recordsMu.Unlock()
 			return nil
 		}
@@ -529,12 +539,20 @@ func (pm *pluginManager) rollbackArchive(
 		return fail("dispose_stage", err)
 	}
 	pm.endArchivePersistence(recovery.ID)
+	pm.recordsMu.RLock()
+	restoredExtension := pm.extensionCurrentLocked(recovery.ID, pm.extensionInstalls[recovery.ID])
+	pm.recordsMu.RUnlock()
+	if restoredExtension {
+		// The original installation is current again under its restored
+		// lifetime. This is not a success event for the rejected update.
+		pm.emitter.Emit(EventInventoryChanged, InventoryChangedPayload{PluginID: recovery.ID})
+	}
 	return cause
 }
 
 //nolint:gocognit,gocyclo,cyclop,funlen,nonamedreturns // Transaction and deferred telemetry require this structure.
 func (pm *pluginManager) installArchiveCandidate(
-	ctx context.Context, path string, metadata *config.PluginMeta, version, channel string,
+	ctx context.Context, path string, metadata *config.PluginMeta, version, channel, verifiedDigest string,
 ) (statePublished bool, err error) {
 	if err := pm.guardProductOwned(metadata.ID); err != nil {
 		return false, err
@@ -564,7 +582,9 @@ func (pm *pluginManager) installArchiveCandidate(
 		return false, err
 	}
 	extractCtx, extractSpan := installSpanChild(ctx, "plugin.Extract", metadata.ID)
-	err = unpackPluginArchive(path, pm.pluginsRoot.ResolvePath(candidate))
+	var ui archiveExtensionInventory
+	ui.id, ui.digest = metadata.ID, verifiedDigest
+	err = unpackPluginArchive(path, pm.pluginsRoot.ResolvePath(candidate), &ui)
 	installSpanEnd(extractSpan, err)
 	if err != nil {
 		pm.installLogger().Warnw(extractCtx, "plugin archive extraction failed", "pluginID", metadata.ID,
@@ -593,6 +613,14 @@ func (pm *pluginManager) installArchiveCandidate(
 	// The loader consumes the extracted file, not an earlier tar entry.
 	// All capability, trust, publication and event decisions use that same data.
 	*metadata = actualMetadata
+	if !actualMetadata.HasUICapabilities() {
+		ui.invalid = true // mutable metadata cannot add this capability on a later load
+	} else if ui.digest != "" && !ui.invalid && ui.seen[0] {
+		// Capture the original asset tree before publishing or starting the
+		// candidate. Replacing this directory must not preserve the source.
+		assets, identityErr := pm.pluginsRoot.DirectoryIdentity(filepath.Join(candidate, "assets"))
+		ui.assets, ui.invalid = assets, identityErr != nil
+	}
 	if version != "" {
 		// Registry verification already authenticated the downloaded archive.
 		// Change only the private extracted metadata, never the signed archive.
@@ -689,9 +717,9 @@ func (pm *pluginManager) installArchiveCandidate(
 	}
 	pm.recordsMu.Unlock()
 	installSpanPhase(ctx, "candidate_loaded")
-	stateWritten, commitErr := pm.commitArchiveInventory(ctx, recovery)
+	stateWritten, commitErr := pm.commitArchiveInventory(ctx, recovery, ui.receipt(recovery.CandidateIdentity))
 	if recovery.committed {
-		pm.emitter.Emit(EventInventoryChanged)
+		pm.emitter.Emit(EventInventoryChanged, InventoryChangedPayload{PluginID: metadata.ID})
 		pm.emitter.Emit(EventInstallFinished, metadata)
 	}
 	if commitErr != nil {

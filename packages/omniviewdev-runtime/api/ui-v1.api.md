@@ -290,6 +290,13 @@ export const ErrorTypes: {
     readonly NOT_IMPLEMENTED: "omniview:not-implemented";
 };
 
+// @public
+export function extensionRootOf(record: HostRecord): ExtensionRootV1 | undefined;
+
+// @public
+export class ExtensionRootV1 {
+}
+
 // @public (undocumented)
 export interface HostEnumerateRequest {
     // (undocumented)

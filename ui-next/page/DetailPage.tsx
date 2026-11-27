@@ -15,21 +15,35 @@ import {
   TagList,
   type PageHeaderCommands,
   type PageOperation,
+  type TabsProps,
 } from '@omniviewdev/kit';
-import { useId, useState } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import styles from './DetailPage.module.css';
 import type { DetailPageDefinition, DetailSection, DetailSource, DetailTabContent } from './detailDefinition';
 import type { RouteParams } from './detailIdentity';
 import { deriveDetailModel, overviewColumns, type DetailBody } from './detailView';
+import { keepDetailTab, keptDetailTab } from './kept';
+import type { PageMemory } from './memory';
 import { refreshReason } from './refresh';
 import { SectionBoundary } from './SectionBoundary';
 import { useRefreshFeedback } from './useRefreshFeedback';
+
+/** The host can add admitted choices to one detail strip. The owner keeps its own selection and panel. */
+export type OwnerDetailStrip = Pick<TabsProps, 'id' | 'label' | 'tabs' | 'selected' | 'onSelect'> & {
+  readonly overview: Extract<DetailTabContent, { kind: 'overview' }> | undefined;
+  readonly panel: (afterMainSections?: ReactNode) => ReactNode;
+};
 
 export type DetailPageProps = {
   readonly definition: DetailPageDefinition;
   /** The route's parameters: the object's identity. The page reads the name from them, as the definition says. */
   readonly params: RouteParams;
   readonly source: DetailSource;
+  /** The owner's selected subtab, in the current in-window history entry. Never persist page data. */
+  readonly memory?: PageMemory | undefined;
+  /** Host-only drawing and error handling, not members of the plugin's detail definition. */
+  readonly renderStrip?: ((strip: OwnerDetailStrip) => ReactNode) | undefined;
+  readonly guardedCommands?: Omit<PageHeaderCommands, 'utility'> | undefined;
 };
 
 /** The columns of a loading skeleton: a detail body has no table, so this is only how many bars each row of it holds. */
@@ -92,13 +106,14 @@ type OverviewProps = {
   readonly content: Extract<DetailTabContent, { readonly kind: 'overview' }>;
   /** The object's name, for the names of the summary and the aside. */
   readonly name: string;
+  readonly afterMainSections?: ReactNode;
 };
 
 /**
  * The Overview (design 13 OVW1): the one-line summary, then the sections with something to say, the main column's under it and the aside's beside it from 992 px of page width, under
  * it below. A page with no aside is the main column alone.
  */
-function Overview({ content, name }: OverviewProps) {
+function Overview({ content, name, afterMainSections }: OverviewProps) {
   const { main, aside } = overviewColumns(content.sections);
   const summary = content.summary === undefined || content.summary.length === 0 ? null : <StatusSummary label={`${name} status`} items={content.summary} />;
   const column = (
@@ -107,6 +122,7 @@ function Overview({ content, name }: OverviewProps) {
       {main.map((section) => (
         <Section key={section.id} section={section} />
       ))}
+      {afterMainSections}
     </Stack>
   );
   if (aside.length === 0) {
@@ -134,7 +150,7 @@ function Overview({ content, name }: OverviewProps) {
 }
 
 /** What the panel shows: the state's own words in the kit's state bodies, or the tab's content. */
-function Body({ body, name }: { readonly body: DetailBody; readonly name: string }) {
+function Body({ body, name, afterMainSections }: { readonly body: DetailBody; readonly name: string; readonly afterMainSections?: ReactNode }) {
   switch (body.kind) {
     case 'loading':
       return <LoadingBody label={body.label} columns={SKELETON_COLUMNS} />;
@@ -150,7 +166,7 @@ function Body({ body, name }: { readonly body: DetailBody; readonly name: string
       }
 
       // The plugin's own content, as given: a fragment keeps this a plain component (a node may be a promise in React's types, which only a server component can await).
-      return body.content.kind === 'overview' ? <Overview content={body.content} name={name} /> : <>{body.content.content}</>;
+      return body.content.kind === 'overview' ? <Overview content={body.content} name={name} afterMainSections={afterMainSections} /> : <>{body.content.content}</>;
   }
 
   return null;
@@ -165,8 +181,8 @@ function Body({ body, name }: { readonly body: DetailBody; readonly name: string
  * the identity line is always present (a progress word while the object is on its way, the kind when the plugin gives no fact), and the Refresh command is the page's. The user's own
  * Refresh is felt in the header's slot, as the list's is.
  */
-export function DetailPage({ definition, params, source }: DetailPageProps) {
-  const [chosen, setChosen] = useState<string | undefined>(undefined);
+export function DetailPage({ definition, params, source, memory, renderStrip, guardedCommands }: DetailPageProps) {
+  const [chosen, setChosen] = useState(() => keptDetailTab(memory?.read(), definition.tabs));
   const [dismissed, setDismissed] = useState<string | undefined>(undefined);
   const id = useId();
   const model = deriveDetailModel(definition, params, source, { tab: chosen });
@@ -195,13 +211,20 @@ export function DetailPage({ definition, params, source }: DetailPageProps) {
       };
 
   const commands: PageHeaderCommands = {
-    ...model.commands,
+    ...(model.shown ? guardedCommands ?? model.commands : undefined),
     utility: {
       id: 'refresh',
       label: `Refresh ${model.heading}`,
       icon: 'refresh',
       onSelect: feedback.ask,
       disabledReason: refreshReason(feedback.felt || source.refreshing, waiting),
+    },
+  };
+  const strip = {
+    id, label: `${definition.kind} sections`, tabs: model.tabs, selected: model.selected,
+    onSelect: (tab: string) => {
+      setChosen(tab);
+      memory?.write(keepDetailTab(memory.read(), tab));
     },
   };
 
@@ -217,10 +240,13 @@ export function DetailPage({ definition, params, source }: DetailPageProps) {
           operation={model.operation ?? feedback.operation ?? reported}
         />
       </div>
-      <Tabs id={id} label={`${definition.kind} sections`} tabs={model.tabs} selected={model.selected} onSelect={setChosen} />
-      <TabPanel id={id} selected={model.selected}>
-        <Body body={model.body} name={model.heading} />
-      </TabPanel>
+      {renderStrip ? renderStrip({
+        ...strip, overview: model.body.kind === 'tab' && model.body.content?.kind === 'overview' ? model.body.content : undefined,
+        panel: afterMainSections => <Body body={model.body} name={model.heading} afterMainSections={afterMainSections} />,
+      }) : <>
+        <Tabs {...strip} />
+        <TabPanel id={id} selected={model.selected}><Body body={model.body} name={model.heading} /></TabPanel>
+      </>}
       {/* Always in the page, empty at rest: a live region that appears together with its text is not announced. */}
       <span className={styles.live} role="status">
         {feedback.announcement}

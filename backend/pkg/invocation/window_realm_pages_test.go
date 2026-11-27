@@ -90,6 +90,23 @@ func scopeCount(realm *WindowRealm) int {
 	return len(realm.scopes)
 }
 
+func TestWindowRealmRefusesChangedBrowserClientWithoutEvictingLivePage(t *testing.T) {
+	realm, sockets, retired := pageRealm(t, stepped)
+	window, original := openPage(t, realm, sockets, 7)
+	foreign := &pageWindow{realmWindow: realmWindow{id: window.ID()}, client: "different-client"}
+	sockets.connect(foreign.client)
+	refused, err := realm.AdmitWindow(foreign)
+	require.ErrorIs(t, err, ErrWindowUnavailable)
+	require.Nil(t, refused)
+	require.Same(t, original, realm.ScopeForWindow(window))
+	require.Equal(t, 1, scopeCount(realm))
+	require.Empty(t, retired.all())
+	sockets.drop(window.client)
+	realm.sweep()
+	realm.sweep()
+	require.Equal(t, []string{original.Principal().Owner()}, retired.all())
+}
+
 // The stall of INV2: a host that served 64 pages refused the 65th and every one after it, because a page that closes in server mode
 // never announced it (stock Wails' BrowserWindow.OnWindowEvent does nothing) and its scope was never released.
 func TestWindowRealmServesEveryPageOpenedAndClosedOneAfterAnother(t *testing.T) {

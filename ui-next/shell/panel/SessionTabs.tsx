@@ -66,13 +66,15 @@ function SessionTab({ id, stop, selected, controls, prefix, menu, renaming, onRe
   const stateGlyph = item.state === 'running' ? undefined : STATE_GLYPHS[item.state];
   const toolGlyph = tool !== undefined && isIconName(tool.icon) ? tool.icon : FALLBACK_GLYPH;
   return (
-    <div className={styles.sessionItem} data-tab-id={id} data-selected={selected ? '' : undefined} data-shell-part="sessionTab" data-ov-menu-label={`Actions for ${item.name}`} {...menuTrigger(menu, id, 'context')} {...hoverCardAnchor()}>
+    <div className={styles.sessionItem} data-tab-id={id} data-selected={selected ? '' : undefined} data-shell-part="sessionTab" tabIndex={-1} data-ov-menu-label={`Actions for ${item.name}`} {...menuTrigger(menu, id, 'context')} {...hoverCardAnchor()}>
       <button
         type="button"
         role="tab"
         id={sessionTabId(prefix, id)}
         className={styles.sessionTab}
         aria-selected={selected}
+        data-ov-menu-label={`Actions for ${item.name}`}
+        {...menuTrigger(menu, id, 'context')}
         aria-controls={controls}
         aria-keyshortcuts="F2 Delete"
         aria-label={sessionName(item)}
@@ -160,7 +162,7 @@ type SessionTabsProps = {
  * tab that had it being gone. It scrolls sideways only and keeps each tab's width: a strip squeezed to a minimum width is illegible (SCT1).
  */
 export function SessionTabs({ tool, prefix, controls }: SessionTabsProps) {
-  const { store, stopOf } = usePanel();
+  const { store, stopOf, terminalMenu } = usePanel();
   const label = useToolItem(tool)?.label ?? 'Tool';
   const ids = useSessionIds(tool);
   const active = useActiveSession(tool);
@@ -203,7 +205,7 @@ export function SessionTabs({ tool, prefix, controls }: SessionTabsProps) {
     });
     // Read when asked and again when chosen: a session that failed or ended while the menu was open is not stopped, which would overwrite what it says.
     const stoppable = (id: SessionId): boolean => stopOf?.(id) !== undefined && ['starting', 'running'].includes(store.getSnapshot().sessions[id]?.state ?? '');
-    return [
+    const items: MenuItem[] = [
       {
         kind: 'action',
         id: 'rename',
@@ -248,6 +250,7 @@ export function SessionTabs({ tool, prefix, controls }: SessionTabsProps) {
       closing('close-right', 'Close sessions to the right', ids.slice(at + 1), 'There are no sessions to the right'),
       closing('close-left', 'Close sessions to the left', ids.slice(0, at), 'There are no sessions to the left'),
     ];
+    return terminalMenu?.(key, 'session-tab', items) ?? items;
   }, ids);
   // The strip says where the session went, as the page strip does (ch16 S45).
   const onMove = (id: SessionId, to: number): boolean => {
@@ -266,7 +269,7 @@ export function SessionTabs({ tool, prefix, controls }: SessionTabsProps) {
   }
 
   return (
-    <div ref={ref} className={styles.sessionList} role="tablist" aria-label={`${label} sessions`} data-shell-part="sessionTabs" {...handlers}>
+    <div ref={ref} className={styles.sessionList} role="tablist" tabIndex={-1} aria-label={`${label} sessions`} data-shell-part="sessionTabs" {...handlers}>
       {ids.map((id) => (
         <SessionTab
           key={id}

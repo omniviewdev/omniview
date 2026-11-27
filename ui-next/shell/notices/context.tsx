@@ -6,7 +6,7 @@ import type { NoticesBindings } from './host';
 
 const NoticesContext = createContext<NoticesBindings | null>(null);
 
-export function NoticesProvider({ notices, children }: { readonly notices: NoticesBindings; readonly children: ReactNode }) {
+export function NoticesProvider({ notices, children }: { readonly notices: NoticesBindings | null; readonly children: ReactNode }) {
   return <NoticesContext value={notices}>{children}</NoticesContext>;
 }
 

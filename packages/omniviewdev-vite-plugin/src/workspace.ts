@@ -1,5 +1,21 @@
 import { realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
+import type { UserConfig } from 'vite';
+
+export function configureWorkspaceOutput(config: UserConfig): void {
+  const output = process.env.OMNIVIEW_BUILD_OUTPUT_DIRECTORY;
+  if (!output) {
+    return;
+  }
+
+  const root = path.resolve(config.root ?? process.cwd());
+  const configured = config.build?.outDir && path.resolve(root, config.build.outDir);
+  if (configured && configured !== path.join(root, 'dist') && configured !== path.resolve(output)) {
+    throw new Error('Plugin distribution path conflicts with controlled workspace output');
+  }
+
+  config.build = { ...config.build, outDir: output };
+}
 
 /** Explicit feature directories, never a filesystem wildcard or guessed sibling. */
 export function workspaceViteRoots(raw: string | undefined): string[] | undefined {

@@ -42,6 +42,8 @@ export default defineConfig({
         models: resolve(__dirname, "src/models.ts"),
         runtime: resolve(__dirname, "src/runtime.ts"),
         "ui/v1": resolve(__dirname, "src/ui/v1.ts"),
+        "ui/extensions/v1": resolve(__dirname, "src/ui/extensions/v1.ts"),
+        "internal/extensions-v1": resolve(__dirname, "src/ui/extensions/wire.ts"),
       },
       name: "@omniview/runtime",
     },

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { checkInvariants, LIMITS } from './index';
-import { boot, cloudPage, stackPage, tabOf, type Harness } from './testing';
+import { boot, cloudPage, pageTabOf as tab, stackPage, type Harness } from './testing';
 
 // Each tab's own back and forward stack (ch16 S60, S50), and Reload (S44).
 // Ported from the design lab's harness (tests/shell-model-harness/R2Store/unit.cjs).
@@ -8,8 +8,6 @@ import { boot, cloudPage, stackPage, tabOf, type Harness } from './testing';
 const sound = (h: Harness) => {
   expect(checkInvariants(h.state())).toEqual([]); 
 };
-
-const tab = tabOf;
 
 describe('history (ch16 S60)', () => {
   it('pushes on a navigation, replaces on an in-page change and a scope change, walks with Back and Forward, and is the same after tabs switch', () => {

@@ -1,4 +1,5 @@
 import { Activity, Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { keepScroll, keptScroll } from '../../page/kept';
 import type { Location, TabId } from '../core/tabs';
 import { useTabs } from './context';
 import { useActiveId, useLocation, useMountedIds } from './hooks';
@@ -88,8 +89,10 @@ function PageSlot({ id, visible, layout, renderPage, pageKey }: Slot) {
   const location = useLocation(store, id);
   const root = useRef<HTMLDivElement>(null);
   const [memory] = useState(() => new Map<string, Remembered>());
-  useScrollRestore(root, memory, visible);
-  if (location === undefined) {
+  const ordinary = location?.route.kind !== 'extension-view';
+  useScrollRestore(root, memory, visible && ordinary);
+  // Activity keeps hidden DOM and state. A mounted peer must actually unmount when its tab is no longer in front.
+  if (location === undefined || (location.route.kind === 'extension-view' && !visible)) {
     return null;
   }
 
@@ -104,7 +107,7 @@ function PageSlot({ id, visible, layout, renderPage, pageKey }: Slot) {
         data-page-slot=""
         data-tab-id={id}
         onScrollCapture={(event) => {
-          if (event.target instanceof Element && event.target !== event.currentTarget) {
+          if (ordinary && event.target instanceof Element && event.target !== event.currentTarget) {
             remember(event.currentTarget, event.target, memory);
           }
         }}
@@ -128,7 +131,7 @@ export function PageHost({ renderPage, empty, layout, prefix, panelId, pageKey }
   const mounted = useMountedIds(store);
   const active = useActiveId(store);
   const panel = useRef<HTMLDivElement>(null);
-  const [memory] = useState(() => new Map<TabId, Position>());
+  const location = useLocation(store, active);
 
   // The region shows the offset of the tab that is on screen: the one it was left at, or the top of a page that was not shown before.
   useLayoutEffect(() => {
@@ -137,16 +140,10 @@ export function PageHost({ renderPage, empty, layout, prefix, panelId, pageKey }
       return;
     }
 
-    for (const id of memory.keys()) {
-      if (!mounted.includes(id)) {
-        memory.delete(id);
-      }
-    }
-
-    const saved = memory.get(active);
+    const saved = layout === 'document' && location?.route.kind !== 'extension-view' ? keptScroll(store.getSnapshot().tabs[active]?.pageState) : undefined;
     element.scrollTop = saved?.top ?? 0;
     element.scrollLeft = saved?.left ?? 0;
-  }, [active, mounted, memory]);
+  }, [active, location, layout, store]);
 
   // A press or a key in the page is use: a preview tab becomes permanent (S24); a permanent tab is no change.
   const keep = () => {
@@ -167,8 +164,11 @@ export function PageHost({ renderPage, empty, layout, prefix, panelId, pageKey }
       onPointerDownCapture={keep}
       onKeyDownCapture={keep}
       onScroll={(event) => {
-        if (active !== null) {
-          memory.set(active, { top: event.currentTarget.scrollTop, left: event.currentTarget.scrollLeft });
+        if (active !== null && location?.route.kind !== 'extension-view' && layout === 'document' && event.target === event.currentTarget && store.getSnapshot().active === active) {
+          const tab = store.getSnapshot().tabs[active];
+          if (tab && tab.location === location) {
+            store.setPageState(active, keepScroll(tab.pageState, { top: event.currentTarget.scrollTop, left: event.currentTarget.scrollLeft }));
+          }
         }
       }}
     >

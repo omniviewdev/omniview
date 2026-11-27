@@ -22,6 +22,7 @@ export type EventsScope = {
 export type EventsReconnect = {
   /** Calls `listener` each time an events socket opens. Answers the function that stops it. */
   readonly subscribe: (listener: () => void) => () => void;
+  readonly observeTransport: (listener: (connected: boolean) => void) => () => void;
 };
 
 function isEventsSocket(url: unknown, base: string | undefined): boolean {
@@ -38,6 +39,8 @@ export function createEventsReconnect(scope: EventsScope): EventsReconnect {
   // the same scope keeps a set of its own, and hears the socket too.
   const listened = new WeakSet<object>();
   const listeners = new Set<() => void>();
+  const transport = new Set<(connected: boolean) => void>();
+  let active: WebSocket | undefined;
   let native: typeof WebSocket | undefined;
   let wrapper: typeof WebSocket | undefined;
 
@@ -60,6 +63,17 @@ export function createEventsReconnect(scope: EventsScope): EventsReconnect {
         if (!listened.has(socket) && isEventsSocket(args[0], scope.location?.href)) {
           listened.add(socket);
           socket.addEventListener('open', tell, { once: true });
+          if (transport.size) {
+            socket.addEventListener('open', () => {
+              active = socket;
+              for (const notify of transport) notify(true);
+            }, { once: true });
+            socket.addEventListener('close', () => {
+              if (active !== socket) return;
+              active = undefined;
+              for (const notify of transport) notify(false);
+            }, { once: true });
+          }
         }
 
         return socket;
@@ -87,9 +101,19 @@ export function createEventsReconnect(scope: EventsScope): EventsReconnect {
       listeners.add(listener);
       return () => {
         listeners.delete(listener);
-        if (listeners.size === 0) {
+        if (!listeners.size && !transport.size) {
           uninstall();
         }
+      };
+    },
+    observeTransport: (listener) => {
+      install();
+      transport.add(listener);
+      listener(active?.readyState === 1);
+      return () => {
+        transport.delete(listener);
+        if (!transport.size) active = undefined;
+        if (!listeners.size && !transport.size) uninstall();
       };
     },
   };
@@ -101,3 +125,6 @@ const page = createEventsReconnect(globalThis);
 export function onEventsReconnect(listener: () => void): () => void {
   return page.subscribe(listener);
 }
+
+/** Browser event gaps revoke authority immediately. An unobserved socket never proves connectivity. */
+export const observeEventsTransport = page.observeTransport;

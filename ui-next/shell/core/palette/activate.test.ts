@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { pageTabOf } from '../tabs/testing';
 import type { CommandOutcome, KeyInput, PaletteState, Provider } from './types';
-import { command, makePalette, page, type Fixture } from './testing';
+import { command, makePalette, page, tabsProvider, type Fixture } from './testing';
 
 // What a row does when it is chosen (ch16 S64, S65, S70) and what the keys do. A place opens through the tab model and nothing else, so these tests run the real tab store beside the
 // palette; a command runs through the host's registry and ignores the modifiers. Tests that port the design lab's harness are in `oracle.test.ts`.
@@ -152,21 +153,12 @@ describe('choosing a place', () => {
   it('records a tab the user switched to, when the host says so', () => {
     const f = makePalette();
     f.tabs.open({ route: { plugin: 'cloud', contribution: 'volumes' } });
-    const state0 = f.tabs.state();
-    const tab = state0.tabs[f.tabs.current()];
-    f.palette.record({ route: tab?.location.route ?? { plugin: '', contribution: '' } });
+    f.palette.record({ route: pageTabOf(f.tabs, f.tabs.current()).location.route });
     expect(f.palette.serialise().recents[0]).toMatchObject({ title: 'Volumes', context: 'Cloud · Compute' });
   });
 });
 
 describe('choosing a tab', () => {
-  const tabsProvider = (f: Fixture): Provider => ({
-    id: 'host:tabs',
-    plugin: 'host',
-    section: 'tabs',
-    match: () => f.tabs.state().order.map((id) => ({ id, kind: 'tab' as const, title: f.tabs.state().tabs[id]?.face.title ?? '?', tab: id, route: f.tabs.state().tabs[id]?.location.route })),
-  });
-
   it('activates it, and opens its place in another tab for the other keys', () => {
     const f = makePalette();
     const a = f.tabs.open({ route: { plugin: 'cloud', contribution: 'instances' } });

@@ -1,5 +1,6 @@
 import { facetsOf, nameOf, titleOf, type DetailPageDefinition } from '../../page';
 import type { Contributions, Description, Route, RouteInput } from '../../shell';
+import type { TabRoute } from '../../shell/core/tabs';
 import type { CustomPageV1, FrameV1, OverviewPageDefinition, PageV1, SidebarNodeV1 } from '../contract/v1';
 import { failureWords } from '../loader/failure';
 import { ConnectionNames, laneNameOf, pathSaid, restoredFace } from './connectionName';
@@ -19,7 +20,9 @@ import type { Published } from './published';
 export const HOME_PAGE = '$home';
 
 /** What a route is called in a table of published values: a route is plain data, so its text is its identity. */
-export const routeKey = (route: Route): string => JSON.stringify([route.plugin, route.contribution, route.params]);
+export const routeKey = (route: TabRoute): string => route.kind === 'extension-view'
+  ? JSON.stringify([route.kind, route.plugin, route.point, route.offer, route.connection])
+  : JSON.stringify([route.plugin, route.contribution, route.params]);
 
 /** The route a `routeKey` was made from; `undefined` when the text is not the key of a route. */
 function routeOfKey(key: string): Route | undefined {
@@ -40,7 +43,11 @@ function routeOfKey(key: string): Route | undefined {
 }
 
 /** The connection a route names, the scope a plugin's tabs are told apart by. */
-export function connectionOf(route: Route): string | undefined {
+export function connectionOf(route: TabRoute): string | undefined {
+  if (route.kind === 'extension-view') {
+    return route.connection;
+  }
+
   const { connection } = route.params;
   return typeof connection === 'string' ? connection : undefined;
 }
@@ -111,6 +118,8 @@ export type PluginChoice = {
 
 export type ContributionsDeps = {
   readonly plugins: PluginSource;
+  /** Host-owned descriptions for tagged sidebar locations, never ordinary page completion. */
+  readonly describeView?: Contributions['describeView'];
   /** The frame each mounted page published, by `routeKey`: the lane it published is where the name of its connection is read (`connectionName.ts`). */
   readonly frames: Published<FrameV1>;
   /** The names this window has learned for its connections, by plugin and key. Default: a set of its own. */
@@ -217,7 +226,7 @@ export function describeCustom(pluginName: string, route: Route, page: CustomPag
  * plugin that is loading or failed to a page that says so (ch16 S65: degraded) and refuses one the host does not have. `complete` fills in the connection of the tab a destination is
  * opened from, and turns a page the plugin does not have into its home. `home` is a plugin's own first page; the window has none of its own.
  */
-export function createContributions({ plugins, frames, names = new ConnectionNames(), choice }: ContributionsDeps): Contributions {
+export function createContributions({ plugins, frames, names = new ConnectionNames(), choice, describeView }: ContributionsDeps): Contributions {
   const entryOf = (plugin: string): PluginEntry | undefined => plugins.getSnapshot().find((entry) => entry.id === plugin);
   // What every page published says of its connection is learned when a page publishes, before the tabs are described again: a tab described before the tab whose page names the connection (a background tab earlier in the
   // strip) has the name in the same pass.
@@ -233,6 +242,7 @@ export function createContributions({ plugins, frames, names = new ConnectionNam
   };
 
   return {
+    describeView,
     describe: (route): Description | undefined => {
       // A page of the host's own (the Plugins page, Home): no scope, no path and no plugin name (ch16 X7). Plugins is a singleton tab of the whole window (ch16 S9); Home is an ordinary tab, and several may exist.
       const hosted = hostPageOf(route);
@@ -330,7 +340,7 @@ export function createContributions({ plugins, frames, names = new ConnectionNam
       }
 
       // A sidebar entry names a page, not a connection: the page opens in the connection of the tab it is opened from.
-      const inherited = from?.plugin === route.plugin ? from.params.connection : undefined;
+      const inherited = from?.plugin === route.plugin ? connectionOf(from) : undefined;
       let params = route.params.connection === undefined && typeof inherited === 'string' ? { ...route.params, connection: inherited } : route.params;
       // A plugin that declares a landing (KL2) says what a route that names no connection is: the landing, in place of every choice the window would make below (Home, the connection last used, the plugin's first). The landing says nothing of the page
       // the route named, which needs a connection it does not have. A tab that is already open keeps the route it has (`refresh`), but for the stand-in of a first page, which is the landing as it is Home's.

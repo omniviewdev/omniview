@@ -1,22 +1,17 @@
 import { PluginManager } from '@omniviewdev/runtime/api';
 import { Events } from '@omniviewdev/runtime/runtime';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo } from 'react';
+import { useLayoutEffect, useMemo } from 'react';
+import { Read as readPolicy } from '../../../packages/omniviewdev-runtime/src/bindings/github.com/omniviewdev/omniview/backend/extensionpolicy/service';
+import { observeEventsTransport } from '../../../packages/omniviewdev-runtime/src/eventsReconnect';
+import type { ExtensionWindow } from './extensionWindow';
 import { describePlugins } from './inventory';
 import type { PluginDescriptor } from './pluginStore';
+import { isNativeWindow } from '../../shell/core/native';
 
 // The installed plugins whose interface the host should load, read from the host's own inventory. The query key is the one the old shell's inventory uses
 // (ui/hooks/plugin/useInstalledPlugins.ts), and so are the events that change the inventory; the old shell's polling until the first answer stays,
 // because the backend may not be ready when the window opens (decision R13: startup retries that exist for that reason stay).
-
-/** Events after which the inventory is read again: a plugin was installed, updated, enabled, disabled, or the first load finished. */
-const INVENTORY_EVENTS = [
-  'plugin/init_complete',
-  'plugin/inventory_changed',
-  'plugin/install_finished',
-  'plugin/update_complete',
-  'plugin/enablement_changed',
-] as const;
 
 export const INVENTORY_KEY = ['plugins'] as const;
 
@@ -28,24 +23,30 @@ export type Inventory = {
   readonly retry: () => void;
 };
 
-export function useInstalledPlugins(): Inventory {
+export function useInstalledPlugins(window: ExtensionWindow): Inventory {
   const queryClient = useQueryClient();
-  useEffect(() => {
+  useLayoutEffect(() => {
     const invalidate = () => {
-      void queryClient.invalidateQueries({ queryKey: INVENTORY_KEY });
+      // The first list may still be in flight when the events socket opens. Do not
+      // coalesce a subscribed read with that earlier, ordinary-pages-only request.
+      const filter = { queryKey: INVENTORY_KEY, exact: true };
+      void queryClient.cancelQueries(filter).then(async () => queryClient.invalidateQueries(filter));
     };
 
-    const stops = INVENTORY_EVENTS.map((name) => Events.On(name, invalidate));
-    return () => {
-      for (const stop of stops) {
-        stop();
+    return window.listen(Events, readPolicy, invalidate, notify => {
+      if (!isNativeWindow()) {
+        return observeEventsTransport(notify);
       }
-    };
-  }, [queryClient]);
+
+      notify(true);
+      return () => { /* The native bridge has no reconnect listener to remove. */ };
+    });
+  }, [window, queryClient]);
 
   const query = useQuery({
     queryKey: INVENTORY_KEY,
-    queryFn: async () => (await PluginManager.ListPlugins()) ?? [],
+    queryFn: async () => window.inventory(async () => (await PluginManager.ListPlugins()) ?? []),
+    refetchOnMount: 'always',
     refetchInterval: (current) => (current.state.status === 'success' ? false : POLL_UNTIL_READ_MS),
   });
 

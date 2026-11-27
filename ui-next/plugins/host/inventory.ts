@@ -11,6 +11,8 @@ export type InstalledPlugin = {
   readonly origin: string;
   readonly enabled: boolean;
   readonly phase: string;
+  readonly hasPage?: boolean | null;
+  readonly extension?: { readonly pin: string; readonly generation: string; readonly pageDigest?: string } | null;
   readonly metadata: { readonly name: string };
   readonly incompatible?: unknown;
 };
@@ -26,11 +28,12 @@ export function describePlugins(plugins: readonly InstalledPlugin[]): readonly P
   return (
     plugins
       // Product-owned frontends and plugins the user turned off have no bundle to load here.
-      .filter((plugin) => plugin.origin !== 'builtin' && plugin.enabled)
+      .filter((plugin) => plugin.origin !== 'builtin' && plugin.enabled && plugin.hasPage !== false)
       .map((plugin): PluginDescriptor => {
         const incompatible = readIncompatibility(plugin.incompatible);
         return {
           id: plugin.id,
+          ...(plugin.hasPage === true && plugin.extension?.pageDigest ? { artifact: { pin: plugin.extension.pin, generation: plugin.extension.generation } } : {}),
           name: plugin.metadata.name === '' ? plugin.id : plugin.metadata.name,
           ...(FAILED_PHASES.has(plugin.phase) ? { failed: true } : {}),
           ...(incompatible === undefined ? {} : { incompatible }),

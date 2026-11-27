@@ -1,9 +1,6 @@
 {
-  // The declarations of the curated entry `@omniviewdev/runtime/ui/v1` (src/ui/v1.ts), emitted from a program that holds ONLY that entry and what it
-  // imports. The main program (tsconfig.app.json, which vite-plugin-dts reads) holds all of `src/`, including the main barrel, and TypeScript names an
-  // inferred type by the shortest module that exports it: `import('../..').ResourceType`. A declaration like that makes a plugin that imports only the
-  // curated entry read the whole barrel's declarations, and through them the previous UI library and the router. Here no barrel is in the program, so no
-  // declaration can name one. `scripts/check-ui-v1.ts` proves it on the emitted files.
+  // Emit the curated runtime and extension contracts without the main barrel in the program. Otherwise TypeScript can name an inferred type
+  // through that barrel and make plugin authors resolve the previous UI library and router. scripts/check-ui-v1.ts checks the emitted graphs.
   "extends": "./tsconfig.app.json",
   "compilerOptions": {
     "incremental": false,
@@ -14,6 +11,6 @@
     "rootDir": "src",
     "outDir": "dist/ui-v1"
   },
-  "include": ["src/ui/v1.ts"],
+  "include": ["src/ui/v1.ts", "src/ui/extensions/v1.ts", "src/ui/extensions/wire.ts"],
   "exclude": []
 }

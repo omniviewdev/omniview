@@ -29,6 +29,16 @@
       "types": "./dist/ui-v1/ui/v1.d.ts",
       "import": "./dist/ui/v1.js",
       "require": "./dist/ui/v1.cjs"
+    },
+    "./ui/extensions/v1": {
+      "types": "./dist/ui-v1/ui/extensions/v1.d.ts",
+      "import": "./dist/ui/extensions/v1.js",
+      "require": "./dist/ui/extensions/v1.cjs"
+    },
+    "./internal/extensions-v1": {
+      "types": "./dist/ui-v1/ui/extensions/wire.d.ts",
+      "import": "./dist/internal/extensions-v1.js",
+      "require": "./dist/internal/extensions-v1.cjs"
     }
   },
   "types": "dist/index.d.ts",

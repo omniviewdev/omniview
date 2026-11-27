@@ -17,6 +17,11 @@ import (
 	resourceplugin "github.com/omniviewdev/plugin-sdk/pkg/resource/v2/plugin"
 )
 
+const (
+	sourceStateFollowing          = "following"
+	maxSourceMemberRevisionDigits = 20 // Longest decimal representation of a uint64.
+)
+
 type sourceSession struct {
 	coordinator          *sourceCoordinator
 	key, pluginID, owner string
@@ -31,6 +36,7 @@ type sourceSession struct {
 	views                map[string]*sourceView
 	members              map[string]sourceMember
 	hasSnapshot          bool
+	memberRevision       uint64
 	memberBytes          int
 	memberLedger         sourceMemberLedger
 	transientLedger      sourceTransientLedger
@@ -675,6 +681,16 @@ func (s *sourceSession) applyLocked(frame resourcev2.SourceFrame, frames ...sour
 	if len(frames) != 0 {
 		frameContext = frames[0]
 	}
+	// The receipt is independent of provider versions, names and UIDs. An unchanged sibling
+	// retains its receipt. A replacement at the same address and UID cannot replay its predecessor.
+	var receipt string
+	if s.mode == resourcev2.SourceModeSnapshotAndUpdates && (frame.Snapshot != nil || frame.Changes != nil) {
+		if s.memberRevision == ^uint64(0) {
+			return true, resourcev2.NewError("RESOURCE_LIMIT", "Source member revision exhausted.")
+		}
+		s.memberRevision++
+		receipt = strconv.FormatUint(s.memberRevision, 10)
+	}
 	switch {
 	case frame.Begin != nil:
 		s.statusLocked("snapshotting", nil)
@@ -729,6 +745,7 @@ func (s *sourceSession) applyLocked(frame resourcev2.SourceFrame, frames ...sour
 				return true, err
 			}
 			member.admission = s.memberAdmission()
+			member.header.memberRevision = receipt
 			s.staging[key] = member
 			s.stagingBytes = size
 		}
@@ -802,7 +819,7 @@ func (s *sourceSession) applyLocked(frame resourcev2.SourceFrame, frames ...sour
 		if s.mode == resourcev2.SourceModeSnapshot {
 			s.statusLocked("finished", nil)
 		} else {
-			s.statusLocked("following", nil)
+			s.statusLocked(sourceStateFollowing, nil)
 		}
 		for _, v := range s.views {
 			v.syncLocked("resync")
@@ -855,6 +872,7 @@ func (s *sourceSession) applyLocked(frame resourcev2.SourceFrame, frames ...sour
 				if err != nil {
 					return true, err
 				}
+				member.header.memberRevision = receipt
 				key = k
 				next = &member
 			} else if change.Reference != nil {

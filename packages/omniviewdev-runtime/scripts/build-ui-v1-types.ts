@@ -1,7 +1,6 @@
 /**
- * Emits the declarations of the curated entry `@omniviewdev/runtime/ui/v1` into `<dist>/ui-v1/`, from a program that holds only that entry and what it
- * imports (`tsconfig.ui-v1.json` says why). `<dist>` is `dist`, or `OMNIVIEW_BUILD_OUTPUT_DIRECTORY` when a managed build stages its output elsewhere,
- * the same directory the Vite build writes to. A declaration error fails the build.
+ * Emits declarations for the curated entries into `<dist>/ui-v1/`, without the legacy barrel (tsconfig.ui-v1.json).
+ * Managed builds can stage `<dist>` elsewhere, in the same directory the Vite build writes to. Declaration errors fail the build.
  */
 import path from 'node:path';
 import ts from 'typescript';

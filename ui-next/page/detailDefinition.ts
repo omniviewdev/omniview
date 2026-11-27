@@ -11,6 +11,7 @@ import type {
   StatusSummaryItem,
   TagItem,
 } from '@omniviewdev/kit';
+import type { ExtensionRootV1 } from '@omniviewdev/runtime/ui/v1';
 import type { ReactNode } from 'react';
 
 // What a detail page is, and what feeds it. Plain data and one function per question, as the list page's (`definition.ts`): the page is a pure function of
@@ -136,6 +137,9 @@ export type DetailListSection = SectionBase & {
  */
 export type DetailSection = DetailKvSection | DetailTableSection<any> | DetailTagsSection | DetailListSection;
 
+/** The pure SDK outlet builders check a point's exact context before erasing its type at this ordinary page boundary. */
+type DetailOutlet = { readonly point: string; readonly context: Readonly<Record<string, unknown>> };
+
 /**
  * What a tab shows. The Overview is typed data the page lays out; any other tab is the plugin's own content, drawn as given. `kind: 'overview'` here is the typed content of a TAB, which any tab of a detail page or of an overview page may hold: it is neither the kind of an overview PAGE (`OverviewPageV1`) nor the id of a tab
  * a plugin happens to call "overview" (`DetailTab.id`).
@@ -146,11 +150,20 @@ export type DetailTabContent =
     /** The one line that leads the first screen ("Running · 2/2 ready · up to date": design 12 FS1). */
     readonly summary?: readonly StatusSummaryItem[] | undefined;
     readonly sections: readonly DetailSection[];
+    /** The host draws admitted sections after this Overview's owner sections, in its main column. */
+    readonly outlets?: readonly DetailOutlet[] | undefined;
+    readonly menuOutlet?: DetailOutlet | undefined;
   }
   | { readonly kind: 'custom'; readonly content: ReactNode };
 
 /** The object, as the page draws it: the header, the counts of the tabs, and what each tab shows. A function of the object alone. */
 export type DetailView = {
+  /** Only on a ready, authorized object: stable across updates, new when a same-named object replaces it. */
+  readonly extensionScopeKey?: string | undefined;
+  /** Optional native read witness from the same authorized record. Never a view Body prop. */
+  readonly extensionRoot?: ExtensionRootV1 | undefined;
+  /** One place on this object's detail strip, independent of the selected owner tab. */
+  readonly tabOutlet?: DetailOutlet | undefined;
   /** The lifecycle state, first in the identity line: the platform's word and its role. */
   readonly state?: PageHeaderState | undefined;
   /** At most four facts after the state (an id, a group, an age). With neither a state nor a fact the kind is the one fact, so the identity line is always there and nothing moves when the object arrives. */

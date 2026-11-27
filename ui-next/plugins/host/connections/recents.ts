@@ -1,4 +1,4 @@
-import type { Route } from '../../../shell';
+import type { TabRoute } from '../../../shell/core/tabs';
 import { connectionOf } from '../contributions';
 
 // The connections a person used last, most recent first (HM2): what Home lists as Recent and what a plugin opened with no connection falls back to (`contributions.ts`, rule R4). Framework-free, like the connection store: React
@@ -74,7 +74,7 @@ export function createRecents(): RecentsStore {
 type TabsAsRead = {
   readonly order: readonly string[];
   readonly active: string | null;
-  readonly tabs: Readonly<Record<string, { readonly history: { readonly entries: readonly Route[] } }>>;
+  readonly tabs: Readonly<Record<string, { readonly history: { readonly entries: readonly TabRoute[] } }>>;
 };
 
 /**
@@ -86,7 +86,7 @@ export function usesOf(state: TabsAsRead): readonly RecentConnection[] {
   const ids = [...state.order.filter((id) => id !== state.active), ...(state.active === null ? [] : [state.active])];
   for (const id of ids) {
     for (const route of state.tabs[id]?.history.entries ?? []) {
-      const key = connectionOf(route);
+      const key = route.kind === 'extension-view' ? route.connection : connectionOf(route);
       if (key !== undefined) {
         uses.push({ plugin: route.plugin, key });
       }

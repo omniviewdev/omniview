@@ -10,8 +10,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/omniviewdev/omniview/backend/extensionpolicy"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/devserver"
 	pluginexec "github.com/omniviewdev/omniview/backend/pkg/plugin/exec"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/extensionread"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
 	pluginlogs "github.com/omniviewdev/omniview/backend/pkg/plugin/logs"
 	pluginmetric "github.com/omniviewdev/omniview/backend/pkg/plugin/metric"
@@ -91,6 +93,11 @@ type Manager interface {
 
 	GetPlugin(id string) (plugintypes.PluginInfo, error)
 	ListPlugins() []plugintypes.PluginInfo
+	ReadExtensionAsset(id, pin, generation, role string) (string, error)
+	// ReadPinnedPageFile serves only the native HTTP asset handler, never Wails.
+	ReadPinnedPageFile(id, pin, generation, assetPath string) ([]byte, error)
+	// ResolveExtensionRead is native broker authority, never a Wails method.
+	ResolveExtensionRead(store *extensionpolicy.Store, key extensionread.Binding) (extensionread.Contract, bool)
 	GetPluginMeta(id string) (config.PluginMeta, error)
 	ListPluginMetas() []config.PluginMeta
 	GetPluginProfilingStatuses() []PluginProfilingStatus
@@ -140,13 +147,14 @@ func NewManager(
 		pluginPprofEnabled = err == nil && enabled
 	}
 	pm := &pluginManager{
-		catalog:     catalog,
-		ctx:         nil, // set by Initialize or Run
-		logger:      logger,
-		stateRoot:   stateRoot,
-		pluginsRoot: pluginsRoot,
-		recordsMu:   sync.RWMutex{},
-		records:     make(map[string]*plugintypes.PluginRecord),
+		catalog:       catalog,
+		ctx:           nil, // set by Initialize or Run
+		logger:        logger,
+		stateRoot:     stateRoot,
+		pluginsRoot:   pluginsRoot,
+		extensionsOff: extensionStartupDisabled(),
+		recordsMu:     sync.RWMutex{},
+		records:       make(map[string]*plugintypes.PluginRecord),
 		connlessControllers: map[sdktypes.Capability]plugintypes.Controller{
 			sdktypes.CapabilitySettings:  settingsController,
 			sdktypes.CapabilityExec:      execController,
@@ -202,6 +210,8 @@ type pluginManager struct {
 	recordsMu           sync.RWMutex
 	records             map[string]*plugintypes.PluginRecord
 	catalog             *Catalog
+	extensionInstalls   map[string]*extensionInstall              // recordsMu; bound to one runtime state machine
+	extensionsOff       bool                                      // startup-only emergency override
 	pendingArchiveState map[string]*plugintypes.PluginStateRecord // recordsMu protects durable preimages until archive commit
 	connlessControllers map[sdktypes.Capability]plugintypes.Controller
 	connfullControllers map[sdktypes.Capability]plugintypes.LifecycleController
@@ -294,6 +304,7 @@ func (pm *pluginManager) handlePluginCrash(pluginID string, expected *probedCras
 	crashSpan, endCrash := pm.lifecycleScope("plugin.Crash", pluginID)
 	var crashErr error
 	defer func() { endCrash(crashErr) }()
+	pm.retireExtension(pluginID)
 	pm.retireConnectionSharing(pluginID)
 	pm.retireActivities(pluginID)
 	// Capture the last few log entries before the crash for diagnostics.
@@ -852,21 +863,47 @@ func (pm *pluginManager) startDevServers(devPlugins []devPluginEntry) {
 // GetPlugin returns the plugin with the given ID.
 func (pm *pluginManager) GetPlugin(id string) (plugintypes.PluginInfo, error) {
 	pm.recordsMu.RLock()
-	defer pm.recordsMu.RUnlock()
 	record, ok := pm.records[id]
 	if !ok {
+		pm.recordsMu.RUnlock()
 		return plugintypes.PluginInfo{}, fmt.Errorf("plugin '%s' not found", id)
 	}
-	return record.ToInfo(), nil
+	info, install := pm.extensionInfoLocked(record)
+	pm.recordsMu.RUnlock()
+	pm.addExtensionManifest(&info, install)
+	return info, nil
 }
 
 // ListPlugins returns all loaded plugins.
 func (pm *pluginManager) ListPlugins() []plugintypes.PluginInfo {
 	pm.recordsMu.RLock()
-	defer pm.recordsMu.RUnlock()
+	var installs []*extensionInstall
 	plugins := make([]plugintypes.PluginInfo, 0, len(pm.records))
 	for _, record := range pm.records {
-		plugins = append(plugins, record.ToInfo())
+		info, install := pm.extensionInfoLocked(record)
+		if install != nil {
+			if installs == nil {
+				installs = make([]*extensionInstall, len(pm.records))
+			}
+			installs[len(plugins)] = install
+		}
+		plugins = append(plugins, info)
+	}
+	pm.recordsMu.RUnlock()
+	for i, install := range installs {
+		if install != nil {
+			pm.addExtensionManifest(&plugins[i], install)
+		}
+	}
+	if installs != nil {
+		// A prior row may have retired while a later row read its manifest.
+		pm.recordsMu.RLock()
+		for i, install := range installs {
+			if plugins[i].Extension != nil && !pm.extensionCurrentLocked(plugins[i].ID, install) {
+				plugins[i].Extension = nil
+			}
+		}
+		pm.recordsMu.RUnlock()
 	}
 	return plugins
 }

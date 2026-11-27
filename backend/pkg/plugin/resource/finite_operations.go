@@ -140,68 +140,82 @@ func (c *controller) Get(ctx context.Context, pluginID string, input HostGetRequ
 	ctx = telemetry.WithPlugin(ctx, pluginID)
 	op := telemetry.BeginOperation(ctx, "resource", "get")
 	defer func() { op.End(retErr) }()
+	return c.getExpected(ctx, pluginID, input, nil)
+}
+
+// A native caller with an observed route epoch must not dispatch Get on its replacement.
+// Keep the same catalog, authority, Get permission, provider and delivery checks as an ordinary Get.
+func (c *controller) getExpected(ctx context.Context, pluginID string, input HostGetRequest, expected *catalogAdmission) (HostRecord, error) {
 	request := input.Request
 	ctx, err := c.admit(ctx, "resource.Get", referenceTarget(pluginID, request.Route, request.Reference))
 	if err != nil {
-		return _result, err
+		var noRecord HostRecord
+		return noRecord, err
 	}
-	defer finishResource(ctx, &retErr)
+	result, operationErr := c.getAdmitted(ctx, pluginID, &input, expected)
+	finishResource(ctx, &operationErr)
+	return result, operationErr
+}
+
+func (c *controller) getAdmitted(ctx context.Context, pluginID string, input *HostGetRequest, expected *catalogAdmission) (HostRecord, error) {
+	var noRecord HostRecord
+	request := input.Request
 	if err := validateTargetLabel(input.TargetID); err != nil {
-		return _result, err
+		return noRecord, err
 	}
 	if err := resourcev2.ValidateGetRequest(request); err != nil {
-		return _result, err
+		return noRecord, err
 	}
-	provider, generation, ctx, cleanup, err := c.operationGeneration(ctx, pluginID, request.Route)
+	provider, generation, ctx, cleanup, err := c.operationGenerationExpected(ctx, pluginID, request.Route, expected)
 	if err != nil {
-		return _result, err
+		return noRecord, err
 	}
 	defer cleanup()
 	getter, ok := provider.(resourcev2.Getter)
 	if !ok {
-		return _result, resourcev2.NewError("UNSUPPORTED", "Get is not supported.")
+		return noRecord, resourcev2.NewError("UNSUPPORTED", "Get is not supported.")
 	}
 	ctx, descriptor, err := c.admitOperationCatalog(ctx, pluginID, provider, generation, request.Route, request.Reference.Address.Authority, request.Reference.Address.Provider, request)
 	if err != nil {
-		return _result, err
+		return noRecord, err
 	}
 	target, err := exactReadTarget(request, descriptor)
 	if err != nil {
-		return _result, err
+		return noRecord, err
 	}
 	ctx, err = c.boundary.Reauthorize(ctx, referenceQueryTarget(pluginID, target, request.Reference))
 	if err != nil {
-		return _result, err
+		return noRecord, err
 	}
-	if err := c.currentGeneration(ctx, pluginID, generation); err != nil {
-		return _result, err
+	if err = c.currentGeneration(ctx, pluginID, generation); err != nil {
+		return noRecord, err
 	}
 	record, err := getter.Get(ctx, request)
 	if err != nil {
 		c.checkConnectionError(pluginID, err)
-		return _result, err
+		return noRecord, err
 	}
-	if err := resourcev2.ValidateOperationResult(request, record, descriptor); err != nil {
-		return _result, err
+	if err = resourcev2.ValidateOperationResult(request, record, descriptor); err != nil {
+		return noRecord, err
 	}
-	if err := c.currentGeneration(ctx, pluginID, generation); err != nil {
-		return _result, err
+	if err = c.currentGeneration(ctx, pluginID, generation); err != nil {
+		return noRecord, err
 	}
-	if err := c.validateReference(ctx, pluginID, request.Route, record.Reference); err != nil {
-		return _result, err
+	if err = c.validateReference(ctx, pluginID, request.Route, record.Reference); err != nil {
+		return noRecord, err
 	}
 	principal, _ := invocation.FromContext(ctx)
 	out, err := envelopeRecord(generation.generationID, principal.Principal().Owner(), input.TargetID, target, record)
 	if err != nil {
-		return _result, err
+		return noRecord, err
 	}
 	c.pluginsMu.RLock()
 	defer c.pluginsMu.RUnlock()
-	if err := c.currentGenerationLocked(ctx, pluginID, generation); err != nil {
-		return _result, err
+	if err = c.currentGenerationLocked(ctx, pluginID, generation); err != nil {
+		return noRecord, err
 	}
 	if !c.referenceCurrentLocked(pluginID, request.Route, record.Reference) {
-		return _result, resourcev2.NewError("RESET_REQUIRED", "Resource authority retired before delivery.")
+		return noRecord, resourcev2.NewError("RESET_REQUIRED", "Resource authority retired before delivery.")
 	}
 	telemetry.RecordResourceRecords(ctx, "get", 1)
 	return out, nil

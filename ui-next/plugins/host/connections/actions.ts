@@ -1,4 +1,6 @@
 import type { Route, TabId, TabsStore } from '../../../shell';
+import { navigationOrigin, type ExtensionViewRoute } from '../../../shell/core/tabs';
+import type { ExtensionBinding } from '../extensionAuthority';
 import { connectionOf, readsNoConnection, type PluginSource } from '../contributions';
 import type { PluginEntry } from '../pluginStore';
 import type { ConnectionsStore } from './store';
@@ -32,12 +34,14 @@ export type ConnectionActionsDeps = {
   readonly tabs: TabsStore;
   readonly plugins: PluginSource;
   readonly connections: ConnectionsStore;
+  /** Re-read this mounted leaf's declaration, admission and collisions. Never resolve it as an ordinary page. */
+  readonly viewBinding?: ((route: ExtensionViewRoute) => ExtensionBinding | undefined) | undefined;
 };
 
 const NOT_AVAILABLE = 'This plugin is not available.';
 const UNSAVED = 'This tab has unsaved changes.';
 
-export function createConnectionActions({ tabs, plugins, connections }: ConnectionActionsDeps): ConnectionActions {
+export function createConnectionActions({ tabs, plugins, connections, viewBinding }: ConnectionActionsDeps): ConnectionActions {
   const readyEntry = (plugin: string): Ready | undefined => {
     const entry = plugins.getSnapshot().find((candidate) => candidate.id === plugin);
     return entry?.phase === 'ready' ? entry : undefined;
@@ -81,6 +85,15 @@ export function createConnectionActions({ tabs, plugins, connections }: Connecti
       return { ok: false, reason: 'This tab is closed.' };
     }
 
+    const origin = from.kind === 'extension-view' ? navigationOrigin(tabs.getSnapshot()) : undefined;
+    const witness = from.kind === 'extension-view' ? viewBinding?.(from) : undefined;
+    if (from.kind === 'extension-view') {
+      const list = connections.getSnapshot();
+      if (origin?.id !== tab || !witness || !list.loaded || list.failed || !list.connections.some(row => row.plugin === from.plugin && row.key === key)) {
+        return { ok: false, reason: 'View unavailable.' };
+      }
+    }
+
     const token = Symbol(key);
     latest.set(tab, token);
     const outcome = await connections.connect(from.plugin, key);
@@ -103,6 +116,21 @@ export function createConnectionActions({ tabs, plugins, connections }: Connecti
 
     if (entry === undefined) {
       return { ok: false, reason: NOT_AVAILABLE };
+    }
+
+    if (from.kind === 'extension-view') {
+      const route: ExtensionViewRoute = { ...from, connection: key };
+      const list = connections.getSnapshot();
+      if (!list.loaded || list.failed || !list.connections.some(row => row.plugin === from.plugin && row.key === key && row.state === 'connected' && row.busy === undefined) ||
+          viewBinding?.(route) !== witness) {
+        return { ok: false, reason: 'View unavailable.' };
+      }
+
+      return answerOf(tabs.navigate(tab, { route }, { history: 'replace', source: 'connection', reuse: true, origin }));
+    }
+
+    if (now.kind === 'extension-view') {
+      return { ok: true };
     }
 
     if (connectionOf(now) === key) {

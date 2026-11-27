@@ -1,5 +1,5 @@
 import { ErrorBody, LinkProvider } from '@omniviewdev/kit';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactElement, type ReactNode } from 'react';
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactElement, type ReactNode } from 'react';
 import { DetailPage, ListPage, type PageMemory } from '../../page';
 import {
   createLogStreams,
@@ -47,6 +47,7 @@ import {
   type TerminalsOptions,
   type TabsStore,
 } from '../../shell';
+import type { ExtensionViewRoute, History, NavigationOrigin, TabRoute } from '../../shell/core/tabs';
 import { createActivityFeed, type ActivityFeed, type SourceResolver } from '../../shell/panel/activity';
 import type { ToolBadges } from '../../shell/panel/badge';
 import { createOperations, OperationsBody, OPERATIONS_TOOL, OPERATIONS_TOOL_ID, type Operations } from '../../shell/panel/operations';
@@ -58,10 +59,17 @@ import { currentOf, leafOf, readTarget } from '../contract/sidebarTargets';
 import type { ConnectionsHostV1, ContextV1, ContributionV1, CustomPageContextV1, CustomPageV1, FrameV1, PanelHostV1, SidebarContextV1, SidebarNodeV1 } from '../contract/v1';
 import { canRetry } from '../loader/failure';
 import { ContributionBoundary } from './ContributionBoundary';
+import { DetailOutlets } from './DetailOutlets';
 import { ConnectionNames, connectionNameOf, laneFor } from './connectionName';
 import { ConnectionQuestion, createConnectionActions, createConnectionsStore, createConnectionVerbs, createRecents, pickerOf, reachOf, usesOf, type ConnectionsApi, type ConnectionVerbs, type HostConnections } from './connections';
 import { connectionsHostsOf } from './connectionsHost';
 import { askedParams, connectionOf, createContributions, describeCustom, describeDetail, describeOverview, HOME_PAGE, OVERVIEW_SUBJECT, overviewAsDetail, panelConnectionOf, readsNoConnection, routeKey, textParamsOf, type PluginChoice, type PluginSource } from './contributions';
+import type { ExtensionAuthority, ExtensionBinding } from './extensionAuthority';
+import { ExtensionAuthorityContext } from './extensionAuthorityContext';
+import { leafRoute, sidebarScope, useSidebarMount, VIEW_NODE_PREFIX, viewFace, viewLeaf, watchViewFaces, type SidebarGroup, type SidebarMount } from './sidebarMount';
+import { ExtensionView } from './ExtensionView';
+import { ExtensionMenuNavigationContext, menuDestination, useDetailMenuNavigation, type ExtensionMenuNavigation } from './extensionMenuNavigation';
+import { useViewNavigation, type OpenView } from './useViewNavigation';
 import { homePage } from './homePage';
 import { HOME_PAGE_ID, HOST_PLUGIN, hostPageOf, registerHostPage } from './hostPages';
 import { createLinkHandler } from './links';
@@ -70,11 +78,14 @@ import { createHostNotices, type HostNotices } from './notices';
 import { createHostPalette, type HostPalette } from './palette';
 import { cardOfSession, newSessionOf, panelPluginsOf, routeAddressOf, sessionV1, toolOf } from './panel';
 import { panelHostsOf } from './panelHost';
+import { createResourceShells } from './resourceShells';
+import { createTerminalExtensionMenu, type TerminalExtensionMenu } from './terminalExtensionMenu';
+import { TerminalMenuContent } from './TerminalMenuContent';
 import { attachPanelTools, badgesOf, cancelFailed, resolverOf, subjectOpener } from './panelTools';
 import { openExternal } from './openExternal';
 import { portNamesOf } from './portNames';
 import { windowActivation, type PortForwardNetwork, type PortForwarding } from './portForward';
-import { useGuardedDefinition, useGuardedSource } from './pageFailures';
+import { useGuardedDefinition, useGuardedHeader } from './pageFailures';
 import { pageMemoryOf } from './pageMemory';
 import { PlaceholderPage } from './PlaceholderPage';
 import type { PluginEntry } from './pluginStore';
@@ -167,7 +178,7 @@ type Host = {
   /** What the shell's tree tells the host: the rail entry whose tree it is, and the groups of it that are open on screen. */
   readonly reportSidebarOpen: (owner: string | undefined, open: readonly string[]) => void;
   /** The route each plugin was last shown at, by plugin: where its sidebar picks up when the rail shows it while another plugin's tab is on screen. */
-  readonly routes: Published<Route>;
+  readonly routes: Published<TabRoute>;
   readonly tabs: TabsStore;
   /** The window's bottom panel. Its tools and sessions come from the plugins that are ready (`panel.ts`). */
   readonly panel: PanelStore;
@@ -175,6 +186,7 @@ type Host = {
   readonly logs: LogStreams;
   /** The Terminal tool: the feeds of its sessions, the dialog of its close question and the panel's answers for it (`shell/panel/terminal`). */
   readonly terminals: Terminals;
+  readonly terminalMenu: TerminalExtensionMenu | undefined;
   /** The Ports tool: the store of the forwards the host reports, its body, and the way to show it (`shell/panel/ports`). It asks the host for nothing until its body is on screen. */
   readonly ports: Ports;
   /** What `ctx.panel` is for each plugin and each connection a page of it is read in: the Logs registry and the port-forward start, bound to the plugin that asks and to the page's connection (`panelHost.ts`). */
@@ -210,7 +222,7 @@ type Host = {
  * The window's connections: the store over the runtime's calls (kept current for as long as the window is on screen: `attach`), the connections used last (HM2: made from the tabs the window came back with, and kept current by the route of
  * the tab on screen, `connections/recents.ts`), and the actions that choose one. The store lists the plugins that are ready.
  */
-function makeConnections(api: ConnectionsApi | undefined, tabs: TabsStore, plugins: PluginSource): HostConnections | undefined {
+function makeConnections(api: ConnectionsApi | undefined, tabs: TabsStore, plugins: PluginSource, viewBinding: (route: ExtensionViewRoute) => ExtensionBinding | undefined): HostConnections | undefined {
   if (api === undefined) {
     return undefined;
   }
@@ -218,7 +230,7 @@ function makeConnections(api: ConnectionsApi | undefined, tabs: TabsStore, plugi
   const store = createConnectionsStore(api, { plugins: () => plugins.getSnapshot().flatMap((entry) => (entry.phase === 'ready' ? [entry.id] : [])) });
   const recents = createRecents();
   recents.seed(usesOf(tabs.getSnapshot()));
-  return { store, recents, actions: createConnectionActions({ tabs, plugins, connections: store }) };
+  return { store, recents, actions: createConnectionActions({ tabs, plugins, connections: store, viewBinding }) };
 }
 
 /**
@@ -252,7 +264,7 @@ function usePanelConnection(connections: HostConnections | undefined, route: Rou
  * Where each plugin was last shown, from the tabs a restored session brought back, in strip order and with the tab that was on screen last so that it wins. A saved tab holds its connection in its route, which is where the session already
  * keeps the scope of a window (`shell/session`, the `tabs` part of the document), so the connection a plugin was last used in comes back with the window and nothing else is saved for it.
  */
-function seedRoutes(tabs: TabsStore, routes: Published<Route>): void {
+function seedRoutes(tabs: TabsStore, routes: Published<TabRoute>): void {
   const state = tabs.getSnapshot();
   for (const id of [...state.order, ...(state.active === null ? [] : [state.active])]) {
     const route = state.tabs[id]?.location.route;
@@ -262,20 +274,61 @@ function seedRoutes(tabs: TabsStore, routes: Published<Route>): void {
   }
 }
 
+/** The ordinary owner sidebar keeps its node source. Never put a peer ID, tagged location or another tab's params into SidebarContextV1. */
+function sidebarPageRoute(entry: PluginEntry | undefined, route: TabRoute | undefined, history?: History): Route | undefined {
+  if (route?.kind !== 'extension-view') {
+    return route;
+  }
+
+  if (entry?.phase !== 'ready' || route.plugin !== entry.id) {
+    return undefined;
+  }
+
+  // Continue the ordinary node hook in exactly the owner context this document left. A different document or scope contributes no params.
+  for (let i = (history?.index ?? 0) - 1; i >= 0; i--) {
+    const before = history?.entries[i];
+    if (before?.plugin !== entry.id || connectionOf(before) !== route.connection) {
+      break;
+    }
+
+    if (before.kind === 'extension-view') {
+      continue;
+    }
+
+    const page = entry.contribution.pages[before.contribution];
+    if (page && readsNoConnection(page) === (route.connection === undefined)) {
+      return before;
+    }
+
+    break;
+  }
+
+  if (readsNoConnection(entry.contribution.pages[entry.contribution.home]) !== (route.connection === undefined)) {
+    return undefined;
+  }
+
+  return { plugin: entry.id, contribution: entry.contribution.home, params: route.connection === undefined ? NO_PARAMS : { connection: route.connection } };
+}
+
 /**
  * The tab model, the panel, the rail's choice and the command palette of a window, over its plugins, from the session when there is one. They live as long as the window does. A part the session has
  * nothing for starts as it does with no session: no tab (the empty window), a closed panel, no rail entry chosen.
  */
-function createHost(plugins: PluginSource, panel: PanelStore | undefined, session: LoadedSession | undefined, onCloseWindow: (() => void) | undefined, saved: LoadedNotices | undefined, openSettingsWindow: (() => Promise<unknown>) | undefined, terminalOptions: TerminalsOptions | undefined, connectionsApi: ConnectionsApi | undefined, activity: ActivityFeed | undefined, networker: PortForwardNetwork | undefined, userActivation: (() => boolean | undefined) | undefined, portsOptions: Partial<PortsDeps> | undefined, windows: WindowService | undefined): Host {
+function createHost(plugins: PluginSource, panel: PanelStore | undefined, session: LoadedSession | undefined, onCloseWindow: (() => void) | undefined, saved: LoadedNotices | undefined, openSettingsWindow: (() => Promise<unknown>) | undefined, terminalOptions: TerminalsOptions | undefined, connectionsApi: ConnectionsApi | undefined, activity: ActivityFeed | undefined, networker: PortForwardNetwork | undefined, userActivation: (() => boolean | undefined) | undefined, portsOptions: Partial<PortsDeps> | undefined, windows: WindowService | undefined, authority: ExtensionAuthority | null): Host {
   const frames = new Published<FrameV1>();
   const nodes = new Published<readonly SidebarNodeV1[] | null>();
   const pluginScopeNodes = new Published<readonly SidebarNodeV1[] | null>();
   const sidebarOpen = new Published<readonly string[]>();
   const names = new ConnectionNames();
-  const routes = new Published<Route>();
+  const routes = new Published<TabRoute>();
   // The connections are made after the tab model, whose open they drive, and the contributions the model asks read them: a reference closes the circle.
   const known: { current: HostConnections | undefined } = { current: undefined };
-  const contributions = createContributions({ plugins, frames, names, choice: (plugin) => choiceOf(known.current, plugin) });
+  const ownerOf = (id: string) => plugins.getSnapshot().find(entry => entry.id === id);
+  const mountNodes = (route: ExtensionViewRoute) => (route.connection === undefined ? pluginScopeNodes : nodes).get(route.plugin);
+  const contributions = createContributions({ plugins, frames, names, choice: (plugin) => choiceOf(known.current, plugin), describeView: route => {
+    const owner = ownerOf(route.plugin);
+    return viewFace(authority, owner, route, known.current?.store.getSnapshot(), mountNodes(route));
+  } });
   const restored = session?.restore({ contributions });
   const store = panel ?? createPanelStore({ initial: restored?.panel });
   const logs = createLogStreams(store);
@@ -295,8 +348,11 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
           subscribe: plugins.subscribe,
         },
       };
-  const panelHosts = panelHostsOf(logs, forwarding);
-  const connections = makeConnections(connectionsApi, tabs, plugins);
+  const connections = makeConnections(connectionsApi, tabs, plugins, route => {
+    const owner = ownerOf(route.plugin);
+    return owner?.phase === 'ready' && sidebarScope(owner, route, known.current?.store.getSnapshot()) !== undefined
+      ? viewLeaf(authority, owner, route, mountNodes(route))?.binding : undefined;
+  });
   known.current = connections;
   const verbs = connections === undefined || connectionsApi === undefined ? undefined : createConnectionVerbs({ store: connections.store, api: connectionsApi, reach: reachOf(tabs, store) });
   // A forward's connection is named by what the window knows of its connections, and an address is opened with the window's own way; what a test gives wins.
@@ -306,6 +362,9 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
   // The Terminal's screen reader choice is the window's: it comes back from the session as the person left it (off when the session says nothing), and the session saves it again. A command that ran long in a terminal that is not in front is
   // told to the window's notices (the tool's own rule); what a test gives as the options wins.
   const terminals = createTerminals(store, { notices: notices.store, ...terminalOptions }, { screenReader: restored?.terminalScreenReader });
+  const shells = connections && createResourceShells({ plugins, connections: connections.store, sessions: terminals.sessions, activated: userActivation ?? windowActivation });
+  const panelHosts = panelHostsOf(logs, forwarding, shells);
+  const terminalMenu = shells && authority ? createTerminalExtensionMenu({ shells, panel: store, sessions: terminals.sessions, authority, tabs }) : undefined;
   // The Problems and Operations tools read the window's producers: its plugins, its connections and the activity service's records. Without a feed there are none of the last (a window of a test, or of a part that reports nothing).
   const feed = activity ?? createActivityFeed({ cancel: async () => undefined, markRead: async () => undefined }).feed;
   const resolve = resolverOf(plugins, connections?.store);
@@ -330,12 +389,13 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
     panel: store,
     logs,
     terminals,
+    terminalMenu,
     ports,
     panelHosts,
     rail: createRailChoice(restored?.rail ?? null),
     contributions,
     opened: new Published<string>(),
-    palette: createHostPalette({ tabs, plugins, contributions, nodes, frames, connections, panel: store, platform: platformOf(navigator), onCloseWindow, openSettings: settings.open, remembered: (plugin) => routes.get(plugin), panelHosts, terminalScreenReader: { toggle: terminals.screenReader.toggle, say: notices.announcer.polite.announce }, newTerminal: terminals.newSession.start }),
+    palette: createHostPalette({ tabs, plugins, contributions, nodes, frames, connections, panel: store, platform: platformOf(navigator), onCloseWindow, openSettings: settings.open, remembered: (plugin) => sidebarPageRoute(ownerOf(plugin), routes.get(plugin)), panelHosts, terminalScreenReader: { toggle: terminals.screenReader.toggle, say: notices.announcer.polite.announce }, newTerminal: terminals.newSession.start }),
     notices,
     settings,
     connections,
@@ -354,22 +414,19 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
   };
 }
 
-/** The route of the tab on screen: the same object until the tab moves. */
-function activeRoute(tabs: TabsStore): Route | undefined {
-  const state = tabs.getSnapshot();
-  return state.active === null ? undefined : tabs.selectors.location(state, state.active)?.route;
-}
-
 /** What the rail follows: the tab on screen and its plugin, so the user's choice stands until either changes. Nothing while there is no tab. */
-const followOf = (active: string | null, route: Route | undefined): string | undefined => (active === null || route === undefined ? undefined : `${active}\u0000${route.plugin}`);
+const followOf = (active: string | null, route: TabRoute | undefined, selection: number): string | undefined =>
+  active === null || route === undefined ? undefined : `${active}\u0000${route.kind === 'extension-view' ? `${routeKey(route)}:${selection}` : route.plugin}`;
 
 /**
  * The sidebar as the shell reads it: the contribution's words, the nodes that open something (`openable`), and the entry of the page on screen as current, when it is this plugin's. On a page that is read in no connection (`bare`) the sidebar may be called something else (`pluginScope`,
  * KL7): each of its members that is left out is the sidebar's own.
  */
-function sidebarOf(contribution: ContributionV1, nodes: readonly SidebarNodeV1[], current: string | undefined, bare: boolean): ShellSidebar {
+function sidebarOf(contribution: ContributionV1, nodes: readonly SidebarNodeV1[], current: string | undefined, bare: boolean, group: SidebarGroup | undefined): ShellSidebar {
   const { label, title, pluginScope } = contribution.sidebar;
-  return { label: (bare ? pluginScope?.label : undefined) ?? label, title: (bare ? pluginScope?.title : undefined) ?? title, nodes, current, accent: contribution.plugin.accent };
+  return { label: (bare ? pluginScope?.label : undefined) ?? label, title: (bare ? pluginScope?.title : undefined) ?? title,
+    nodes: group ? [...nodes, group.node] : nodes,
+    auxiliary: group && { group: group.node.id, leaves: group.leaves.map(leaf => leaf.node.id) }, current, accent: contribution.plugin.accent };
 }
 
 type FrameInputs = {
@@ -381,7 +438,8 @@ type FrameInputs = {
   /** The plugins have not all settled yet, once: the rail and the sidebar are not chosen, and their regions are reserved empty. */
   readonly held: boolean;
   /** The route of the tab on screen. */
-  readonly route: Route | undefined;
+  readonly route: TabRoute | undefined;
+  readonly group: SidebarGroup | undefined;
   readonly frame: FrameV1 | undefined;
   /** The plugins that contribute, in the order of the rail, and the one whose sidebar shows (none while the window is coming and has no tab: there is nothing to anchor it to yet). */
   readonly rail: readonly RailEntry[];
@@ -406,6 +464,10 @@ const pageOf = (contribution: ContributionV1, route: Route): string => (Object.h
  */
 function pageKeyOf(entries: readonly PluginEntry[], { location }: PageTab): string {
   const { route, key } = location;
+  if (route.kind === 'extension-view') {
+    return key;
+  }
+
   const entry = entries.find((candidate) => candidate.id === route.plugin);
   if (entry?.phase !== 'ready') {
     return key;
@@ -429,7 +491,7 @@ const ABSENT = { subscribe: (): (() => void) => () => undefined, getSnapshot: ()
  * plugin has settled once they are held (`held`): reserved empty, chosen when the last plugin has said what it is, so a plugin that registers late moves no entry that is drawn. With no plugin
  * that contributes there is nothing to reserve for and nothing to show: the frame is bare.
  */
-function registrationOf({ entries, coming, waiting, held, route, lane, rail, failed, railPlugin, nodes, bare }: FrameInputs): ShellRegistration {
+function registrationOf({ entries, coming, waiting, held, route, lane, rail, failed, railPlugin, nodes, bare, group }: FrameInputs): ShellRegistration {
   const active = route === undefined ? undefined : entries.find((candidate) => candidate.id === route.plugin);
   const loading = entries.find((candidate) => candidate.phase === 'loading');
 
@@ -441,18 +503,21 @@ function registrationOf({ entries, coming, waiting, held, route, lane, rail, fai
 
     const { contribution } = shown;
     // The entry that stays selected while an object is open is the list it belongs to.
-    const onScreen = route?.plugin === shown.id ? contribution.pages[pageOf(contribution, route)] : undefined;
+    const ordinary = route?.kind !== 'extension-view' && route?.plugin === shown.id ? route : undefined;
+    const onScreen = ordinary && contribution.pages[pageOf(contribution, ordinary)];
     // A page that is read in no connection (the landing) has no skeleton under its sidebar (KL5): the skeleton's entries are pages of a connection and there is none to open them in, so what the plugin's hook answers for the page is the sidebar, and the window draws the page with the rail and no
     // tree (an empty `role=tree` is an axe fault) while it answers none.
     const opened = openable(bare ? (nodes ?? []) : (nodes ?? contribution.sidebar.nodes), contribution.pages);
-    if (bare && opened.length === 0) {
+    if (bare && opened.length === 0 && !group) {
       return undefined;
     }
 
     // The entry of the page on screen: the leaf that opens that page with the parameters the route carries, else the page's leaf that names none. An object's page selects the list it belongs to (its parameters are the object's, and no leaf is made of them).
-    const asked = route?.plugin === shown.id ? (onScreen?.kind === 'detail' ? { page: onScreen.definition.list?.page, params: NO_PARAMS } : { page: pageOf(contribution, route), params: textParamsOf(route) }) : undefined;
-    const current = asked?.page === undefined ? undefined : currentOf(opened, asked.page, asked.params);
-    return sidebarOf(contribution, opened, current, bare);
+    const asked = ordinary ? (onScreen?.kind === 'detail' ? { page: onScreen.definition.list?.page, params: NO_PARAMS } : { page: pageOf(contribution, ordinary), params: textParamsOf(ordinary) }) : undefined;
+    const current = route?.kind === 'extension-view' && route.plugin === shown.id && route.point === contribution.sidebar.outlet
+      ? group?.leaves.find(leaf => leaf.binding.offer === route.offer)?.node.id
+      : asked?.page === undefined ? undefined : currentOf(opened, asked.page, asked.params);
+    return sidebarOf(contribution, opened, current, bare, group);
   })();
   const listed = [...rail, ...failed];
   const railData: ShellRail | undefined =
@@ -462,7 +527,7 @@ function registrationOf({ entries, coming, waiting, held, route, lane, rail, fai
 
   // The rail and the sidebar wait for the plugins: their regions are reserved, and no lane is (it is the frame's, and a frame that is known says whether it has one).
   const holding = held ? { held: true as const } : {};
-  if (route?.plugin === HOST_PLUGIN) {
+  if (route?.kind !== 'extension-view' && route?.plugin === HOST_PLUGIN) {
     // A page of the host's own (the Plugins page) draws its own list beside its detail: the frame has the rail, no sidebar track and no scope lane, and the page is its own scroll owner. It is no plugin's, so no entry of the rail is current.
     return { plugin: { name: 'Omniview' }, layout: hostPageOf(route)?.layout ?? 'pane', rail: railData === undefined ? undefined : { ...railData, current: undefined }, ...holding };
   }
@@ -485,6 +550,10 @@ function registrationOf({ entries, coming, waiting, held, route, lane, rail, fai
   }
 
   const { contribution } = active;
+  if (route.kind === 'extension-view') {
+    return { plugin: { name: contribution.plugin.name }, ...holding, rail: railData, layout: 'document', sidebar, scope: lane };
+  }
+
   const page = contribution.pages[pageOf(contribution, route)];
   return {
     plugin: { name: contribution.plugin.name },
@@ -554,21 +623,28 @@ function ListContribution({ entry, route, page: pageId, frames, panelHost, memor
   return <ListPage definition={definition} source={source} memory={memory} />;
 }
 
-type DetailProps = {
+type OverviewProps = {
   readonly entry: PluginEntry & { readonly phase: 'ready' };
   readonly route: Route;
   readonly page: string;
   readonly frames: Published<FrameV1>;
   readonly names: ConnectionNames;
+  readonly memory: PageMemory;
   /** What the plugin asks of the bottom panel: `ctx.panel`. */
   readonly panelHost: PanelHostV1;
+};
+
+type DetailProps = OverviewProps & {
+  readonly tabs: TabsStore;
+  readonly tabId: TabId;
+  readonly connections: HostConnections | undefined;
 };
 
 /**
  * The detail page's own component, as the list's: its data hook runs here with the route's parameters, and the scope lane's faces it answers are published for the frame to read. The tab's
  * title, glyph and path are not the hook's: the tab model gets them from the route and the definition (`describeDetail`), even before this component mounts.
  */
-function DetailContribution({ entry, route, page: pageId, frames, names, panelHost }: DetailProps) {
+function DetailContribution({ entry, route, page: pageId, frames, names, tabs, tabId, connections, panelHost, memory }: DetailProps) {
   const page = entry.contribution.pages[pageId];
   if (page?.kind !== 'detail') {
     throw new Error(`The plugin has no detail page "${pageId}"`);
@@ -577,8 +653,8 @@ function DetailContribution({ entry, route, page: pageId, frames, names, panelHo
   const connection = connectionOf(route);
   const params = useMemo(() => textParamsOf(route), [route]);
   const context = useMemo<ContextV1>(() => ({ plugin: entry.id, route: { page: pageId, connection, params }, panel: panelHost }), [entry.id, pageId, connection, params, panelHost]);
-  const { scope, source: read } = page.usePage(context);
-  const source = useGuardedSource(read, entry.id);
+  const { scope, source } = page.usePage(context);
+  const guardedCommands = useGuardedHeader(source.view?.commands, entry.id);
   const { definition } = page;
   const pluginName = entry.contribution.plugin.name;
   // Published frames carry labels. The footer reads the tab's description instead, which retains the list crumb's actual route.
@@ -589,7 +665,16 @@ function DetailContribution({ entry, route, page: pageId, frames, names, panelHo
     frames.publish(routeKey(route), { tab: { title: face.title, icon: definition.tile.icon }, path: (face.path ?? []).map((crumb) => (typeof crumb === 'string' ? crumb : crumb.label)), scope });
   }, [frames, route, face, definition.tile.icon, scope]);
 
-  return <DetailPage definition={definition} params={route.params} source={source} />;
+  return (
+    <DetailPage
+      definition={definition}
+      params={route.params}
+      source={source}
+      memory={memory}
+      guardedCommands={guardedCommands}
+      renderStrip={entry.artifact ? (strip) => <DetailOutlets strip={strip} entry={entry} source={source} route={route} tabs={tabs} tabId={tabId} connections={connections?.store} /> : undefined}
+    />
+  );
 }
 
 /**
@@ -597,7 +682,7 @@ function DetailContribution({ entry, route, page: pageId, frames, names, panelHo
  * frame to read. It draws the detail page unchanged, from a definition made from the overview's (`overviewAsDetail`) and the connection's NAME as the one parameter that definition names its subject by, so the heading is the connection's name (the one this page's lane says,
  * else the one the window has learned; the key is never drawn) and the page's title while the route names none. The tab model gets its title, glyph and path from the route and the definition (`describeOverview`).
  */
-function OverviewContribution({ entry, route, page: pageId, frames, names, panelHost }: DetailProps) {
+function OverviewContribution({ entry, route, page: pageId, frames, names, panelHost, memory }: OverviewProps) {
   const page = entry.contribution.pages[pageId];
   if (page?.kind !== 'overview') {
     throw new Error(`The plugin has no overview page "${pageId}"`);
@@ -606,8 +691,8 @@ function OverviewContribution({ entry, route, page: pageId, frames, names, panel
   const connection = connectionOf(route);
   // The page of a scope has no parameters of its own (`RouteV1.params`): what an address adds to a route to it is not an identity the page reads, so its hook is told none.
   const context = useMemo<ContextV1>(() => ({ plugin: entry.id, route: { page: pageId, connection, params: NO_PARAMS }, panel: panelHost }), [entry.id, pageId, connection, panelHost]);
-  const { scope, source: read } = page.usePage(context);
-  const source = useGuardedSource(read, entry.id);
+  const { scope, source } = page.usePage(context);
+  const guardedCommands = useGuardedHeader(source.view?.commands, entry.id);
   const { definition } = page;
   const detail = useMemo(() => overviewAsDetail(definition), [definition]);
   const pluginName = entry.contribution.plugin.name;
@@ -621,7 +706,7 @@ function OverviewContribution({ entry, route, page: pageId, frames, names, panel
   }, [frames, route, face, definition.tile.icon, path, scope]);
 
   const params = useMemo(() => ({ [OVERVIEW_SUBJECT]: name ?? '' }), [name]);
-  return <DetailPage definition={detail} params={params} source={source} />;
+  return <DetailPage definition={detail} params={params} source={source} memory={memory} guardedCommands={guardedCommands} />;
 }
 
 type ConnectionFaceProps = {
@@ -697,7 +782,7 @@ function CustomContribution({ entry, route, page: pageId, frames, names, tabs, t
     () => (next, options) => {
       // A callback the page left behind is not this page's: its instance is gone, or the tab is at another plugin, page or connection now. The route the tab is at now, not the one this render was made for, is the one that changes.
       const at = tabs.selectors.tab(tabs.getSnapshot(), tabId)?.location.route;
-      if (!drawn.current || at?.plugin !== entry.id || pageOf(contribution, at) !== pageId || connectionOf(at) !== drawnFor) {
+      if (!drawn.current || at?.plugin !== entry.id || at.kind === 'extension-view' || pageOf(contribution, at) !== pageId || connectionOf(at) !== drawnFor) {
         return;
       }
 
@@ -754,6 +839,82 @@ type HostPageProps = {
   readonly openPlugin: (plugin: string, event: ModifierEvent | undefined) => void;
 };
 
+type OwnerStateProps = Pick<HostPageProps, 'inventory' | 'pluginName' | 'onRetry' | 'onRetryInventory'> & {
+  readonly entry: PluginEntry | undefined; readonly plugin: string;
+};
+
+/** A foreground location keeps its own visit across owner loss. The ordinary unavailable-owner surface takes precedence. */
+function MountedLocation({ entry, route, host, tabId, inventory, pluginName, onRetry, onRetryInventory }: Omit<OwnerStateProps, 'plugin'> & {
+  readonly route: ExtensionViewRoute; readonly host: Host; readonly tabId: TabId;
+}) {
+  const authority = useContext(ExtensionAuthorityContext);
+  const { tabs } = host;
+  const state = tabs.getSnapshot();
+  const location = state.tabs[tabId]?.location;
+  const focus = state.activeVisit;
+  const [renewal, renew] = useState(0);
+  const visit = useMemo(() => ({ id: tabId, location, visit: focus, renewal }), [tabId, location, focus, renewal]);
+  const known = useSyncExternalStore(host.connections?.store.subscribe ?? ABSENT.subscribe, host.connections?.store.getSnapshot ?? ABSENT.getSnapshot);
+  const nodes = route.connection === undefined ? host.pluginScopeNodes : host.nodes;
+  const published = useSyncExternalStore(nodes.subscribe, () => nodes.get(route.plugin));
+  const owner = inventory === 'ready' && entry?.phase === 'ready' && entry.contribution.sidebar.outlet === route.point ? entry : undefined;
+  const { placement, group } = useSidebarMount(authority, owner, route, known, published, visit);
+  const binding = group?.leaves.find(leaf => leaf.binding.offer === route.offer)?.binding;
+  useLayoutEffect(() => {
+    if (!authority || !placement || !owner || !binding) {
+      return;
+    }
+
+    // Native replies and promise continuations must not await React's next commit to learn a visit has ended.
+    let live = true;
+    const withdraw = () => {
+      if (!live) {
+        return;
+      }
+
+      live = false;
+      authority.endPlacement(placement);
+      renew(n => n + 1);
+    };
+
+    const checkTab = () => {
+      const now = tabs.getSnapshot();
+      if (now.active !== tabId || now.activeVisit !== focus || now.tabs[tabId]?.location !== location) {
+        withdraw();
+      }
+    };
+
+    const store = host.connections?.store;
+    const checkScope = () => {
+      if (sidebarScope(owner, route, store?.getSnapshot()) === undefined) {
+        withdraw();
+      }
+    };
+
+    const checkNodes = () => {
+      if (viewLeaf(authority, owner, route, nodes.get(owner.id))?.binding !== binding) {
+        withdraw();
+      }
+    };
+
+    const stopTab = tabs.subscribe(checkTab);
+    const stopScope = store?.subscribe(checkScope);
+    const stopNodes = nodes.subscribe(checkNodes);
+    checkTab(); checkScope(); checkNodes();
+    return () => {
+      live = false; stopTab(); stopScope?.(); stopNodes();
+    };
+  }, [authority, placement, owner, binding, tabs, tabId, focus, location, host, route, nodes]);
+  return <>
+    <div hidden={entry?.phase !== 'ready'}>
+      <ExtensionView surface="sidebar" placement={placement} binding={binding} onBack={tabs.canBack(tabId) ? () => {
+        tabs.back(tabId, { origin: visit });
+      } : undefined} />
+    </div>
+    {entry?.phase === 'ready' ? null : <UnavailableOwner entry={entry} plugin={route.plugin} pluginName={pluginName} inventory={inventory} onRetry={onRetry} onRetryInventory={onRetryInventory} />}
+  </>;
+}
+
 /**
  * One tab's page: the plugin's, in its own boundary and with its links, or the state the plugin is in. A tab whose plugin the host does not have is pending while the list of plugins is on its
  * way (a tab restored from a session is drawn before any plugin is known), says the list could not be read when it could not, and says the plugin is not installed, or is turned off, when the
@@ -778,8 +939,35 @@ function HostPage({ entries, route, tabId, pluginName, frames, names, tabs, plat
   }
 
   const entry = entries.find((candidate) => candidate.id === route.plugin);
+  if (entry?.phase !== 'ready') {
+    return <UnavailableOwner entry={entry} plugin={route.plugin} pluginName={pluginName} inventory={inventory} onRetry={onRetry} onRetryInventory={onRetryInventory} />;
+  }
+
+  const { contribution } = entry;
+  const page = pageOf(contribution, route);
+  const found = contribution.pages[page];
+  const title = found === undefined ? entry.name : found.kind === 'detail' ? found.definition.kind : found.kind === 'custom' ? found.title : found.definition.title;
+  return (
+    <LinkProvider handler={handler}>
+      <ContributionBoundary name={`${entry.id} page ${page}`} resetKey={page} fallback={(retry) => <PlaceholderPage title={title} state={{ kind: 'failed', message: 'This page failed to display.', retry }} />}>
+        {found?.kind === 'detail' ? (
+          <DetailContribution entry={entry} route={route} page={page} frames={frames} names={names} tabs={tabs} tabId={tabId} connections={connections} panelHost={panelHosts(entry.id, panelConnection)} memory={memory} />
+        ) : found?.kind === 'overview' ? (
+          <OverviewContribution entry={entry} route={route} page={page} frames={frames} names={names} panelHost={panelHosts(entry.id, panelConnection)} memory={memory} />
+        ) : found?.kind === 'custom' ? (
+          // A page read in no connection has no connection-bound panel handle.
+          <CustomContribution entry={entry} route={route} page={page} frames={frames} names={names} tabs={tabs} tabId={tabId} panelHost={panelHosts(entry.id, readsNoConnection(found) ? undefined : panelConnection)} connections={connectionsHosts(entry.id)} />
+        ) : (
+          <ListContribution entry={entry} route={route} page={page} frames={frames} panelHost={panelHosts(entry.id, panelConnection)} memory={memory} />
+        )}
+      </ContributionBoundary>
+    </LinkProvider>
+  );
+}
+
+function UnavailableOwner({ entry, plugin, pluginName, inventory, onRetry, onRetryInventory }: OwnerStateProps) {
   if (entry === undefined) {
-    const title = pluginName === '' ? route.plugin : pluginName;
+    const title = pluginName === '' ? plugin : pluginName;
     if (inventory === 'loading') {
       return <PlaceholderPage title={title} state={{ kind: 'loading' }} />;
     }
@@ -818,30 +1006,7 @@ function HostPage({ entries, route, tabId, pluginName, frames, names, tabs, plat
     );
   }
 
-  const { contribution } = entry;
-  const page = pageOf(contribution, route);
-  const found = contribution.pages[page];
-  const title = found === undefined ? entry.name : found.kind === 'detail' ? found.definition.kind : found.kind === 'custom' ? found.title : found.definition.title;
-  return (
-    <LinkProvider handler={handler}>
-      <ContributionBoundary
-        name={`${entry.id} page ${page}`}
-        resetKey={page}
-        fallback={(retry) => <PlaceholderPage title={title} state={{ kind: 'failed', message: 'This page failed to display.', retry }} />}
-      >
-        {found?.kind === 'detail' ? (
-          <DetailContribution entry={entry} route={route} page={page} frames={frames} names={names} panelHost={panelHosts(entry.id, panelConnection)} />
-        ) : found?.kind === 'overview' ? (
-          <OverviewContribution entry={entry} route={route} page={page} frames={frames} names={names} panelHost={panelHosts(entry.id, panelConnection)} />
-        ) : found?.kind === 'custom' ? (
-          // A page read in no connection is read in none for the panel too: the plugin's only connection is not the one it is read in, and a handle with a `ports` member that could not say which connection to forward in is worse than one without.
-          <CustomContribution entry={entry} route={route} page={page} frames={frames} names={names} tabs={tabs} tabId={tabId} panelHost={panelHosts(entry.id, readsNoConnection(found) ? undefined : panelConnection)} connections={connectionsHosts(entry.id)} />
-        ) : (
-          <ListContribution entry={entry} route={route} page={page} frames={frames} panelHost={panelHosts(entry.id, panelConnection)} memory={memory} />
-        )}
-      </ContributionBoundary>
-    </LinkProvider>
-  );
+  return null;
 }
 
 type NodesProps = {
@@ -938,34 +1103,100 @@ function portsBodyOf(ports: Ports): ReactElement {
   );
 }
 
+/** Keep one navigation context for the committed rail and document, independent of the rest of the window's renders. */
+function useSidebarMenuNavigation(
+  host: Host, plugins: PluginSource, authority: ExtensionAuthority | null, mount: SidebarMount,
+  shown: PluginEntry | undefined, sidebarLocation: TabRoute | undefined, sidebarNodes: Host['nodes'],
+  openView: OpenView, origin: NavigationOrigin,
+) {
+  const { placement: sidebarPlacement, scope: mountedScopeKey, group } = mount;
+  const { connections: hostConnections, tabs } = host;
+  const detailNavigation = useDetailMenuNavigation(tabs, authority, openView);
+  return useMemo<ExtensionMenuNavigation>(() => {
+    function destination(menu: ExtensionBinding, connection: string | undefined) {
+      if (!authority || !sidebarPlacement || mountedScopeKey === undefined || (connection ?? null) !== mountedScopeKey ||
+          shown?.phase !== 'ready' || !sidebarLocation || !authority.point(menu.point).includes(menu) ||
+          plugins.getSnapshot().find(entry => entry.id === shown.id) !== shown ||
+          sidebarScope(shown, sidebarLocation, hostConnections?.store.getSnapshot()) !== mountedScopeKey) {
+        return undefined;
+      }
+
+      const binding = menuDestination(menu, authority.eligible(sidebarPlacement), 'sidebar');
+      const leaf = group?.leaves.find(candidate => candidate.binding === binding);
+      if (!binding || !leaf) {
+        return undefined;
+      }
+
+      const target = leafRoute(shown, leaf, mountedScopeKey);
+      return viewLeaf(authority, shown, target, sidebarNodes.get(shown.id))?.binding === binding ? { binding, target } : undefined;
+    }
+
+    return {
+      ...detailNavigation,
+      canOpenSidebar: (menu, connection) => destination(menu, connection) !== undefined,
+      openSidebar(menu, connection, current) {
+        const found = current() ? destination(menu, connection) : undefined;
+        if (!found) {
+          return false;
+        }
+
+        openView(found.target, 'here', 'sidebar', () => current() && destination(menu, connection)?.binding === found.binding, origin);
+        return true;
+      },
+    };
+  }, [authority, sidebarPlacement, mountedScopeKey, shown, sidebarLocation, group, plugins, hostConnections, sidebarNodes, openView, origin, detailNavigation]);
+}
+
 export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory, onCloseWindow, openSettingsWindow, panel: given, session, savedNotices, terminals: terminalOptions, connections: connectionsApi, activity, networker, userActivation, ports: portsOptions, windows }: PluginHostProps) {
   const entries = useSyncExternalStore(plugins.subscribe, plugins.getSnapshot);
-  const [host] = useState(() => createHost(plugins, given, session, onCloseWindow, savedNotices, openSettingsWindow, terminalOptions, connectionsApi, activity, networker, userActivation, portsOptions, windows));
+  const authority = useContext(ExtensionAuthorityContext);
+  const [host] = useState(() => createHost(plugins, given, session, onCloseWindow, savedNotices, openSettingsWindow, terminalOptions, connectionsApi, activity, networker, userActivation, portsOptions, windows, authority));
   const [platform] = useState(() => platformOf(navigator));
   // A link at load waits for its plugin; each distinct link opens once. Where it stands is the host's (an external store), not state of this component: opening it is the effect's whole job.
   const { tabs, frames, names, nodes, routes, opened } = host;
+  const { open: openView, selection, dialog: navigationDialog } = useViewNavigation(tabs, host.notices.store);
+  useLayoutEffect(() => authority ? watchViewFaces(tabs, authority, [host.connections?.store, nodes, host.pluginScopeNodes]) : undefined, [tabs, authority, host, nodes]);
   // The connections the window knows (HM1): the scope lane's picker, Home and the palette are made from them, and a link that names no connection waits for them (below).
   const hostConnections = host.connections;
   const knownConnections = useSyncExternalStore(hostConnections?.store.subscribe ?? ABSENT.subscribe, hostConnections?.store.getSnapshot ?? ABSENT.getSnapshot);
-  const linkKey = link.plugin === undefined ? undefined : JSON.stringify([link.plugin, link.page, link.connection, link.params]);
+  const ordinaryLink = link.kind === undefined ? link : undefined;
+  const linkKey = link.kind === 'extension-view' ? routeKey(link) : ordinaryLink?.plugin === undefined ? undefined : JSON.stringify([ordinaryLink.plugin, ordinaryLink.page, ordinaryLink.connection, ordinaryLink.params]);
   const linkWaiting = useSyncExternalStore(opened.subscribe, () => linkKey !== undefined && opened.get('link') !== linkKey);
   // A link that names no connection is read in one the window chooses (rule R4), so it waits for the list of connections: the plugin is never opened on a connection that nobody chose. A first read that failed leaves nothing to choose
   // from: the window shows what it shows with no tab (Home, with its Retry) and the link keeps waiting for a read that works, which completes it. A plugin that declares a landing (KL2) opens it for such a link, which needs no list.
-  const naming = link.connection === undefined && knownConnections !== undefined && !hasLanding(entries, link.plugin);
+  const naming = ordinaryLink !== undefined && ordinaryLink.connection === undefined && knownConnections !== undefined && !hasLanding(entries, ordinaryLink.plugin);
   const unread = naming && !knownConnections.loaded;
   const unreadable = naming && knownConnections.loaded && knownConnections.failed && knownConnections.connections.length === 0;
   const waiting = linkWaiting && !unreadable;
-  const known = link.plugin !== undefined && entries.some((entry) => entry.id === link.plugin);
+  const known = ordinaryLink?.plugin !== undefined && entries.some((entry) => entry.id === ordinaryLink.plugin);
   // Whether the screen has had its turn since the inventory came in: its effect hands the plugins to the store after this component's, so a link looked at in the commit the inventory
   // arrives in would find its plugin missing and be refused for good.
   const settled = useSyncExternalStore(opened.subscribe, () => opened.get('settled') === 'yes');
 
   useEffect(() => {
-    if (link.plugin === undefined || linkKey === undefined) {
+    if (linkKey === undefined) {
+      if (opened.get('link')) {
+        opened.publish('link', '');
+      }
+
       return;
     }
 
-    if (opened.get('link') === linkKey || (!known && inventory === 'loading')) {
+    if (opened.get('link') === linkKey) {
+      return;
+    }
+
+    if (link.kind === 'extension-view') {
+      opened.publish('link', linkKey);
+      openView(link, 'here', 'link');
+      return;
+    }
+
+    if (link.kind !== undefined || link.plugin === undefined) {
+      return;
+    }
+
+    if (!known && inventory === 'loading') {
       return;
     }
 
@@ -982,7 +1213,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
     opened.publish('link', linkKey);
     // A link to a plugin the host does not have is refused by the model, and the window stays as it is: it opens no page of its own.
     tabs.open({ route: { plugin: link.plugin, contribution: link.page ?? HOME_PAGE, params: { ...link.params, connection: link.connection } } }, { how: 'smart', source: 'link' });
-  }, [tabs, opened, link.plugin, link.page, link.connection, link.params, linkKey, known, inventory, settled, unread, unreadable]);
+  }, [tabs, opened, link, openView, linkKey, known, inventory, settled, unread, unreadable]);
 
   // The session is saved from the first commit to the last: the tabs, the panel, the rail's choice and the Terminal's screen reader choice, one burst after each change and when the window is hidden. What the session restored
   // is what the models were made with; this only starts the saving.
@@ -1012,7 +1243,11 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
     [host],
   );
 
-  const route = useSyncExternalStore(tabs.subscribe, () => activeRoute(tabs));
+  const location = useSyncExternalStore(tabs.subscribe, () => {
+    const state = tabs.getSnapshot();
+    return state.active === null ? undefined : state.tabs[state.active]?.location;
+  });
+  const route = location?.route;
   const activeId = useSyncExternalStore(tabs.subscribe, () => tabs.getSnapshot().active);
   const rail = railOf(entries);
   const failed = failedOf(entries);
@@ -1020,9 +1255,9 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
   // The rail's current entry. The user's choice stands until the tab on screen changes: activating another tab, or moving the tab on screen to another plugin, makes that plugin current
   // (state kept from the render before, the way React keeps a value derived from what changed). With no tab on screen the choice stands as it was. A window that was saved starts from the
   // choice it was saved with and from the tab it was saved on, so the first render does not take the choice for a change of tab.
-  const [chosen, setChosen] = useState<string | undefined>(() => host.rail.getSnapshot() ?? undefined);
-  const [followed, setFollowed] = useState<string | undefined>(() => followOf(tabs.getSnapshot().active, activeRoute(tabs)));
-  const follow = followOf(activeId, route);
+  const [chosen, setChosen] = useState<string | undefined>(() => route?.kind === 'extension-view' ? route.plugin : host.rail.getSnapshot() ?? undefined);
+  const [followed, setFollowed] = useState<string | undefined>(() => followOf(activeId, route, selection));
+  const follow = followOf(activeId, route, selection);
   if (follow !== followed) {
     setFollowed(follow);
     if (route !== undefined) {
@@ -1045,7 +1280,8 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
   }
 
   const held = !settledOnce;
-  const railPlugin = held ? undefined : currentRail(rail, chosen, route?.plugin);
+  const missingOwner = route?.kind === 'extension-view' && chosen === route.plugin && !rail.some(row => row.id === route.plugin);
+  const railPlugin = held || missingOwner ? undefined : currentRail(rail, chosen, route?.plugin);
   const shown = railPlugin === undefined ? undefined : entries.find((candidate) => candidate.id === railPlugin);
 
   // Where each plugin was last shown, so the sidebar of a plugin the rail shows beside another plugin's tab, and what is opened from it, pick up at its connection.
@@ -1059,7 +1295,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
     }
   }, [routes, route, host]);
   const remembered = useSyncExternalStore(routes.subscribe, () => (railPlugin === undefined ? undefined : routes.get(railPlugin)));
-  const railRoute = ((): Route | undefined => {
+  const sidebarLocation = ((): TabRoute | undefined => {
     if (railPlugin === undefined) {
       return undefined;
     }
@@ -1071,10 +1307,13 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
     const home = host.contributions.home?.(railPlugin);
     return remembered ?? (home === undefined ? undefined : { plugin: home.plugin, contribution: home.contribution, params: NO_PARAMS });
   })();
+  const ownHistory = route === sidebarLocation && route?.kind === 'extension-view' && activeId !== null ? tabs.getSnapshot().tabs[activeId]?.history : undefined;
+  const railRoute = sidebarPageRoute(shown, sidebarLocation, ownHistory);
   const railConnection = usePanelConnection(hostConnections, railRoute);
   // The sidebar of a page read in no connection (KL5), by the page of the route the sidebar's hook is called for: what the hook answers for it is a navigator and not a list of the plugin's pages, so it is kept apart (`pluginScopeNodes`, which the palette does not list pages from),
   // and the panel handle the hook is given has no connection, as a page's has none.
-  const bare = readsNoConnection(shown?.phase === 'ready' && railRoute !== undefined ? shown.contribution.pages[pageOf(shown.contribution, railRoute)] : undefined);
+  const bare = sidebarLocation?.kind === 'extension-view' ? sidebarLocation.connection === undefined
+    : readsNoConnection(shown?.phase === 'ready' && railRoute !== undefined ? shown.contribution.pages[pageOf(shown.contribution, railRoute)] : undefined);
   const sidebarNodes = bare ? host.pluginScopeNodes : nodes;
   // What a page of the plugin on the rail opens at when the tab on screen is another plugin's: the connection that plugin was last used in.
   const carried = route?.plugin === railPlugin || remembered === undefined ? undefined : connectionOf(remembered);
@@ -1082,10 +1321,19 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
   const key = route === undefined ? undefined : routeKey(route);
   const frame = useSyncExternalStore(frames.subscribe, () => (key === undefined ? undefined : frames.get(key)));
   const published = useSyncExternalStore(sidebarNodes.subscribe, () => (shown === undefined ? undefined : sidebarNodes.get(shown.id)));
+  const activeVisit = useSyncExternalStore(tabs.subscribe, () => tabs.getSnapshot().activeVisit);
+  // A different rail owner gets a different lease holder in useSidebarMount, even with the same active document.
+  const origin = useMemo(() => ({ id: activeId, location, visit: activeVisit }), [activeId, location, activeVisit]);
+  const mount = useSidebarMount(authority, inventory === 'ready' ? shown : undefined, sidebarLocation, knownConnections, published, origin);
+  const menuNavigation = useSidebarMenuNavigation(host, plugins, authority, mount, shown, sidebarLocation, sidebarNodes, openView, origin);
+  const verifiedTree = sidebarLocation?.kind !== 'extension-view' || (shown?.phase === 'ready' && sidebarScope(shown, sidebarLocation, knownConnections) !== undefined);
+  const mountedScope: FrameV1['scope'] = route?.kind === 'extension-view' && route.connection !== undefined
+    ? [{ label: 'Connection', role: 'connection', icon: 'server', text: knownConnections?.connections.find(row => row.plugin === route.plugin && row.key === route.connection)?.name ?? 'Choose connection' }]
+    : undefined;
 
   // The scope lane of the page on screen, with its connection face made a control (HM1): the picker is the host's, made from the state of the plugin's connections, and what it chooses is the tab's change of connection (`actions.switchTab`).
   const lane = laneFor(
-    frame?.scope,
+    route?.kind === 'extension-view' ? mountedScope : frame?.scope,
     hostConnections === undefined || knownConnections === undefined || route === undefined || activeId === null
       ? undefined
       : (face) =>
@@ -1099,6 +1347,12 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
             void hostConnections.store.refresh();
           },
           onChoose: (key) => {
+            const now = tabs.getSnapshot();
+            if ((route.kind === 'extension-view' || now.tabs[activeId]?.location.route.kind === 'extension-view') &&
+                (now.active !== activeId || now.activeVisit !== activeVisit || now.tabs[activeId]?.location !== location)) {
+              return;
+            }
+
             void hostConnections.actions.switchTab(activeId, key);
           },
         }),
@@ -1109,10 +1363,30 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
       return;
     }
 
+    const extension = mount.group?.leaves.find(leaf => leaf.node.id === id);
+    if (extension) {
+      const { placement, scope } = mount;
+      if (!authority || !placement || scope === undefined || shown?.phase !== 'ready' || !sidebarLocation) {
+        return;
+      }
+
+      const target = leafRoute(shown, extension, scope);
+      openView(target, dispositionOf(event, { platform, plain: 'here' }), 'sidebar', () =>
+        plugins.getSnapshot().find(entry => entry.id === railPlugin) === shown &&
+        sidebarScope(shown, sidebarLocation, hostConnections?.store.getSnapshot()) === scope &&
+        authority.eligible(placement).includes(extension.binding) &&
+        viewLeaf(authority, shown, target, sidebarNodes.get(shown.id))?.binding === extension.binding, origin);
+      return;
+    }
+
     // What the entry opens (KL5): the page its id names, as it always did, or the page and the parameters it names, or one of the plugin's connections. It is read among what the sidebar draws: what the hook answered, else the skeleton.
     const leaf = leafOf(published ?? (shown?.phase === 'ready' ? shown.contribution.sidebar.nodes : []), id);
-    const read = leaf === undefined ? undefined : readTarget(leaf);
-    const target = read !== undefined && 'target' in read ? read.target : { kind: 'page' as const, page: id, params: NO_PARAMS };
+    const read = leaf && readTarget(leaf);
+    if ((!read || !('target' in read)) && id.startsWith(VIEW_NODE_PREFIX)) {
+      return;
+    }
+
+    const target = read && 'target' in read ? read.target : { kind: 'page' as const, page: id, params: NO_PARAMS };
     if (target.kind === 'connection') {
       // As Home's rows and the palette open one: the host starts the connection first, and a start that fails or an open the window refuses is told in a notice. The modifiers of the click pick the tab as they do for a page.
       host.openers.sidebar({ kind: 'connection', plugin: railPlugin, connection: target.key }, event);
@@ -1173,7 +1447,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
     const how = dispositionOf(event, { platform });
     whenListed(plugin, () => {
       const target = host.contributions.complete?.(home, { from: route, source: 'home' }) ?? home;
-      if (target.plugin === HOST_PLUGIN && route?.plugin === HOST_PLUGIN && route.contribution === HOME_PAGE_ID) {
+      if (target.plugin === HOST_PLUGIN && route?.kind !== 'extension-view' && route?.plugin === HOST_PLUGIN && route.contribution === HOME_PAGE_ID) {
         const name = entries.find((candidate) => candidate.id === plugin)?.name ?? plugin;
         const listed = hostConnections?.store.getSnapshot();
         if (listed?.failed === true && listed.connections.length === 0) {
@@ -1246,6 +1520,8 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
   const bindings = useMemo<PanelBindings>(
     () => ({
       store: terminals.store,
+      terminalMenu: host.terminalMenu?.open,
+      terminalMenuContent: host.terminalMenu && <TerminalMenuContent menu={host.terminalMenu} />,
       renderBody: (session, visible) => {
         if (session.tool === TERMINAL_TOOL_ID) {
           return terminalBodyOf(terminals, session, visible);
@@ -1316,36 +1592,39 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
 
   const sidebar = shown?.phase === 'ready' ? shown.contribution.sidebar : undefined;
   return (
-    <>
-      {shown?.phase === 'ready' && railRoute !== undefined && sidebar?.useNodes !== undefined ? (
+    <ExtensionMenuNavigationContext.Provider value={menuNavigation}>
+      {verifiedTree && shown?.phase === 'ready' && railRoute !== undefined && sidebar?.useNodes !== undefined ? (
         <ContributionBoundary key={shown.id} name={`${shown.id} sidebar`} fallback={() => <NoNodes plugin={shown.id} nodes={sidebarNodes} />}>
           <NodesSource plugin={shown.id} route={railRoute} useNodes={sidebar.useNodes} nodes={sidebarNodes} open={host.sidebarOpen} panelHost={panelHosts(shown.id, bare ? undefined : railConnection)} connections={host.connectionsHosts(shown.id)} />
         </ContributionBoundary>
       ) : null}
       <Shell
-        registration={registrationOf({ entries, coming, waiting, held, route, lane, frame, rail, failed, railPlugin, nodes: published, bare })}
+        registration={registrationOf({ entries, coming, waiting, held, route, lane, frame, rail, failed, railPlugin, nodes: verifiedTree ? published : undefined, bare, group: mount.group })}
         tabs={tabs}
         pageKey={(tab: PageTab) => pageKeyOf(entries, tab)}
-        renderPage={(tab: PageTab) => (
-          <HostPage
-            entries={entries}
-            route={tab.location.route}
-            tabId={tab.id}
-            pluginName={tabs.selectors.face(tabs.getSnapshot(), tab.id)?.pluginName ?? ''}
-            frames={frames}
-            names={names}
-            tabs={tabs}
-            platform={platform}
-            inventory={inventory}
-            onRetry={onRetry}
-            onRetryInventory={onRetryInventory}
-            panelHosts={panelHosts}
-            connectionsHosts={host.connectionsHosts}
-            connections={hostConnections}
-            openPlugin={openPlugin}
-            source={plugins}
-          />
-        )}
+        renderPage={(tab: PageTab) => tab.location.route.kind === 'extension-view'
+          ? tab.id === activeId ? <MountedLocation key={`${activeVisit}:${selection}`} route={tab.location.route} entry={entries.find(entry => entry.id === tab.location.route.plugin)} tabId={tab.id} host={host}
+            inventory={inventory} pluginName={tabs.selectors.face(tabs.getSnapshot(), tab.id)?.pluginName ?? ''} onRetry={onRetry} onRetryInventory={onRetryInventory} /> : null
+          : (
+            <HostPage
+              entries={entries}
+              route={tab.location.route}
+              tabId={tab.id}
+              pluginName={tabs.selectors.face(tabs.getSnapshot(), tab.id)?.pluginName ?? ''}
+              frames={frames}
+              names={names}
+              tabs={tabs}
+              platform={platform}
+              inventory={inventory}
+              onRetry={onRetry}
+              onRetryInventory={onRetryInventory}
+              panelHosts={panelHosts}
+              connectionsHosts={host.connectionsHosts}
+              connections={hostConnections}
+              openPlugin={openPlugin}
+              source={plugins}
+            />
+          )}
         empty={emptyOf({ entries, coming, inventory, onRetryInventory, onOpen: open, plugins, connections: hostConnections })}
         onChoose={choose}
         onSidebarOpen={host.reportSidebarOpen}
@@ -1357,8 +1636,9 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
         notices={host.notices}
         settings={host.settings}
       />
+      {navigationDialog}
       {terminals.prompt}
       {host.verbs === undefined ? null : <ConnectionQuestion questions={host.verbs.questions} />}
-    </>
+    </ExtensionMenuNavigationContext.Provider>
   );
 }

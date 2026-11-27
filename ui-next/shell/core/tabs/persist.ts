@@ -3,9 +3,9 @@ import { savedFace, keyOf } from './face';
 import { normaliseKeepAlive } from './keepAlive';
 import { guardContributions, logError, type ErrorHook, type Plugins } from './plugins';
 import { repairHistory, windowHistory } from './resolve';
-import { normaliseRoute, sameRoute } from './route';
+import { normaliseTabRoute, sameRoute } from './route';
 import { changeTab, flagsOf, makeTab } from './state';
-import { STATE_VERSION, type Contributions, type KeepAlive, type PersistedTab, type PersistedTabs, type Tab, type TabId, type TabsState } from './types';
+import { LIMITS, STATE_VERSION, type Contributions, type KeepAlive, type PersistedTab, type PersistedTabs, type Tab, type TabId, type TabsState } from './types';
 
 // The saved session (ch16 S32, S150). The document carries its version, `migrate` brings an older one up to the current, and what is read back is repaired rather than
 // discarded: a damaged tab is dropped alone and the rest of the session is kept. The old app has 36 stores that were never versioned; this is not the 37th.
@@ -13,8 +13,10 @@ import { STATE_VERSION, type Contributions, type KeepAlive, type PersistedTab, t
 /** One step of a migration: a document of version N to a document of version N + 1. Pure, and it must say its new version. */
 export type Migration = (value: Record<string, unknown>) => Record<string, unknown>;
 
-/** The steps from every older version, keyed by the version they start from. Empty at version 1: the first release has nothing to migrate from. */
-export const MIGRATIONS: Readonly<Record<number, Migration>> = Object.freeze({});
+/** Version 2 adds tagged locations. The version 1 ordinary page representation is unchanged. */
+export const MIGRATIONS: Readonly<Record<number, Migration>> = Object.freeze({
+  1: (value: Record<string, unknown>) => ({ ...value, version: 2 }),
+});
 
 export type MigrateOptions = {
   readonly current?: number | undefined;
@@ -74,7 +76,9 @@ export function serialise(state: TabsState): PersistedTabs {
   for (const id of state.order) {
     const tab = state.tabs[id];
     if (tab) {
-      tabs.push({ id, route: tab.location.route, key: tab.location.key, face: tab.face, pinned: tab.flags.pinned, preview: tab.flags.preview, history: windowHistory(tab.history) });
+      const route = tab.location.route;
+      const presentation = route.kind === 'extension-view' ? {} : { key: tab.location.key, face: tab.face };
+      tabs.push({ id, route, ...presentation, pinned: tab.flags.pinned, preview: tab.flags.preview, history: windowHistory(tab.history) });
     }
   }
 
@@ -129,7 +133,10 @@ export function restoreTabs(raw: unknown, options: RestoreOptions): RestoreResul
   }
 
   const wanted = migrated.value.active;
-  const active = typeof wanted === 'string' && kept.some((tab) => tab.id === wanted) ? wanted : (kept[0]?.id ?? null);
+  const selected = kept.find((tab) => tab.id === wanted);
+  // Version 2 can save a background-only window. When a selected tab is corrupt, never promote a background mount to issue demand on restore.
+  const noSelection = wanted === null && isPlainObject(raw) && raw.version === STATE_VERSION;
+  const active = selected?.id ?? (noSelection ? null : (kept.find((tab) => tab.location.route.kind === undefined)?.id ?? null));
   if (typeof wanted === 'string' && active !== wanted) {
     problems.push('the tab on screen is not one of the tabs');
   }
@@ -144,6 +151,7 @@ export function restoreTabs(raw: unknown, options: RestoreOptions): RestoreResul
     tabs: Object.freeze(byId),
     order: Object.freeze(kept.map((tab) => tab.id)),
     active,
+    activeVisit: 0,
     mounted: Object.freeze(active === null ? [] : [active]),
     closed: Object.freeze([]),
     keepAlive: normaliseKeepAlive(options.keepAlive),
@@ -193,7 +201,7 @@ export function readTab(entry: unknown, plugins: Plugins, note: (why: string) =>
   }
 
   const id = text(entry.id);
-  const saved = normaliseRoute(entry.route);
+  const saved = normaliseTabRoute(entry.route);
   if (id === '' || !saved) {
     note('has no id or no valid route');
     return undefined;
@@ -207,11 +215,11 @@ export function readTab(entry: unknown, plugins: Plugins, note: (why: string) =>
 
   const same = sameRoute(route, saved);
   // The face the tab was saved with, as the host lets it stand (and what the host learns from it) before the plugin is asked: the plugin's description then has what the window learned.
-  const kept = same ? plugins.restoreFace(savedFace(entry.face, route), route) : undefined;
+  const kept = same && route.kind === undefined ? plugins.restoreFace(savedFace(entry.face, route), route) : undefined;
   const looked = plugins.look(route);
   const face = looked.described || kept === undefined ? looked.face : kept;
   const key = looked.described || kept === undefined ? looked.key : text(entry.key) || keyOf(route, undefined, face);
-  const history = repairHistory(entry.history, route, (other) => plugins.restore(other));
+  const history = repairHistory(entry.history, route, (other) => plugins.restore(other), LIMITS.persistedHistory);
   if (isPlainObject(entry.history) && !sameHistory(entry.history, history)) {
     note('had a history that was repaired');
   }

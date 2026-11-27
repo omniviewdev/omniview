@@ -353,7 +353,8 @@ function tabsOf({ tabs, plugins, frames }: HostPaletteDeps, only: string | null)
       above.shift();
     }
 
-    const where = placesOf([above.join(' › '), connectionNameOf(frames, route) ?? tab.face.scope?.label ?? '']);
+    const page = route.kind === 'extension-view' ? undefined : route;
+    const where = placesOf([above.join(' › '), connectionNameOf(frames, page) ?? tab.face.scope?.label ?? '']);
     rows.push({
       id,
       kind: 'tab',
@@ -362,10 +363,10 @@ function tabsOf({ tabs, plugins, frames }: HostPaletteDeps, only: string | null)
       icon: tab.face.icon,
       tab: id,
       // A tab whose plugin is gone can still be switched to (the strip does, and its page says what happened): its row names no destination, so it is not refused as one.
-      route: installed.has(route.plugin) ? route : undefined,
+      route: installed.has(route.plugin) ? page : undefined,
       context: state.active === id ? placesOf([where, 'Current tab']) : where,
       matchContext: where,
-      keywords: wordsOf([pluginName === '' ? route.plugin : pluginName, route.contribution]),
+      keywords: wordsOf([pluginName === '' ? route.plugin : pluginName, page?.contribution ?? identity.title]),
     });
   }
 
@@ -525,7 +526,8 @@ function commandsOf({ tabs, panel, platform, onCloseWindow, openSettings, termin
 /** The route of the tab on screen: the same object until the tab moves. */
 function activeRoute(tabs: TabsStore): Route | undefined {
   const state = tabs.getSnapshot();
-  return state.active === null ? undefined : state.tabs[state.active]?.location.route;
+  const route = state.active === null ? undefined : state.tabs[state.active]?.location.route;
+  return route?.kind === 'extension-view' ? undefined : route;
 }
 
 /** The command a connection's row runs: the plugin and the connection's key are its argument. */
@@ -625,7 +627,7 @@ export function createHostPalette(deps: HostPaletteDeps): HostPalette {
       const result = tabs.open(destination, options);
       if (result.status === 'done') {
         const route = tabs.getSnapshot().tabs[result.id]?.location.route;
-        if (route !== undefined) {
+        if (route !== undefined && route.kind !== 'extension-view') {
           store.record({ route, kind: 'page' });
         }
       }
@@ -771,17 +773,18 @@ export function createHostPalette(deps: HostPaletteDeps): HostPalette {
     }
 
     const entries = plugins.getSnapshot();
+    const current = tab.location.route.kind === 'extension-view' ? undefined : tab.location.route;
     const entry = entries.find((candidate) => candidate.id === tab.location.route.plugin);
     if (entry?.phase !== 'ready') {
-      return { current: tab.location.route, scope: [] };
+      return { current, scope: [] };
     }
 
     const pluginIcon = railOf(entries).find((candidate) => candidate.id === entry.id)?.icon;
     const { scope } = tab.face;
     // The chips say the connection by its name; its key stays the chip's id, which is what a plugin's provider is asked with. With no name known the palette is narrowed to the plugin alone: a chip would have to say the key.
-    const named = connectionNameOf(frames, tab.location.route) ?? (scope === undefined || scope.label === '' ? undefined : scope.label);
+    const named = connectionNameOf(frames, current) ?? (scope === undefined || scope.label === '' ? undefined : scope.label);
     const chips = seedChips({ plugin: entry.id, pluginName: entry.contribution.plugin.name, pluginIcon, scope: scope === undefined ? undefined : { id: scope.id, label: named ?? scope.label } });
-    return { current: tab.location.route, scope: named === undefined ? chips.slice(0, 1) : chips };
+    return { current, scope: named === undefined ? chips.slice(0, 1) : chips };
   };
 
   const attach = (): (() => void) => {

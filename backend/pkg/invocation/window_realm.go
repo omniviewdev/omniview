@@ -64,7 +64,7 @@ type WindowRealm struct {
 	closed   map[WindowIdentity]time.Time
 	onRetire func(string)
 	// subscribers hear of each retirement after onRetire: the registries keyed by window.
-	subscribers []func(WindowIdentity)
+	subscribers []func(WindowIdentity, *Scope)
 	// connected reports whether a client id has an events socket registered; every is the sweep's interval.
 	connected func(client string) bool
 	every     time.Duration
@@ -134,6 +134,14 @@ func NewWindowRealm(onRetire func(string), options ...WindowRealmOption) *Window
 // realm's lock, and the window is already refused when it runs. A registry keyed by window drops its entry in fn; it never listens to a window's own close event,
 // which a server-mode window never fires.
 func (r *WindowRealm) OnRetire(fn func(WindowIdentity)) {
+	if fn != nil {
+		r.OnScopeRetire(func(key WindowIdentity, _ *Scope) { fn(key) })
+	}
+}
+
+// OnScopeRetire is the generation-aware retirement signal for native window-owned attachments.
+// A window ID can be reused while an earlier retirement callback is still releasing its resources.
+func (r *WindowRealm) OnScopeRetire(fn func(WindowIdentity, *Scope)) {
 	if fn == nil {
 		return
 	}
@@ -199,6 +207,11 @@ func (r *WindowRealm) grant(key WindowIdentity, window application.Window) (*Sco
 		return nil, nil
 	}
 	if entry := r.scopes[key]; entry != nil {
+		// A reconnected browser page is a different caller, even if Wails
+		// presents the same numeric ID before the old page's sweep retires it.
+		if page, ok := window.(interface{ ClientID() string }); ok && page.ClientID() != entry.client {
+			return nil, nil
+		}
 		return entry.scope, nil
 	}
 	switch {
@@ -261,7 +274,7 @@ func (r *WindowRealm) announce(key WindowIdentity, scope *Scope) {
 	subscribers := slices.Clone(r.subscribers)
 	r.mu.Unlock()
 	for _, fn := range subscribers {
-		fn(key)
+		fn(key, scope)
 	}
 }
 

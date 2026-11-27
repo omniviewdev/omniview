@@ -3,6 +3,8 @@ package plugin
 import (
 	"archive/tar"
 	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -96,15 +98,35 @@ func sanitizeArchivePath(destination, target string) (string, error) {
 	return "", fmt.Errorf("%s: %s", "content filepath is tainted", target)
 }
 
-func unpackPluginArchive(source string, destination string) error {
-	// Open the .tar.gz file
+func unpackPluginArchive(source string, destination string, ui *archiveExtensionInventory) error {
+	// The archive inventory and extractor must observe the same stream.
 	file, err := os.Open(source)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
 
-	gzipReader, err := gzip.NewReader(file)
+	if ui == nil || ui.digest == "" {
+		return unpackPluginStream(file, destination, ui)
+	}
+	hash := sha256.New()
+	bounded := &io.LimitedReader{R: file, N: MaxPluginSize + 1}
+	compressed := io.TeeReader(bounded, hash)
+	if err = unpackPluginStream(compressed, destination, ui); err != nil {
+		return err
+	}
+	// Include gzip buffering, tar padding and trailing compressed bytes.
+	if _, err = io.Copy(io.Discard, compressed); err != nil {
+		return err
+	}
+	if bounded.N == 0 || hex.EncodeToString(hash.Sum(nil)) != ui.digest {
+		return errors.New("extracted archive does not match the verified download")
+	}
+	return nil
+}
+
+func unpackPluginStream(compressed io.Reader, destination string, ui *archiveExtensionInventory) error {
+	gzipReader, err := gzip.NewReader(compressed)
 	if err != nil {
 		return err
 	}
@@ -120,8 +142,7 @@ func unpackPluginArchive(source string, destination string) error {
 		header, err = tarReader.Next()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				// end of archive
-				break
+				return nil
 			}
 
 			return err
@@ -132,24 +153,39 @@ func unpackPluginArchive(source string, destination string) error {
 			return err
 		}
 
-		// sanitize the file path
-		path, sanitizeErr := sanitizeArchivePath(destination, header.Name)
-		if sanitizeErr != nil {
-			return sanitizeErr
+		if err = extractPluginEntry(destination, header, tarReader, ui); err != nil {
+			return err
 		}
+	}
+}
 
-		switch header.Typeflag {
-		case tar.TypeDir: // If it's a directory, create it
-			if err = os.MkdirAll(path, 0755); err != nil {
-				return err
-			}
-		case tar.TypeReg: // If it's a file, create it
-			if err = extractRegularFile(path, header, tarReader); err != nil {
-				return err
+func extractPluginEntry(destination string, header *tar.Header, contents io.Reader, ui *archiveExtensionInventory) error {
+	path, err := sanitizeArchivePath(destination, header.Name)
+	if err != nil {
+		return err
+	}
+	if ui != nil {
+		contents, err = ui.observe(header, contents)
+		if err != nil {
+			return err
+		}
+	}
+	switch header.Typeflag {
+	case tar.TypeDir:
+		return os.MkdirAll(path, 0755)
+	case tar.TypeReg:
+		if err = extractRegularFile(path, header, contents); err != nil {
+			return err
+		}
+		if ui != nil && ui.role != 0 {
+			info, statErr := os.Lstat(path)
+			if statErr != nil || !info.Mode().IsRegular() || info.Size() != header.Size {
+				ui.invalid = true
+			} else {
+				ui.modified[ui.role-1] = info.ModTime().UnixNano()
 			}
 		}
 	}
-
 	return nil
 }
 

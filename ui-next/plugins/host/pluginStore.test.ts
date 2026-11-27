@@ -28,6 +28,18 @@ function deps(importBundle: LoaderDeps['importBundle']): LoaderDeps & { cleared:
 const entry = (store: PluginStore, id: string): PluginEntry | undefined => store.getSnapshot().find((candidate) => candidate.id === id);
 
 describe('load', () => {
+  it('never uses admission of an old owner page for a new native generation, even with the same pin', async () => {
+    const pending = Promise.withResolvers<unknown>();
+    const store = new PluginStore(deps(async (_, artifact) => artifact?.generation === 'before' ? pending.promise : good()));
+    const owner = { ...descriptor('acme'), artifact: { pin: 'same', generation: 'before' } };
+    const old = store.load(owner);
+    const replacement = { ...owner, artifact: { ...owner.artifact, generation: 'after' } };
+    await store.load(replacement);
+    pending.resolve({});
+    await old;
+    expect(entry(store, 'acme')).toMatchObject({ phase: 'ready', artifact: replacement.artifact });
+  });
+
   it('shows the plugin as loading at once and ready with its contribution when the bundle admits', async () => {
     const release = Promise.withResolvers<unknown>();
     const store = new PluginStore(deps(async () => release.promise));

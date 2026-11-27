@@ -229,6 +229,11 @@ export const SettingsState = "settings/state";
 export const SourceSTATE = "source/STATE";
 
 /**
+ * Name of the custom event "ui-extensions:policy-invalidated".
+ */
+export const UiExtensionsPolicyInvalidated = "ui-extensions:policy-invalidated";
+
+/**
  * Name of the custom event "windows/changed".
  */
 export const WindowsChanged = "windows/changed";

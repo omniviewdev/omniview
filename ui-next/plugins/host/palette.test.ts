@@ -270,7 +270,14 @@ function rowTitled(w: World, title: string) {
 /** The pages the strip shows, left to right. */
 function stripOf(w: World): string[] {
   const state = w.tabs.getSnapshot();
-  return state.order.map((id) => `${state.tabs[id]?.location.route.plugin ?? '?'}/${state.tabs[id]?.location.route.contribution ?? '?'}`);
+  return state.order.map((id) => {
+    const route = state.tabs[id]?.location.route;
+    if (!route || route.kind !== undefined) {
+      throw new Error(`Expected an ordinary page in tab ${id}`);
+    }
+
+    return `${route.plugin}/${route.contribution}`;
+  });
 }
 
 beforeEach(() => {
@@ -1123,6 +1130,25 @@ describe('the tabs source', () => {
 
     expect(rowsOf(w, 'tabs').map((row) => [row.title.text, row.word, row.tile?.icon])).toEqual([['Delta plugin', 'Degraded', 'status-error']]);
     expect(rowsOf(w, 'tabs')[0]?.route).toEqual({ plugin: 'delta', contribution: HOME_PAGE, params: {} });
+  });
+
+  it('activates a mounted view by tab id without exposing it as a plugin page destination', () => {
+    const w = build();
+    const mounted = w.tabs.open({ route: { kind: 'extension-view', plugin: 'acme', point: 'tools', offer: 'beta/inspect' } }, { how: 'background' });
+    if (mounted.status !== 'done') {
+      throw new Error('Expected the background view tab to open');
+    }
+
+    w.open(at('beta', 'items'));
+    w.store.open({ kind: 'tabs' });
+    const row = rowsOf(w, 'tabs').find(({ action }) => action.type === 'activate' && action.tab === mounted.id);
+    if (!row) {
+      throw new Error('No palette row for the mounted view tab');
+    }
+
+    expect(row.route).toBeUndefined();
+    expect(w.store.activate(row.id)).toMatchObject({ status: 'opened' });
+    expect(w.tabs.getSnapshot().active).toBe(mounted.id);
   });
 
   it('lets the user switch to a tab whose plugin is gone: its row names no destination, so it is not refused as one, and choosing it brings the tab forward', () => {
@@ -2219,7 +2245,7 @@ describe('the providers the plugins bring', () => {
 
       expect(w.tabs.getSnapshot().order).toEqual(before);
       expect(stripOf(w)).toEqual(['west/gadgets']);
-      expect(w.tabs.getSnapshot().tabs[before[0] ?? '']?.location.route.params).toEqual({ connection: 'north' });
+      expect(w.tabs.getSnapshot().tabs[before[0] ?? '']?.location.route).toEqual(routeAt('west', 'gadgets', 'north'));
       expect(w.store.getSnapshot().open).toBe(false);
       stop();
     });

@@ -1,5 +1,6 @@
 import { menuTrigger, useMenu, type MenuTriggerAttributes } from '@omniviewdev/kit';
 import { useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore, type MouseEvent } from 'react';
+import { useMaybePanel } from '../../context';
 import type { TerminalFeedSnapshot } from '../feed';
 import type { TerminalScreen } from '../screen';
 import { terminalMenu } from './terminalMenu';
@@ -22,6 +23,7 @@ export const TERMINAL_MENU_LABEL = 'Terminal actions';
 export type TerminalMenuScreen = Pick<TerminalScreen, 'clear' | 'selectAll' | 'paste' | 'mouseReporting' | 'decorateInput' | 'subscribe' | 'getSnapshot'> & { readonly commands?: Pick<TerminalScreen['commands'], 'state' | 'revision' | 'jump' | 'selectOutput' | 'copyOutput' | 'rerun' | 'onEvent'> | undefined };
 
 export type TerminalMenuOptions = {
+  readonly sessionId?: string;
   /** The screen of the session. Before there is one (`undefined`) there is no menu to open. */
   readonly screen: TerminalMenuScreen | undefined;
   /** The feed's status, as the body already follows it while it is on screen (the menu holds no listener of its own on the feed, and a hidden body must hold none): Paste is available while the terminal takes input, and an open menu is put away when that changes. */
@@ -80,7 +82,8 @@ async function pasteInto(screen: TerminalMenuScreen | undefined, canPaste: () =>
   screen?.paste(text);
 }
 
-export function useTerminalMenu({ screen, status, openFind, copy, here }: TerminalMenuOptions): TerminalMenu {
+export function useTerminalMenu({ sessionId, screen, status, openFind, copy, here }: TerminalMenuOptions): TerminalMenu {
+  const extendMenu = useMaybePanel()?.terminalMenu;
   // The terminal takes what is typed or pasted while it is starting or running (the screen's own rule).
   const input = status.state === 'starting' || status.state === 'running';
   // An action runs after the host gave the focus back, in whatever render the menu was chosen in: it reads what it calls from here and not from the render the menu opened in.
@@ -106,7 +109,7 @@ export function useTerminalMenu({ screen, status, openFind, copy, here }: Termin
       return null;
     }
 
-    return terminalMenu(
+    const items = terminalMenu(
       {
         copy: () => {
           latest.current.copy();
@@ -155,6 +158,7 @@ export function useTerminalMenu({ screen, status, openFind, copy, here }: Termin
       },
       { selected: screen.getSnapshot().selected, input, here: here?.available, commands: screen.commands?.state() },
     );
+    return sessionId === undefined ? items : extendMenu?.(sessionId, 'terminal-body', items) ?? items;
   }, `${selected ? 'selected' : 'nothing selected'}, ${commandState}, ${input ? 'input' : 'no input'}, ${here === undefined ? 'no new terminal' : here.available ? 'new terminal here' : 'no directory'}`);
 
   const trigger = useMemo(() => ({ ...menuTrigger(id, undefined, 'context'), 'data-ov-menu-label': TERMINAL_MENU_LABEL }), [id]);

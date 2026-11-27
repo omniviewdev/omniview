@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { createPanelStore } from '../../shell/core/panel';
 import { boot, cloudPage, hostPage, type Harness } from '../../shell/core/tabs/testing';
-import { checkInvariants, type TabReceiver, type TabsStore } from '../../shell/core/tabs';
+import { checkInvariants, STATE_VERSION as TABS_VERSION, type TabReceiver, type TabsStore } from '../../shell/core/tabs';
 import type { PluginEntry } from './pluginStore';
 import { createConnectionActions } from './connections/actions';
 import type { ConnectionsStore } from './connections/store';
@@ -118,6 +118,7 @@ function world(name = 'main', panel = createPanelStore(), events = bus(), listed
 }
 
 const sessionOf = (text: string | undefined) => JSON.parse(text ?? 'null') as { version: number; tabs: { version: number; active: string; tabs: Array<{ id: string; route: unknown }> } };
+const sidebarView = { kind: 'extension-view', plugin: 'cloud', point: 'tools', offer: 'peer/manager', connection: 'west' } as const;
 
 // The stand-in service answers at once, so what the host does after an answer has happened within a few microtask turns (a drag that ends in a window of its own takes some tens).
 const settled = async () => {
@@ -140,6 +141,15 @@ describe('how: window in a native window', () => {
     expect(session.tabs.tabs[0]).toMatchObject({ route: { plugin: 'cloud', contribution: 'buckets' } });
     expect(session.tabs.active).toBe(session.tabs.tabs[0]?.id);
     expect(h.state()).toBe(before);
+  });
+
+  it('starts a fresh window with only the mounted locator, not a copy of the source history or authority', () => {
+    const { h, service, tabs } = world();
+    const source = h.state();
+    expect(tabs.open({ route: sidebarView }, { how: 'window' })).toMatchObject({ status: 'window', route: sidebarView });
+    const session = sessionOf(service.open.mock.calls[0]?.[0]);
+    expect(session.tabs).toEqual({ version: TABS_VERSION, active: session.tabs.active, tabs: [{ id: session.tabs.active, route: sidebarView }] });
+    expect(h.state()).toBe(source);
   });
 
   it('moves a singleton that is open: the new window starts with that tab, and once it exists the tab leaves this strip', async () => {
@@ -195,6 +205,13 @@ describe('how: window where the app has no windows (a browser tab)', () => {
     const before = h.state();
     expect(tabs.open(cloudPage('buckets'), { how: 'window' })).toMatchObject({ status: 'refused', message: expect.stringContaining('desktop app') });
     expect(h.state()).toBe(before);
+  });
+
+  it('refuses a mounted view in a new window without changing the source history or selection', () => {
+    const { h, tabs } = browser();
+    const source = h.state();
+    expect(tabs.open({ route: sidebarView }, { how: 'window' })).toMatchObject({ status: 'refused', reason: 'unavailable' });
+    expect(h.state()).toBe(source);
   });
 
   it('is not a success for the connection action that asked for it, and is one in a native window', async () => {
@@ -393,6 +410,23 @@ describe('moving a tab to another window', () => {
     expect(here.service.focus).toHaveBeenCalledExactlyOnceWith('window-2');
     expect(checkInvariants(there.h.state())).toEqual([]);
     expect(checkInvariants(here.h.state())).toEqual([]);
+  });
+
+  it('transfers mounted history without a face, session origin, or page state, and preserves traversal in the receiver', async () => {
+    const { here, there, id } = two();
+    here.tabs.navigate(id, { route: sidebarView });
+    here.tabs.setPageState(id, { privateDraft: 'in this window only' });
+    const saved = here.tabs.serialise().tabs.find((tab) => tab.id === id);
+    expect(saved).not.toHaveProperty('face');
+    expect(saved).not.toHaveProperty('key');
+    here.tabs.windows?.moveTo('window-2', id);
+    await settled();
+    expect(here.h.ids()).not.toContain(id);
+    expect(there.h.state().tabs[id]).toMatchObject({ location: { route: sidebarView }, face: { title: 'View unavailable' }, pageState: null, history: saved?.history });
+    expect(there.tabs.back(id)).toMatchObject({ status: 'done' });
+    expect(there.h.state().tabs[id]?.location.route).toMatchObject({ contribution: 'volumes' });
+    there.tabs.forward(id);
+    expect(there.h.state().tabs[id]?.location.route).toEqual(sidebarView);
   });
 
   it('leaves this window once the other has the tab, though focusing the other fails: that is only a warning', async () => {

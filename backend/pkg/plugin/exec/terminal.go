@@ -154,6 +154,9 @@ func (c *controller) CreateTerminal(
 ) (_ *terminal.Session, err error) {
 	ctx, end := startOp(ctx, "exec.CreateTerminal")
 	defer end(&err)
+	if isResourceProcessID(opts.ID) {
+		return nil, invalidShellRequest()
+	}
 	if opts.ID == "" {
 		opts.ID = uuid.NewString()
 	}
@@ -164,7 +167,7 @@ func (c *controller) CreateTerminal(
 	// The id is in the index before the shell starts: its output, even its CLOSE, can come before this
 	// call returns. It also keeps a terminal from taking the id of a session of a plugin.
 	c.mu.Lock()
-	if _, taken := c.sessionIndex[opts.ID]; taken {
+	if c.idHeldLocked(opts.ID) {
 		c.mu.Unlock()
 		return nil, terminal.IDInUse(opts.ID)
 	}
@@ -178,7 +181,7 @@ func (c *controller) CreateTerminal(
 		return nil, err
 	}
 	trace.SpanFromContext(ctx).SetAttributes(attribute.String("session_id", info.ID))
-	c.logger.Infow(ctx, "exec session created", "sessionID", info.ID, "pluginID", "local")
+	c.logger.Infow(ctx, "exec session created", "sessionID", info.ID, "pluginID", localPluginID)
 	return &info, nil
 }
 

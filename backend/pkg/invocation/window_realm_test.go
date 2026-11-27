@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -97,4 +98,25 @@ func TestWindowRealmScopeCapCountsEveryWindowKind(t *testing.T) {
 	}
 	require.Nil(t, realm.ScopeForWindow(&realmWindow{id: 33}))
 	require.Nil(t, realm.ScopeForWindow(&otherKindRealmWindow{realmWindow{id: 33}}))
+}
+
+func TestScopedRetirementNamesOldGenerationAfterWindowIDReuse(t *testing.T) {
+	blocked, resume := make(chan struct{}), make(chan struct{})
+	realm := NewWindowRealm(func(string) { close(blocked); <-resume })
+	now := time.Now()
+	realm.now = func() time.Time { return now }
+	first, second := &realmWindow{id: 1}, &realmWindow{id: 1}
+	retired := make(chan retiredWindow, 1)
+	realm.OnScopeRetire(func(key WindowIdentity, scope *Scope) { retired <- retiredWindow{key, scope} })
+	old := realm.ScopeForWindow(first)
+	go first.onClose(nil)
+	<-blocked // the old generation left the registry, but its subscribers have not run
+	now = now.Add(2 * time.Minute)
+	current := realm.ScopeForWindow(second)
+	close(resume)
+	result := <-retired
+	require.Equal(t, IdentityOf(second), result.key)
+	require.Same(t, old, result.scope)
+	require.NotSame(t, current, result.scope)
+	require.Same(t, current, realm.ScopeForWindow(second))
 }

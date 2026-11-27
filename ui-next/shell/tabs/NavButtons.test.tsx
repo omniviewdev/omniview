@@ -10,7 +10,7 @@ function mount() {
   const h = boot({ home: false });
   const [first, second] = h.openAll(['alpha', 'other']);
   h.store.goto(1);
-  render(<Shell registration={{ plugin: { name: 'Cloud' } }} tabs={h.store} renderPage={({ location }) => <p>{`page ${location.route.contribution}`}</p>} empty={null} />);
+  render(<Shell registration={{ plugin: { name: 'Cloud' } }} tabs={h.store} renderPage={({ location }) => <p>{`page ${location.route.kind === 'extension-view' ? location.route.offer : location.route.contribution}`}</p>} empty={null} />);
   return { h, first: first, second: second, user: userEvent.setup() };
 }
 

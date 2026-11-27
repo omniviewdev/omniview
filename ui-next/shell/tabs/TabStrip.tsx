@@ -91,7 +91,7 @@ export function TabStrip({ prefix, panelId, onNewTab }: TabStripProps) {
     <div className={styles.strip} data-shell-part="tabStrip">
       <div ref={ref} className={styles.scroller} role={ids.length === 0 ? undefined : 'tablist'} aria-label={ids.length === 0 ? undefined : 'Open tabs'} {...handlers}>
         {ids.map((id) => (
-          <Tab key={id} id={id} stop={id === stop} active={id === active} prefix={prefix} panelId={panelId} menu={menu} />
+          <Tab key={id} id={id} stop={id === (stop ?? ids[0])} active={id === active} prefix={prefix} panelId={panelId} menu={menu} />
         ))}
       </div>
       {onNewTab === undefined ? null : (

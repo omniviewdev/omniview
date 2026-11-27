@@ -13,11 +13,11 @@ const sources = readdirSync(directory)
 const imports = (text: string) => [...text.matchAll(/(?:^|\n)\s*(?:import|export)\b[^;]*?\bfrom\s+'([^']+)'/g)].map((match) => match[1] ?? '');
 
 describe('the model\'s sources', () => {
-  it('import nothing but their own siblings', () => {
+  it('depend only on their siblings, the shared saver and the two pure extension ID predicates', () => {
     expect(sources.length).toBeGreaterThan(8);
-    // The one thing the model shares with its neighbour is the saver: one write per burst is the shell's rule, not the tabs'.
     for (const { name, text } of sources) {
-      const foreign = imports(text).filter((specifier) => !specifier.startsWith('./') && specifier !== '../saver');
+      const local = name === 'route.ts' ? text.replace('import { isExtensionIdSegment, isExtensionOwnerId } from \'@omniviewdev/runtime/internal/extensions-v1\';', '') : text;
+      const foreign = imports(local).filter((specifier) => !specifier.startsWith('./') && specifier !== '../saver');
       expect({ name, foreign }).toEqual({ name, foreign: [] });
     }
   });

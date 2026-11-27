@@ -15,5 +15,6 @@ export type {
   MenuRadioOption,
   MenuRegistry,
   MenuSeparator,
+  MenuSource,
   MenuSubmenu,
 } from './items';

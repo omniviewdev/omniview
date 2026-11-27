@@ -1,13 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
 	"path"
 	"regexp"
 	"strings"
-
-	"github.com/wailsapp/mimetype"
+	"time"
 
 	"github.com/omniviewdev/omniview/internal/appstate"
 	logging "github.com/omniviewdev/plugin-sdk/log"
@@ -17,8 +17,9 @@ import (
 // It is used as middleware in the Wails v3 AssetOptions to handle
 // requests for plugin-specific static files (JS, CSS, images, fonts).
 type PluginAssetHandler struct {
-	logger    logging.Logger
-	stateRoot *appstate.ScopedRoot
+	logger         logging.Logger
+	stateRoot      *appstate.ScopedRoot
+	readPinnedPage func(id, pin, generation, assetPath string) ([]byte, error)
 }
 
 // NewPluginAssetHandler creates a new PluginAssetHandler.
@@ -43,7 +44,7 @@ func forceMimeType(path string) string {
 	switch {
 	case strings.HasSuffix(path, ".js.map"):
 		return "application/javascript"
-	case strings.HasSuffix(path, ".js"):
+	case strings.HasSuffix(path, ".js"), strings.HasSuffix(path, ".mjs"):
 		return "application/javascript"
 	case strings.HasSuffix(path, ".css"):
 		return "text/css"
@@ -90,6 +91,27 @@ func (h *PluginAssetHandler) ServeHTTP(res http.ResponseWriter, req *http.Reques
 	}
 	requestedFilename = strings.TrimPrefix(requestedFilename, "/_/")
 
+	// An immutable module URL also scopes its relative chunks. Never fall back to
+	// the mutable page tree when a pin, generation, or indexed file is refused.
+	pluginPath, plugin := strings.CutPrefix(requestedFilename, "plugins/")
+	id, rest, _ := strings.Cut(pluginPath, "/")
+	if pinned, ok := strings.CutPrefix(rest, "verified/"); plugin && ok {
+		pin, generationPath, _ := strings.Cut(pinned, "/")
+		generation, asset, hasAsset := strings.Cut(generationPath, "/")
+		if !hasAsset || h.readPinnedPage == nil || path.Clean(requestedFilename) != requestedFilename ||
+			!strings.HasPrefix(asset, "assets/") || !strings.HasSuffix(asset, ".mjs") && !isAllowed("/plugins/"+id+"/"+asset) {
+			respondUnauthorized()
+			return
+		}
+		data, readErr := h.readPinnedPage(id, pin, generation, asset)
+		if readErr != nil {
+			http.NotFound(res, req)
+			return
+		}
+		h.writeAsset(res, req, asset, data)
+		return
+	}
+
 	// Normalize the path to prevent traversal via sequences like "foo/../bar".
 	requestedFilename = path.Clean(requestedFilename)
 
@@ -110,23 +132,22 @@ func (h *PluginAssetHandler) ServeHTTP(res http.ResponseWriter, req *http.Reques
 		return
 	}
 
-	// set content type
-	contentType := mimetype.Detect(fileData).String()
-	h.logger.Infow(ctx, "content type", "type", contentType)
-	if strings.HasPrefix(contentType, "text/plain") {
-		// don't like this but it's the only way to force the right mime type.
-		contentType = forceMimeType(requestedFilename)
-	}
+	h.writeAsset(res, req, requestedFilename, fileData)
+}
 
+func (h *PluginAssetHandler) writeAsset(res http.ResponseWriter, req *http.Request, requestedFilename string, fileData []byte) {
+	// Only allowlisted paths reach here. Serve bytes as the declared asset type:
+	// content inside a script or stylesheet must not turn it into an HTML document.
+	contentType := forceMimeType(requestedFilename)
+	h.logger.Infow(req.Context(), "content type", "type", contentType)
 	res.Header().Set("Content-Type", contentType)
+	res.Header().Set("X-Content-Type-Options", "nosniff")
 
 	// Plugin updates replace stable chunk and stylesheet filenames in place.
 	// Every asset must bypass persistent caches, not just the entry module.
 	res.Header().Set("Cache-Control", "no-store")
 
-	if _, err = res.Write(fileData); err != nil {
-		h.logger.Errorw(ctx, "error serving file", "error", err)
-	}
+	http.ServeContent(res, req, requestedFilename, time.Time{}, bytes.NewReader(fileData))
 }
 
 // Middleware returns an application.Middleware that intercepts plugin asset

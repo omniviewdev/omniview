@@ -47,7 +47,7 @@ export function createRenaming(): Renaming {
 const RenamingContext = createContext<Renaming | null>(null);
 
 /** Gives the strip and the tools of a window the one `Renaming` they share; the panel's provider makes one. */
-export function RenamingProvider({ renaming, children }: { readonly renaming: Renaming; readonly children: ReactNode }) {
+export function RenamingProvider({ renaming, children }: { readonly renaming: Renaming | null; readonly children: ReactNode }) {
   return <RenamingContext value={renaming}>{children}</RenamingContext>;
 }
 

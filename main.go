@@ -21,6 +21,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/diagnostics"
 	"github.com/omniviewdev/omniview/backend/extensiondiagnostics"
 	extensiondiagnosticshost "github.com/omniviewdev/omniview/backend/extensiondiagnostics/host"
+	"github.com/omniviewdev/omniview/backend/extensionpolicy"
 	"github.com/omniviewdev/omniview/backend/menus"
 	"github.com/omniviewdev/omniview/backend/pkg/activity"
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
@@ -28,6 +29,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/data"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/devserver"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/exec"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/extensionread"
 	pluginlogs "github.com/omniviewdev/omniview/backend/pkg/plugin/logs"
 	pluginmetric "github.com/omniviewdev/omniview/backend/pkg/plugin/metric"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/networker"
@@ -129,6 +131,7 @@ func boundServiceTypes() []any {
 	return []any{
 		(*activity.FrontendService)(nil),
 		(*resource.ServiceWrapper)(nil),
+		(*resource.ExtensionReadService)(nil),
 		(*resource.GraphService)(nil),
 		(*exec.ServiceWrapper)(nil),
 		(*networker.ServiceWrapper)(nil),
@@ -143,6 +146,7 @@ func boundServiceTypes() []any {
 		(*UpdateService)(nil),
 		(*diagnostics.DiagnosticsClient)(nil),
 		(*extensiondiagnosticshost.Service)(nil),
+		(*extensionpolicy.Service)(nil),
 		(*diagnosticshost.Service)(nil),
 		(*telemetry.TelemetryBinding)(nil),
 		(*profiling.ServiceWrapper)(nil),
@@ -739,11 +743,25 @@ func main() {
 
 	// Set up plugin asset handler middleware
 	pluginAssetHandler := NewPluginAssetHandler(log, stateDir.RootDir())
+	pluginAssetHandler.readPinnedPage = pluginManager.ReadPinnedPageFile
 	pluginAssets = pluginAssetHandler.Middleware(defaultAssets)
 
 	// Wrap the plugin manager interface in a concrete struct for v3 service
 	// registration (NewService requires a concrete pointer type).
 	pluginManagerSvc := &plugin.ServiceWrapper{Mgr: pluginManager}
+	var policy *extensionpolicy.Store
+	extensionReads, invalidateReads := resource.NewExtensionReadService(resourceController, resourceUIRealm, resourceBoundary, func(key extensionread.Binding) (extensionread.Contract, bool) {
+		return pluginManager.ResolveExtensionRead(policy, key)
+	})
+	policy, policyErr := extensionpolicy.Open(stateDir.Root(), func(change extensionpolicy.Change) {
+		invalidateReads(change)
+		app.Event.Emit(extensionpolicy.Event, change)
+	})
+	if policyErr != nil {
+		log.Warnw(context.Background(), "extension policy unavailable; extension bindings are disabled", "error", policyErr)
+	} else {
+		defer policy.Close()
+	}
 	extensionDiagnostics := extensiondiagnostics.NewBroker()
 
 	// A nil *Store must stay a nil interface: the relay then runs in memory.
@@ -792,6 +810,7 @@ func main() {
 		// 1. Controllers — need ctx before plugin loading
 		application.NewService(&activity.FrontendService{Service: activityService, Realm: resourceUIRealm}),
 		application.NewService(&resource.ServiceWrapper{Ctrl: resourceController, Realm: resourceUIRealm}),
+		application.NewService(extensionReads),
 		application.NewService(graphService),
 		application.NewService(&exec.ServiceWrapper{Ctrl: execController, Realm: resourceUIRealm}),
 		application.NewService(&networker.ServiceWrapper{Ctrl: networkerController, Realm: resourceUIRealm}),
@@ -815,6 +834,7 @@ func main() {
 		application.NewService(processInventory),
 		application.NewService(&settingsservice.Binding{Service: coreSettings}),
 		application.NewService(pluginManagerSvc),
+		application.NewService(extensionpolicy.NewService(policy)),
 		application.NewService(&mcprelay.ServiceWrapper{Relay: mcpRelay}),
 	}
 
