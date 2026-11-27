@@ -12,6 +12,7 @@ const APPEARANCE: EngineAppearance = {
   fontFamily: 'monospace',
   fontSize: 12,
   lineHeight: 1.33,
+  cursorStyle: 'block',
 };
 
 const mark = (kind: TerminalMark['kind'], extra: Partial<TerminalMark> = {}): TerminalMark => ({ kind, at: 0, end: 1, trust: 'unverified', ...extra });

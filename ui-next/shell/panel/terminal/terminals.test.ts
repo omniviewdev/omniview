@@ -30,6 +30,7 @@ const APPEARANCE: EngineAppearance = {
   fontFamily: 'monospace',
   fontSize: 12,
   lineHeight: 1.33,
+  cursorStyle: 'block',
 };
 
 const command = (key: string, init: KeyboardEventInit = {}) => new KeyboardEvent('keydown', { key, code: `Key${key.toUpperCase()}`, metaKey: true, bubbles: true, cancelable: true, ...init });
