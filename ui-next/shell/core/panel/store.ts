@@ -1,10 +1,11 @@
 import { activateSession, activateTool, fitHeight, hide, reorderSession, resize, revealSession, setHeight, show, toggleMaximized, type ShowOptions } from './arrange';
+import { equalisePanes, fitPanes, focusPane, moveSash, splitPane, type SplitOptions } from './panes';
 import { serialise } from './persist';
 import { createSelectors } from './selectors';
 import { closeSession, openSession, renameSession, retitleSession, setSessionState, type OpenOptions, type StateChange } from './sessions';
 import { emptyPanel, type Context, type Step } from './state';
 import { registerTool, syncPlugins, unregisterTool, type PluginTools } from './tools';
-import type { CloseResult, OpenResult, PanelResult, PanelState, PersistedPanel, Resize, Selectors, SessionId, SessionInput, ToolId, ToolInput } from './types';
+import type { CloseResult, OpenResult, PaneId, PanelResult, PanelState, PersistedPanel, Resize, Selectors, SessionId, SessionInput, SplitResult, ToolId, ToolInput } from './types';
 
 // The store: one immutable snapshot, `subscribe`, and the operations. It is the shape `useSyncExternalStore` wants (`getSnapshot` and `subscribe`), and nothing in it knows React. A selector
 // from `selectors` applied to the snapshot gives each consumer its own slice. The tab model's store (../tabs/store.ts) is the pattern.
@@ -68,6 +69,20 @@ export type PanelStore = {
   readonly closeSession: (id: SessionId) => CloseResult;
   /** Moves a session to an index of its tool's strip (kept within it): the other sessions keep their places, and the saved panel lists them in the new order. The place it has changes nothing. */
   readonly reorderSession: (id: SessionId, to: number) => PanelResult;
+
+  /**
+   * Splits a tool: a NEW session (never a copy of one) opens in a new pane beside the active pane, the ratios of the group become equal and the new pane is the active one. A tool that has no session
+   * opens one, with no group. Refused when the panes could not each have their minimum along `extent` (`full`), when the tool is not there, and when `input.id` is a session that exists (`taken`).
+   */
+  readonly splitPane: (tool: ToolId, input: Omit<SessionInput, 'tool'>, options: SplitOptions) => SplitResult;
+  /** Makes a pane the tool's active one; its session is the tool's `active` session. */
+  readonly focusPane: (tool: ToolId, pane: PaneId) => PanelResult;
+  /** The sash between pane `boundary` and the next is dragged to `position`, a share of the whole in 0..1. The ratios end within the minimum for `extent`. */
+  readonly moveSash: (tool: ToolId, boundary: number, position: number, extent: number) => PanelResult;
+  /** Every pane the same share again (a double click on a sash). */
+  readonly equalisePanes: (tool: ToolId, extent: number) => PanelResult;
+  /** The panel is `extent` long: shares below the minimum for it are brought within it, and stay so (as `fitHeight` does for the height). */
+  readonly fitPanes: (tool: ToolId, extent: number) => PanelResult;
 
   /** What the session saves; see `restorePanel` for the way back and `createSaver` for the writing. */
   readonly serialise: () => PersistedPanel;
@@ -159,6 +174,11 @@ export function createPanelStore(options: PanelStoreOptions = {}): PanelStore {
     renameSession: (id, title) => run(renameSession(state, id, title)),
     closeSession: (id) => run(closeSession(state, id)),
     reorderSession: (id, to) => run(reorderSession(state, id, to)),
+    splitPane: (tool, input, splitOptions) => run(splitPane(state, tool, input, ctx, splitOptions)),
+    focusPane: (tool, pane) => run(focusPane(state, tool, pane)),
+    moveSash: (tool, boundary, position, extent) => run(moveSash(state, tool, boundary, position, extent)),
+    equalisePanes: (tool, extent) => run(equalisePanes(state, tool, extent)),
+    fitPanes: (tool, extent) => run(fitPanes(state, tool, extent)),
 
     serialise: () => serialise(state),
     dispose: () => {

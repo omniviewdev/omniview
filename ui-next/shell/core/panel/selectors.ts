@@ -177,6 +177,7 @@ export function createSelectors(): Selectors {
 
       return shown;
     },
+    paneLayout: () => null,
     isShown: (state, id) => shownOf(state)?.session === id,
     pluginOff: (state, id) => {
       const session = own(state.sessions, id);

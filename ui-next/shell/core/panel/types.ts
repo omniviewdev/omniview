@@ -94,6 +94,28 @@ export type SessionInput = {
 
 export const PANEL_VERSION = 1;
 
+/** The slot of a pane in its tool's group: `p1`, `p2`, ... A slot keeps its id while the session it shows changes; ids are never saved (a restored group numbers its slots again). */
+export const LAYOUT_VERSION = 1;
+
+export type PaneId = string;
+/** The way a group lays its panes out. Only `row` (side by side) is drawn today; `column` (stacked) is in the shape so that a later layout needs no new saved form. */
+export type PaneAxis = 'row' | 'column';
+export type Pane = { readonly id: PaneId; readonly session: SessionId };
+
+/**
+ * The panes of one tool when it shows more than one session at once. A tool that has no group shows one session, the one `active` names, and behaves exactly as it did before panes existed.
+ * A group always has two panes or more (a group that falls to one is dissolved), every pane holds one session of the tool, no session is in two panes, and `ratios` (one per pane, in order, each above zero)
+ * sum to 1. `active` is the pane whose session is the tool's `active` session.
+ */
+export type PaneGroup = {
+  readonly axis: PaneAxis;
+  readonly panes: readonly Pane[];
+  readonly ratios: readonly number[];
+  readonly active: PaneId;
+  /** The number the next slot is made from. */
+  readonly seq: number;
+};
+
 export type PanelState = {
   readonly version: typeof PANEL_VERSION;
   /** The panel is shown (the status bar's toggle is pressed). A hidden panel is 0 px, never an empty strip (A2). */
@@ -117,6 +139,8 @@ export type PanelState = {
    * streaming session keeps its buffer while another is on screen), so there is no cap; the panel being hidden unmounts nothing. A session whose plugin is not live is not mounted.
    */
   readonly mounted: readonly SessionId[];
+  /** Per tool that shows more than one session at once, its panes (`PaneGroup`). A tool that is not here shows the one session `active` names. */
+  readonly panes: Readonly<Record<ToolId, PaneGroup>>;
   /**
    * The plugins whose tools and sessions show (`host` always does), in the order the caller listed them (`syncPlugins`): a plugin's place in this list is the place its tools take among the tools that tie in
    * `order`. The host lists them in the order of the rail, so the place does not depend on the order the plugins arrived in.
@@ -145,6 +169,8 @@ export type RefusedReason =
   | 'taken'
   /** The session was ended by its plugin's unload and is kept as it is until its tab closes (A21): nothing changes it. */
   | 'held'
+  /** The tool has no room for another pane: each pane needs its minimum along the axis (`PANE_MIN_PX`). */
+  | 'full'
   /** The person named the session (`renameSession`): its owner may not name it again. */
   | 'pinned';
 export type Refused = { readonly status: 'refused'; readonly reason: RefusedReason; readonly message: string };
@@ -153,6 +179,9 @@ export type PanelResult = Done | Noop | Refused;
 export type OpenResult = Done<{ readonly id: SessionId }> | Refused;
 /** A session closed: which, and the session now on its tool's strip (`null` when it was the last). */
 export type CloseResult = Done<{ readonly closed: SessionId; readonly active: SessionId | null }> | Refused;
+
+/** A pane added: the new session and the slot that shows it. */
+export type SplitResult = Done<{ readonly id: SessionId; readonly pane: PaneId }> | Refused;
 
 /** The pointer or the keys moved the splitter: the stored height is `size`; below the collapse threshold the panel hides instead and keeps its old height. */
 export type Resize = { readonly size: number } | { readonly collapse: true };
@@ -184,6 +213,14 @@ export type ToolItem = { readonly id: ToolId; readonly label: string; readonly i
 /** What is on screen: the tool, and its session (none while the tool has none). `null` while the panel is hidden or has no tool. */
 export type Shown = { readonly tool: ToolId; readonly session: SessionId | null };
 
+/** What a tool's body draws: its visible panes in order, their shares (summing to 1) and the active one. A tool that shows one session has one pane and the ratio 1. The same object while it says the same. */
+export type PaneLayout = {
+  readonly axis: PaneAxis;
+  readonly panes: readonly Pane[];
+  readonly ratios: readonly number[];
+  readonly active: PaneId;
+};
+
 /** What each part of the panel subscribes to. All are functions of the snapshot; the memoised ones return the same object while their slice is the same. */
 export type Selectors = {
   /** The status bar's toggle. */
@@ -203,6 +240,8 @@ export type Selectors = {
   /** The sessions whose body is mounted, in the order they were first shown and never in the strip's: a session moved in its strip keeps its body where it is in the document. */
   readonly mounted: (state: PanelState) => readonly SessionId[];
   readonly shown: (state: PanelState) => Shown | null;
+  /** The panes a tool draws, or `null` while it has no visible session. */
+  readonly paneLayout: (state: PanelState, tool: ToolId) => PaneLayout | null;
   /** Whether this session's body is the one on screen: the panel is open, its tool is the tool on screen and it is the tool's session on screen. */
   readonly isShown: (state: PanelState, id: SessionId) => boolean;
   /**
@@ -210,6 +249,20 @@ export type Selectors = {
    * resource, cannot work until it returns. `false` for a session that is not there.
    */
   readonly pluginOff: (state: PanelState, id: SessionId) => boolean;
+};
+
+/** A tool's panes as the saved panel keeps them: the sessions in order, the shares, and which pane was active (an index: slots are numbered again on the way back). */
+export type PersistedPanes = {
+  readonly axis: PaneAxis;
+  readonly sessions: readonly SessionId[];
+  readonly ratios: readonly number[];
+  readonly active: number;
+};
+
+/** The saved layout of the panes. It has its own version so that the panel's does not move for it: a document without one is a panel whose tools each show one session (every panel saved before panes). */
+export type PersistedLayout = {
+  readonly version: typeof LAYOUT_VERSION;
+  readonly tools: Readonly<Record<ToolId, PersistedPanes>>;
 };
 
 /** What a saved session holds of a session: its identity, never its state or its output. */
@@ -233,4 +286,6 @@ export type PersistedPanel = {
   readonly active: Readonly<Record<ToolId, SessionId>>;
   /** Oldest first. */
   readonly sessions: readonly PersistedSession[];
+  /** Only a panel that has a tool with more than one pane writes it: every other panel saves exactly what it saved before panes. */
+  readonly layout?: PersistedLayout | undefined;
 };

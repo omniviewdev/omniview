@@ -43,6 +43,7 @@ export function emptyPanel(): PanelState {
     sessions: Object.freeze({}),
     order: Object.freeze([]),
     mounted: Object.freeze([]),
+    panes: Object.freeze({}),
     live: Object.freeze([]),
     registered: 0,
   });
