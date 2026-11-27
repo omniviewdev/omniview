@@ -4,6 +4,7 @@ package terminal
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -45,6 +46,8 @@ type frameworkCase struct {
 	ownEnd bool
 	// ownCwd is a framework that prints OSC 7 itself.
 	ownCwd bool
+	// shellPath is the shell binary under test, set for bash (OMNIVIEW_TEST_BASHES); empty means the one on PATH.
+	shellPath string
 	// statusLog is the file of the home where the framework's own hook wrote the status it saw.
 	statusLog string
 }
@@ -76,7 +79,7 @@ func frameworksDir(t *testing.T) string {
 func frameworkFixture(t *testing.T, c frameworkCase, integration bool) *integrationFixture {
 	t.Helper()
 	dir := frameworksDir(t)
-	f := newIntegrationFixture(t, c.shell, integrationShell(t, c.shell), "FRAMEWORKS="+dir)
+	f := newIntegrationFixture(t, c.shell, c.shellBinary(t), "FRAMEWORKS="+dir)
 	for _, path := range f.files {
 		require.NoError(t, os.Remove(path))
 	}
@@ -93,13 +96,76 @@ func frameworkFixture(t *testing.T, c frameworkCase, integration bool) *integrat
 	return f
 }
 
+// shellBinary is the shell under test: the explicit path of a case, or the one on PATH.
+func (c frameworkCase) shellBinary(t *testing.T) string {
+	t.Helper()
+	if c.shellPath == "" {
+		return integrationShell(t, c.shell)
+	}
+	if reason := integrationShellSkip("bash", func() (int, int, error) { return probeBashVersion(c.shellPath) }); reason != "" {
+		t.Skipf("NOT RUN: %s", reason)
+	}
+	return c.shellPath
+}
+
+// testBashes are the bash binaries under test, chosen explicitly: OMNIVIEW_TEST_BASHES is a colon-separated list of paths (to run
+// 5.2 and 5.3 in one go); with none the bash on PATH is the only one.
+func testBashes(t *testing.T) []string {
+	t.Helper()
+	if list := os.Getenv("OMNIVIEW_TEST_BASHES"); list != "" {
+		return strings.Split(list, ":")
+	}
+	path, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("NOT RUN: no bash on this machine")
+	}
+	return []string{path}
+}
+
+// bashLabel is the name of the bash version of a binary, for the name of a test: "bash-5.3.15".
+func bashLabel(t *testing.T, path string) string {
+	t.Helper()
+	out, err := exec.Command(path, "-c", "printf %s \"$BASH_VERSION\"").Output()
+	require.NoError(t, err, "bash %s says no version", path)
+	return "bash-" + strings.SplitN(string(out), "(", 2)[0]
+}
+
+// withBashes is the case once for each bash under test (a bash case), or once.
+func withBashes(t *testing.T, c frameworkCase) []frameworkCase {
+	t.Helper()
+	if c.shell != "bash" {
+		return []frameworkCase{c}
+	}
+	var out []frameworkCase
+	for _, path := range testBashes(t) {
+		c.shellPath = path
+		out = append(out, c)
+	}
+	return out
+}
+
+// caseName names a test of a case: the home, and the version of the bash when it is one.
+func caseName(t *testing.T, c frameworkCase) string {
+	t.Helper()
+	label := c.home
+	if label == "" {
+		label = c.shell
+	}
+	if c.shellPath != "" {
+		label += "@" + bashLabel(t, c.shellPath)
+	}
+	return label
+}
+
 func eachFramework(t *testing.T, keep func(c frameworkCase) bool, body func(t *testing.T, c frameworkCase)) {
 	t.Helper()
 	for _, c := range frameworkCases() {
 		if keep != nil && !keep(c) {
 			continue
 		}
-		t.Run(c.home, func(t *testing.T) { body(t, c) })
+		for _, each := range withBashes(t, c) {
+			t.Run(caseName(t, each), func(t *testing.T) { body(t, each) })
+		}
 	}
 }
 
@@ -349,15 +415,16 @@ func TestADirectoryWhoseNameHoldsAnEscapeByteNeitherEndsTheCwdMarkEarlyNorGivesA
 		frameworkCases()[3], // oh-my-zsh prints OSC 7 itself, with the name percent-encoded
 		frameworkCases()[5], // zsh4humans prints CurrentDir with the name escaped
 	}
+	var expanded []frameworkCase
 	for _, c := range cases {
-		label := c.shell
-		if c.home != "" {
-			label = c.home
-		}
+		expanded = append(expanded, withBashes(t, c)...)
+	}
+	for _, c := range expanded {
+		label := caseName(t, c)
 		t.Run(label, func(t *testing.T) {
 			var f *integrationFixture
 			if c.home == "" {
-				f = newIntegrationFixture(t, c.shell, integrationShell(t, c.shell))
+				f = newIntegrationFixture(t, c.shell, c.shellBinary(t))
 			} else {
 				f = frameworkFixture(t, c, true)
 			}
