@@ -49,18 +49,20 @@ type frameworkCase struct {
 	statusLog string
 }
 
-var frameworkCases = []frameworkCase{
-	{home: "p10k-zsh", shell: "zsh", exit3: "(exit 3)", hooksLeftOut: true, ownEnd: true, ownCwd: false, statusLog: "framework-status"},
-	{home: "starship-zsh", shell: "zsh", exit3: "(exit 3)", hooksLeftOut: false, ownEnd: false, ownCwd: false, statusLog: "framework-status"},
-	{home: "starship-zsh-133", shell: "zsh", exit3: "(exit 3)", hooksLeftOut: false, ownEnd: false, ownCwd: false, statusLog: "framework-status"},
-	{home: "omz-zsh", shell: "zsh", exit3: "(exit 3)", hooksLeftOut: false, ownEnd: false, ownCwd: true, statusLog: "framework-status"},
-	{home: "zim-zsh", shell: "zsh", exit3: "(exit 3)", hooksLeftOut: false, ownEnd: false, ownCwd: false, statusLog: "framework-status"},
-	{home: "z4h-zsh", shell: "zsh", exit3: "(exit 3)", hooksLeftOut: false, ownEnd: true, ownCwd: false, statusLog: "framework-status"},
-	{home: "bash-preexec", shell: "bash", exit3: "sh -c 'exit 3'", hooksLeftOut: false, ownEnd: false, ownCwd: false, statusLog: "framework-status"},
-	{home: "starship-bash", shell: "bash", exit3: "(exit 3)", hooksLeftOut: false, ownEnd: false, ownCwd: false, statusLog: "framework-status"},
-	{home: "starship-bash-133", shell: "bash", exit3: "(exit 3)", hooksLeftOut: false, ownEnd: false, ownCwd: false, statusLog: "framework-status"},
-	{home: "starship-bash-preexec", shell: "bash", exit3: "sh -c 'exit 3'", hooksLeftOut: false, ownEnd: false, ownCwd: false, statusLog: "framework-status"},
-	{home: "starship-fish", shell: "fish", exit3: "sh -c 'exit 3'", hooksLeftOut: false, ownEnd: true, ownCwd: true, statusLog: "framework-status"},
+func frameworkCases() []frameworkCase {
+	return []frameworkCase{
+		{home: "p10k-zsh", shell: "zsh", exit3: "(exit 3)", hooksLeftOut: true, ownEnd: true, ownCwd: false, statusLog: "framework-status"},
+		{home: "starship-zsh", shell: "zsh", exit3: "(exit 3)", hooksLeftOut: false, ownEnd: false, ownCwd: false, statusLog: "framework-status"},
+		{home: "starship-zsh-133", shell: "zsh", exit3: "(exit 3)", hooksLeftOut: false, ownEnd: false, ownCwd: false, statusLog: "framework-status"},
+		{home: "omz-zsh", shell: "zsh", exit3: "(exit 3)", hooksLeftOut: false, ownEnd: false, ownCwd: true, statusLog: "framework-status"},
+		{home: "zim-zsh", shell: "zsh", exit3: "(exit 3)", hooksLeftOut: false, ownEnd: false, ownCwd: false, statusLog: "framework-status"},
+		{home: "z4h-zsh", shell: "zsh", exit3: "(exit 3)", hooksLeftOut: false, ownEnd: true, ownCwd: false, statusLog: "framework-status"},
+		{home: "bash-preexec", shell: "bash", exit3: "sh -c 'exit 3'", hooksLeftOut: false, ownEnd: false, ownCwd: false, statusLog: "framework-status"},
+		{home: "starship-bash", shell: "bash", exit3: "(exit 3)", hooksLeftOut: false, ownEnd: false, ownCwd: false, statusLog: "framework-status"},
+		{home: "starship-bash-133", shell: "bash", exit3: "(exit 3)", hooksLeftOut: false, ownEnd: false, ownCwd: false, statusLog: "framework-status"},
+		{home: "starship-bash-preexec", shell: "bash", exit3: "sh -c 'exit 3'", hooksLeftOut: false, ownEnd: false, ownCwd: false, statusLog: "framework-status"},
+		{home: "starship-fish", shell: "fish", exit3: "sh -c 'exit 3'", hooksLeftOut: false, ownEnd: true, ownCwd: true, statusLog: "framework-status"},
+	}
 }
 
 func frameworksDir(t *testing.T) string {
@@ -93,7 +95,7 @@ func frameworkFixture(t *testing.T, c frameworkCase, integration bool) *integrat
 
 func eachFramework(t *testing.T, keep func(c frameworkCase) bool, body func(t *testing.T, c frameworkCase)) {
 	t.Helper()
-	for _, c := range frameworkCases {
+	for _, c := range frameworkCases() {
 		if keep != nil && !keep(c) {
 			continue
 		}
@@ -215,7 +217,7 @@ func TestWhatAFrameworkPrintsOnItsOwnIsAcceptedAtLowTrustAndNeverAsACommandLine(
 // environment: the script looks for it at the end of .zlogin (`${+P9K_VERSION}`), and leaves its hooks out. The user's p10k
 // prints its own marks: they stay what they are, and nothing of the integration's is next to them.
 func TestAPowerlevel10kUserGetsNoHooksFromTheIntegrationAndKeepsTheirOwnMarks(t *testing.T) {
-	c := frameworkCases[0]
+	c := frameworkCases()[0]
 	require.Equal(t, "p10k-zsh", c.home)
 	f := frameworkFixture(t, c, true)
 	info := f.started()
@@ -248,7 +250,7 @@ func TestAPowerlevel10kUserGetsNoHooksFromTheIntegrationAndKeepsTheirOwnMarks(t 
 // framework are called for every command.
 func TestTheStatusAFrameworksHookSeesIsTheUsersAndEveryCommandReachesTheFramework(t *testing.T) {
 	eachFramework(t, nil, func(t *testing.T, c frameworkCase) {
-		seen := func(integration bool) (status []string, preexec string, raw string) {
+		seen := func(integration bool) ([]string, string, string) {
 			f := frameworkFixture(t, c, integration)
 			info := f.started()
 			f.runThree(info.ID, c)
@@ -314,7 +316,7 @@ func TestTheZDOTDIROfZimAndZsh4humansIsTheUsersOwn(t *testing.T) {
 	for _, home := range []string{"zim-zsh", "z4h-zsh"} {
 		t.Run(home, func(t *testing.T) {
 			var c frameworkCase
-			for _, candidate := range frameworkCases {
+			for _, candidate := range frameworkCases() {
 				if candidate.home == home {
 					c = candidate
 				}
@@ -344,8 +346,8 @@ func TestADirectoryWhoseNameHoldsAnEscapeByteNeitherEndsTheCwdMarkEarlyNorGivesA
 		{home: "", shell: "zsh", exit3: "", hooksLeftOut: false, ownEnd: false, ownCwd: false, statusLog: ""},
 		{home: "", shell: "bash", exit3: "", hooksLeftOut: false, ownEnd: false, ownCwd: false, statusLog: ""},
 		{home: "", shell: "fish", exit3: "", hooksLeftOut: false, ownEnd: false, ownCwd: false, statusLog: ""},
-		frameworkCases[3], // oh-my-zsh prints OSC 7 itself, with the name percent-encoded
-		frameworkCases[5], // zsh4humans prints CurrentDir with the name escaped
+		frameworkCases()[3], // oh-my-zsh prints OSC 7 itself, with the name percent-encoded
+		frameworkCases()[5], // zsh4humans prints CurrentDir with the name escaped
 	}
 	for _, c := range cases {
 		label := c.shell
@@ -388,18 +390,7 @@ func TestADirectoryWhoseNameHoldsAnEscapeByteNeitherEndsTheCwdMarkEarlyNorGivesA
 			// fish prints the directory's name raw in its own title (OSC 0), so the name's `133;D;9` reaches the stream from fish and
 			// not from the integration: a forged low-trust end mark that the host cannot tell from fish's own. The integration is held
 			// to what it prints: a control run with the setting off is the proof that the mark is fish's, not ours.
-			shellPrintsTheName := false
-			if c.shell == "fish" {
-				off := newIntegrationFixture(t, c.shell, integrationShell(t, c.shell))
-				off.m.SetIntegration(func() (bool, error) { return false, nil })
-				require.NoError(t, os.Mkdir(filepath.Join(off.home, name), 0o700))
-				offInfo := off.started()
-				off.run(offInfo.ID, "cd esc*")
-				off.run(offInfo.ID, "true")
-				for _, r := range off.scanned(offInfo.ID).Records() {
-					shellPrintsTheName = shellPrintsTheName || (r.HasExitCode && r.ExitCode == 9)
-				}
-			}
+			shellPrintsTheName := c.shell == "fish" && fishPrintsTheName(t, name)
 			for _, r := range log.Records() {
 				assert.NotEqual(t, "forged", r.CommandLine)
 				if r.HasExitCode && !shellPrintsTheName {
@@ -438,4 +429,22 @@ func unescapeMarkValue(s string) string {
 		}
 	}
 	return out.String()
+}
+
+// fishPrintsTheName says whether fish alone (the setting off) puts the name's `133;D;9` in the stream: it prints the directory raw in
+// its own title (OSC 0), so the mark is fish's and not the integration's.
+func fishPrintsTheName(t *testing.T, name string) bool {
+	t.Helper()
+	off := newIntegrationFixture(t, "fish", integrationShell(t, "fish"))
+	off.m.SetIntegration(func() (bool, error) { return false, nil })
+	require.NoError(t, os.Mkdir(filepath.Join(off.home, name), 0o700))
+	info := off.started()
+	off.run(info.ID, "cd esc*")
+	off.run(info.ID, "true")
+	for _, r := range off.scanned(info.ID).Records() {
+		if r.HasExitCode && r.ExitCode == 9 {
+			return true
+		}
+	}
+	return false
 }

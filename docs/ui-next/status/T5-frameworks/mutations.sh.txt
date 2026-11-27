@@ -1,0 +1,115 @@
+#!/bin/bash
+# Negative controls for T5-frameworks (issue #694 step 7: the integration next to prompt frameworks, backend/pkg/terminal/
+# integration_frameworks_test.go, and the scripts in backend/pkg/terminal/integration_scripts, and package marks). Each fault is put into a SCRATCH copy of one source file (a Go file or an embedded
+# script) and built with `go test -overlay`; the worktree is never edited. A control has two halves:
+#   1. with every test of the integration, the tests that go red are exactly the ones named for it (a fault that goes red in a
+#      test it is not named for, or in none, is reported);
+#   2. with the named tests skipped (the assertion removed), the same fault passes: nothing else sees it.
+# fish must be runnable for the fish subtests to run (a machine with no fish skips them by name, "NOT RUN", and a control
+# whose named tests are only fish's is then reported as undetected). A subtest is named by its test: either half is on the
+# whole test.
+# Run from anywhere in the worktree:  bash docs/ui-next/status/T5-frameworks/mutations.sh.txt [control-name]
+# A control named "?" prints what goes red (a discovery run) instead of comparing.
+export GOWORK=off GOTOOLCHAIN=local
+WT=$(git rev-parse --show-toplevel) || exit 2
+PKG=./backend/pkg/terminal/
+RUN='^(TestAFrameworksUserStillGetsTheGenuineMarksTrustedWithTheRightExitCodes|TestWhatAFrameworkPrintsOnItsOwnIsAcceptedAtLowTrustAndNeverAsACommandLine|TestAPowerlevel10kUserGetsNoHooksFromTheIntegrationAndKeepsTheirOwnMarks|TestTheStatusAFrameworksHookSeesIsTheUsersAndEveryCommandReachesTheFramework|TestAFrameworksPromptTextIsUnchangedAndNothingIsPrintedOutsideTheMarks|TestTheFilesOfAFrameworksUserAreByteIdenticalAfterASession|TestTheZDOTDIROfZimAndZsh4humansIsTheUsersOwn|TestADirectoryWhoseNameHoldsAnEscapeByteNeitherEndsTheCwdMarkEarlyNorGivesAWrongPath)$'
+M=$(mktemp -d "${TMPDIR:-/tmp}/t5fw-mut.XXXXXX") || { echo "no scratch directory" >&2; exit 2; }
+trap 'rm -rf -- "$M"' EXIT
+cd "$WT" || exit 2
+only="${1:-}"
+bad=0
+
+# name | file | sed script | the tests named for it (sorted, separated by spaces) | optional: tests that may also go red
+# (racy detections): half 1 passes when the red set is the named set plus any subset of the optional set.
+run() {
+  name="$1"; file="$2"; expr="$3"; named="$4"; optional="${5:-}"
+  [ -n "$only" ] && [ "$only" != "$name" ] && return
+  cp "$WT/$file" "$M/$name.src"
+  sed -i -e "$expr" "$M/$name.src"
+  if cmp -s "$WT/$file" "$M/$name.src"; then echo "CONTROL $name: FAULT NOT APPLIED"; bad=1; return; fi
+  printf '{"Replace":{"%s":"%s"}}' "$WT/$file" "$M/$name.src" > "$M/$name.json"
+
+  out=$(go test -overlay="$M/$name.json" -run "$RUN" "$PKG" -timeout 600s 2>&1)
+  code=$?
+  failed=$(echo "$out" | grep -E '^--- FAIL' | sed -E 's/--- FAIL: ([A-Za-z0-9_]+).*/\1/' | sort | tr '\n' ' ' | sed 's/ $//')
+  if [ "$named" = "?" ]; then echo "CONTROL $name: red in [$failed]"; return; fi
+  if [ $code -eq 0 ]; then half1="UNDETECTED (every test passed)"; bad=1
+  elif [ -z "$failed" ]; then half1="NOT A DETECTION (the build or the setup failed)"; bad=1
+  else
+    core=$(for t in $failed; do case " $optional " in *" $t "*) ;; *) echo "$t";; esac; done | tr '\n' ' ' | sed 's/ $//')
+    if [ "$core" != "$named" ]; then half1="RED in [$failed], named [$named] (optional [$optional])"; bad=1
+    else half1="RED in [$failed] = named plus optional"; fi
+  fi
+
+  skip="^($(echo "$named $optional" | sed 's/  *$//; s/ /|/g'))\$"
+  out2=$(go test -overlay="$M/$name.json" -run "$RUN" -skip "$skip" "$PKG" -timeout 600s 2>&1)
+  if [ $? -eq 0 ]; then half2="without them: PASS (undetected)"
+  else half2="without them: STILL RED [$(echo "$out2" | grep -E '^--- FAIL' | tr '\n' ' ')]"; bad=1; fi
+  echo "CONTROL $name: $half1 | $half2"
+}
+
+I=backend/pkg/terminal/integration_scripts
+Z=$I/zsh/zlogin
+B=$I/bash/bashrc
+F=$I/fish/omniview-integration.fish
+O=backend/pkg/terminal/marks/osc.go
+
+T1=TestAFrameworksUserStillGetsTheGenuineMarksTrustedWithTheRightExitCodes
+T2=TestWhatAFrameworkPrintsOnItsOwnIsAcceptedAtLowTrustAndNeverAsACommandLine
+T3=TestAPowerlevel10kUserGetsNoHooksFromTheIntegrationAndKeepsTheirOwnMarks
+T4=TestTheStatusAFrameworksHookSeesIsTheUsersAndEveryCommandReachesTheFramework
+T5=TestAFrameworksPromptTextIsUnchangedAndNothingIsPrintedOutsideTheMarks
+T6=TestTheFilesOfAFrameworksUserAreByteIdenticalAfterASession
+T7=TestTheZDOTDIROfZimAndZsh4humansIsTheUsersOwn
+T8=TestADirectoryWhoseNameHoldsAnEscapeByteNeitherEndsTheCwdMarkEarlyNorGivesAWrongPath
+
+# powerlevel10k: the guard on P9K_VERSION is gone, the hooks of the integration are installed next to p10k's.
+run p10k-guard-removed "$Z" 's|if (( ! ${+P9K_VERSION} )); then|if true; then|' "$T3"
+
+# zsh4humans: the integration's preexec is put last again, after the framework's own 133;C.
+run zsh-preexec-last "$Z" 's|preexec_functions=(__omniview_preexec $preexec_functions)|preexec_functions+=(__omniview_preexec)|' "$T1"
+
+# bash-preexec: the last hook no longer says the prompt is shown, and its first command is lost.
+run bash-preexec-first-command "$B" 's|\*__bp_precmd_invoke_cmd\*) __bp_preexec_interactive_mode=on ;;|*__bp_precmd_invoke_cmd*) : ;;|' "$T1 $T4"
+
+# bash: the first prompt command returns 0, not the status: the framework's hook (starship's $?) sees 0 after `false`. (zsh hands
+# every hook the status of the command whatever a hook before it returns, so there the fault is to read $? late, below.)
+run bash-status-clobbered "$B" '0,/^    return "$__omniview_status"$/s||    return 0|' "$T4"
+
+# zsh: the first precmd hook reads $? after a builtin: every exit code is 0.
+run zsh-status-read-late "$Z" 's|^    local __omniview_last=$?$|    setopt localoptions; local __omniview_last=$?|' "$T1"
+# fish: a builtin runs before the user's (starship's) fish_prompt, which then reads $status 0.
+run fish-status-clobbered "$F" 's|^                    __omniview_user_prompt $argv$|                    true; __omniview_user_prompt $argv|' "$T4"
+
+# A user file is edited by the integration.
+run user-file-edited "$Z" 's|^  \[\[ -r ${ZDOTDIR:-$HOME}/.zlogin \]\] && builtin source ${ZDOTDIR:-$HOME}/.zlogin|  [[ -r ${ZDOTDIR:-$HOME}/.zlogin ]] \&\& builtin source ${ZDOTDIR:-$HOME}/.zlogin; print "# omniview" >> ${ZDOTDIR:-$HOME}/.zshrc|' "$T6"
+
+# The script prints text on the tty outside its marks.
+run script-prints-outside-its-marks "$Z" 's|^  unset __omniview_fd$|  unset __omniview_fd; builtin print -rn -- "integration loaded"|' "$T5"
+
+# ZDOTDIR is left at the shim after the user's files ran.
+run zdotdir-not-given-back "$Z" '0,/if (( __omniview_zd_set )); then ZDOTDIR=$__omniview_zd_val; else unset ZDOTDIR; fi/s||:|' "$T5 $T7" "$T1"
+
+# A raw ESC byte is not escaped in the directory of the cwd mark (zsh, bash, fish).
+run zsh-esc-not-escaped "$Z" "s|\[\$'\\\\x01'-\$'\\\\x1f'\$'\\\\x7f'\]|[\$'\\\\x01'-\$'\\\\x1a'\$'\\\\x1c'-\$'\\\\x1f'\$'\\\\x7f']|" "$T8"
+run bash-esc-not-escaped "$B" 's|      \*\[\[:cntrl:\]\]\*)|      *NEVER_MATCHES*)|' "$T8"
+run fish-esc-not-escaped "$F" "s|string match -qr '\[\\\\x01-\\\\x1f\\\\x7f\]'|string match -qr '[\\\\x01-\\\\x05]'|" "$T8"
+
+# The scanner believes the directory of a framework's own OSC 7 as it believes the nonce's.
+run foreign-osc7-trusted "$O" 's|return s.emitCwd(dir, false, out)|return s.emitCwd(dir, true, out)|' "$T2"
+
+# A path with a control byte is stripped, as before step 7, and not dropped: the mark names a directory that is not there. (Kept
+# whole it would be the right directory: the fault is the strip, in both the percent-decoded and the escaped path.)
+STRIP='s|if !clean {|if !clean \&\& false {|; s|clean = false$|clean = false; continue|; s|if hasControl(dir) {|dir = bytes.Map(func(r rune) rune { if r < 0x20 \|\| r == 0x7f { return -1 }; return r }, dir); if false {|'
+run path-with-control-byte-stripped "$O" "$STRIP" "$T8"
+
+# The same fault, held by the tests of package marks (the contract of the scanner).
+PKG_SAVED=$PKG; RUN_SAVED=$RUN
+PKG=./backend/pkg/terminal/marks/
+RUN='^(TestADirectoryWithAControlByteInItsNameMakesTheTrackedDirectoryUnknown|TestATrustedDirectoryWithAnEscapedControlByteIsUnknownAndNeverAStrippedPath)$'
+run path-with-control-byte-stripped-marks "$O" "$STRIP" \
+  'TestADirectoryWithAControlByteInItsNameMakesTheTrackedDirectoryUnknown TestATrustedDirectoryWithAnEscapedControlByteIsUnknownAndNeverAStrippedPath'
+PKG=$PKG_SAVED; RUN=$RUN_SAVED
+
+exit $bad

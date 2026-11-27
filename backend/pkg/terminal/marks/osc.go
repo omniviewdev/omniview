@@ -297,9 +297,9 @@ func hexDigit(c byte) (byte, bool) {
 
 // decodePercent decodes %HH in place. clean is false when the path holds a control byte, the encoded ones too: no
 // directory is believed that a terminal could be made to read as a sequence. A '%' that is no escape is kept.
-func decodePercent(b []byte) (path []byte, clean bool) {
+func decodePercent(b []byte) ([]byte, bool) {
 	w := 0
-	clean = true
+	clean := true
 	for r := 0; r < len(b); r++ {
 		c := b[r]
 		if c == '%' && r+2 < len(b) {
