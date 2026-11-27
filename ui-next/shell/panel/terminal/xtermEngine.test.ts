@@ -937,6 +937,11 @@ describe('the screen over a real emulator', () => {
       await settle();
       expect(second.replies(), 'the middle feed ended').toEqual([]);
       expect(third.replies(), 'what the middle feed\'s bytes drew is not for the third shell').toEqual([]);
+      // The third feed's own query is answered to it: the muting ended at the barrier of the last restart, and is not on for ever.
+      third.push('\u001b[6n');
+      run();
+      await settle();
+      expect(third.replies().join(''), 'the third feed\'s own cursor position query is answered').toMatch(/^\u001b\[\d+;\d+R$/);
     });
   });
 
