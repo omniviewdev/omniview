@@ -70,7 +70,7 @@ export type ShellSidebar = {
 };
 
 /**
- * One face of the scope lane: the scope the page is read in. Text for now; the menus that change a scope arrive with their slice.
+ * One contributed value describing the scope the page is read in. The host can add a picker when it draws a face.
  *
  * `role: 'connection'` (C1g) says this face is the connection the page is read in, whatever its label: the host says a connection by this face's text (its NAME) wherever it says one, and never by the key a route carries.
  * It is optional and additive: a plugin written before it is read by the face's label, Connection.
@@ -160,25 +160,23 @@ export type ShellRegistration = {
   readonly rail?: ShellRail;
   /** Absent: no sidebar, no track. */
   readonly sidebar?: ShellSidebar;
-  /** The scope lane above the page, at most 2 faces (ch16 S10). Absent or empty: no lane, no 40 px. A face with a picker is a control (HM1). */
+  /** The page's scope faces in the window header. Absent or empty: no scope group or reserved space. A face with a picker is a control (HM1). */
   readonly scope?: readonly ShellLaneFace[];
   /**
    * Who scrolls the page (ch12 section 5; the mock's `AWS.page(id, render, { layout })`). `document` (the default): the shell's page scrolls, the
    * content flows at its natural height. `pane`: the page owns its scrolling (a collection view), so the shell scrolls nothing: the content fills
-   * the island under the scope lane, its bottom inset is the page's own (a collection's footer is the last lane of the pane), and the page has no
+   * the island, its bottom inset is the page's own (a collection's footer is the last lane of the pane), and the page has no
    * tab stop of its own. The page declares it; a page whose layout depends on its state re-registers.
    */
   readonly layout?: 'document' | 'pane';
   /**
    * The plugin's frame is on its way: its interface is loading and the window does not wait for it. The shell draws the regions a plugin's frame has, empty, at the rectangles the
-   * frame will have (the rail's track, the sidebar with no tree, the scope lane), so nothing moves when the frame registers. Whatever else the registration declares is drawn as
-   * declared. A frame that turns out to have fewer regions than that moves the page once, when it registers: the shape of a plugin's frame is not known before it loads.
+   * frame will have (the rail's track and the sidebar with no tree). Scope only appears once contributed and never affects page height.
    */
   readonly pending?: true;
   /**
    * The window has not chosen what its rail lists and its sidebar shows: it waits until every plugin has settled once, so a plugin that registers late and sorts first moves no entry that is drawn
-   * (a tab restored from a session is on screen long before the last plugin is). The rail's track and the sidebar are drawn empty at their rectangles, as for `pending`; the scope lane is not
-   * reserved, because the page on screen (or the empty window, which has none) says whether it has one.
+   * (a tab restored from a session is on screen long before the last plugin is). The rail's track and the sidebar are drawn empty at their rectangles, as for `pending`.
    */
   readonly held?: true;
 };

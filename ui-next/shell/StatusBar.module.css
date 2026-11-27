@@ -1,5 +1,4 @@
-/* The status bar (ch16 §F R10; S90): one 32 px row on the window plane, 12/16 muted text, 12 px of padding and between its parts, no top border. It holds the panel's toggle and the path:
-   the status items and the bell have no function to carry yet. */
+/* The status bar (ch16 §F R10; S90): one 32 px row for the panel toggle, the active tab's path and the notification bell. */
 @layer ov.shell {
   .statusBar {
     grid-column: 1 / -1;
@@ -47,10 +46,32 @@
     min-inline-size: 0;
   }
 
-  .text {
+  .text,
+  .crumbLink {
     min-inline-size: 0;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  .crumbLink {
+    margin: 0;
+    padding: var(--ov-spacing-4) 0;
+    border: 0;
+    border-radius: var(--ov-radius-control);
+    background: none;
+    color: var(--ov-link);
+    font: inherit;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .crumbLink:hover {
+    text-decoration: underline;
+  }
+
+  .crumbLink:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: -2px;
   }
 
   /* The status items: the toggle is the only one. */

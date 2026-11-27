@@ -42,7 +42,7 @@
     --_gutter: 5px;
   }
 
-  /* The page island: the scope lane above the page's scroll owner, so the lane never scrolls away (S10). It is focusable by script only: F6 and Escape land on it. */
+  /* The page host fills the island. F6 and Escape can focus the island without adding a Tab stop. */
   .island {
     grid-column: 4;
     display: flex;

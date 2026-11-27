@@ -29,11 +29,11 @@ export type DataViewState =
 export type DataViewProps<TRow> = {
   /** The plural name of the items ("Items"). It names the view's one scroll region, and words the states: "No Items", "No Items match", "Couldn't load Items". */
   readonly label: string;
-  /** The page's header, fixed above the collection: a `PageHeader`. The 12 px under it are the view's. */
+  /** The page's header, fixed above the collection: a `PageHeader`. */
   readonly header?: ReactNode;
-  /** The quick filters of the collection (design 13 QF1), 8 px above the toolbar. Their `data-*` reach the strip. */
+  /** The quick filters of the collection. They precede the toolbar on the same line when there is room. Their `data-*` reach the strip. */
   readonly quickFilters?: QuickFiltersProps | undefined;
-  /** The one command lane (design 12 TB1): a `WorkspaceToolbar`. The 8 px under it are the view's. */
+  /** A `WorkspaceToolbar` for search and commands. It wraps below the quick filters in a narrow pane. */
   readonly toolbar?: ReactNode;
   /** The footer: the collection's one count, and nothing else unless it has something ambient to say (the width note, the state of the data). Not drawn while `state` is a failure with no rows. */
   readonly footer: CollectionFooterProps;
@@ -102,7 +102,7 @@ function CardsOf<TRow>({ label, cards }: { readonly label: string; readonly card
  * passes through.
  */
 export function DataView<TRow>({ label, header, quickFilters, toolbar, table, cards, footer, state = { kind: 'ready' }, ...rest }: DataViewProps<TRow>) {
-  const hasHeader = header !== undefined || quickFilters !== undefined || toolbar !== undefined;
+  const hasHeader = header != null || quickFilters !== undefined || toolbar != null;
   // The skeleton and the notice have no table to be the region, and the cards are no table: the body is the region and scrolls. A table is the region in every other state.
   const region = table === undefined || state.kind === 'loading' || state.kind === 'error';
   const footless = state.kind === 'error';
@@ -113,7 +113,7 @@ export function DataView<TRow>({ label, header, quickFilters, toolbar, table, ca
     <div {...dataAttributes(rest)} className={styles.root} data-ov-state={state.kind} data-ov-view={table === undefined ? 'cards' : 'table'} data-ov-footless={footless ? '' : undefined}>
       {hasHeader ? (
         <div className={styles.header} data-ov-part="header">
-          {header === undefined ? null : (
+          {header == null ? null : (
             <div className={styles.top} data-ov-block="top">
               {header}
             </div>

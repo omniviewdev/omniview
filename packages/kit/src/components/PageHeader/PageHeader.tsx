@@ -181,7 +181,7 @@ export function PageHeader({ title, subtitle, level = 1, path, tile, state, fact
   const labelled = [primary, ...drawn, danger].flatMap((command) => (command === undefined ? [] : [command]));
   const icons = (utility === undefined ? 0 : 1) + (hasOverflow ? 1 : 0);
   const hasLane = labelled.length + icons > 0;
-  const mode = laneMode({
+  const mode = labelled.length === 0 && icons === 1 ? 'icon-only' : laneMode({
     labels: labelled.map((command) => command.label),
     icons,
     titleLength: title.length + (subtitle === undefined ? 0 : subtitle.length + 1),

@@ -620,6 +620,30 @@ describe('layout it cannot see', () => {
 
     expect(scroller.scrollLeft).toBe(200);
   });
+
+  it('keeps the selected tab in view when contributed controls narrow the strip without changing the tabs', () => {
+    let resized: (() => void) | undefined;
+    const observe = vi.fn();
+    const disconnect = vi.fn();
+    vi.stubGlobal('ResizeObserver', class {
+      observe = observe;
+      disconnect = disconnect;
+      constructor(callback: () => void) { resized = callback; }
+    });
+    try {
+      mount({ active: 2 });
+      const scroller = screen.getByRole('tablist');
+      vi.spyOn(scroller, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 200, 28));
+      vi.spyOn(tab('Gamma'), 'getBoundingClientRect').mockReturnValue(new DOMRect(180, 0, 96, 28));
+      expect(observe).toHaveBeenCalledWith(scroller);
+      resized?.();
+      expect(scroller.scrollLeft).toBe(76);
+      cleanup();
+      expect(disconnect).toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 describe('pinned and preview tabs (ch16 S23, S24)', () => {

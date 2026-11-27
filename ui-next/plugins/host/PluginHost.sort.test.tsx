@@ -345,7 +345,7 @@ describe('a plugin\'s list through the host: what the person chose comes back wi
     await user.click(screen.getByRole('link', { name: 'alpha' }));
     await screen.findByRole('heading', { level: 1, name: 'alpha' });
 
-    await user.click(within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByRole('button', { name: 'Widgets' }));
+    await user.click(within(screen.getByRole('navigation', { name: 'Current resource' })).getByRole('button', { name: 'Widgets' }));
     expect(await screen.findByRole('table')).toBeInTheDocument();
     expect(marks()).toEqual(['none', 'ascending']);
     expect(chip(/^Many/)).toHaveAttribute('aria-pressed', 'true');

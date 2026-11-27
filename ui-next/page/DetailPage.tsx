@@ -14,7 +14,6 @@ import {
   Tabs,
   TagList,
   type PageHeaderCommands,
-  type PageHeaderCrumb,
   type PageOperation,
 } from '@omniviewdev/kit';
 import { useId, useState } from 'react';
@@ -31,8 +30,6 @@ export type DetailPageProps = {
   /** The route's parameters: the object's identity. The page reads the name from them, as the definition says. */
   readonly params: RouteParams;
   readonly source: DetailSource;
-  /** The back path above the heading, built by the host from the route (design 12 PH3): its parents are links, its last part is the object. */
-  readonly path?: readonly PageHeaderCrumb[] | undefined;
 };
 
 /** The columns of a loading skeleton: a detail body has no table, so this is only how many bars each row of it holds. */
@@ -168,7 +165,7 @@ function Body({ body, name }: { readonly body: DetailBody; readonly name: string
  * the identity line is always present (a progress word while the object is on its way, the kind when the plugin gives no fact), and the Refresh command is the page's. The user's own
  * Refresh is felt in the header's slot, as the list's is.
  */
-export function DetailPage({ definition, params, source, path }: DetailPageProps) {
+export function DetailPage({ definition, params, source }: DetailPageProps) {
   const [chosen, setChosen] = useState<string | undefined>(undefined);
   const [dismissed, setDismissed] = useState<string | undefined>(undefined);
   const id = useId();
@@ -213,7 +210,6 @@ export function DetailPage({ definition, params, source, path }: DetailPageProps
       <div className={styles.top} data-detail-part="header">
         <PageHeader
           title={model.heading}
-          path={path}
           tile={definition.tile}
           state={model.state}
           facts={model.facts}

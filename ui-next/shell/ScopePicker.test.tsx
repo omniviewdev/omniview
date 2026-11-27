@@ -503,6 +503,15 @@ describe('closing', () => {
     });
   });
 
+  it('closes when the scope controls scroll away, not when the options list scrolls', async () => {
+    await open();
+    fireEvent.scroll(document.querySelector('[data-shell-part="pickerBody"]')!);
+    expect(input()).toHaveFocus();
+    fireEvent.scroll(screen.getByRole('group', { name: 'Acme scope' }));
+    expect(popup()).toBeNull();
+    await waitFor(() => expect(face()).toHaveFocus());
+  });
+
   it('closes and returns the focus to the face when the face says another value than the one it opened on', async () => {
     const picker = make();
     const view = render(laneOf(picker));

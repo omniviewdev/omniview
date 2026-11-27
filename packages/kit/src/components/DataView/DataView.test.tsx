@@ -49,7 +49,7 @@ const view = (props: Partial<Extract<DataViewProps<Item>, { readonly table: unkn
 const root = (container: HTMLElement) => container.firstElementChild as HTMLElement;
 
 describe('DataView, the composition (design 12 section 5)', () => {
-  it('stacks the header, the quick filters, the toolbar, the table and the footer, in that order', () => {
+  it('keeps the header, quick filters, toolbar, table and footer in reading and keyboard order', () => {
     const { container } = render(view());
     const order = [
       screen.getByRole('heading', { name: 'Items' }),
@@ -82,7 +82,21 @@ describe('DataView, the composition (design 12 section 5)', () => {
     expect([...root(container).children].map((child) => child.getAttribute('data-ov-part'))).toEqual(['body', 'footer']);
   });
 
-  it('puts each of the three above in a block of its own, so the gap under it is the view\'s', () => {
+  it('leaves no controls band when both slots render null', () => {
+    const { container } = render(view({ header: null, quickFilters: undefined, toolbar: null }));
+    expect(container.querySelector('[data-ov-part="header"]')).toBeNull();
+  });
+
+  it('keeps search focus when a filter leaves no matching rows', () => {
+    const { rerender } = render(view());
+    const search = screen.getByRole('textbox', { name: 'Search items' });
+    search.focus();
+    rerender(view({ quickFilters: { ...FILTERS, selected: 'failed' }, state: { kind: 'no-match' } }));
+    expect(screen.getByRole('button', { name: 'Failed 1' }).getAttribute('aria-pressed')).toBe('true');
+    expect(document.activeElement).toBe(search);
+  });
+
+  it('keeps the quick filters and toolbar adjacent after the title, including when their shared line wraps', () => {
     const { container } = render(view());
     const blocks = [...container.querySelectorAll('[data-ov-part="header"] > [data-ov-block]')].map((block) => block.getAttribute('data-ov-block'));
     expect(blocks).toEqual(['top', 'filters', 'toolbar']);
@@ -439,10 +453,11 @@ describe('the DataView stylesheet', () => {
     expect(rule('.root[data-ov-footless]')).toMatchObject({ height: 'calc(100% - var(--ov-spacing-12))' });
   });
 
-  it('owns the gaps between the header, the strip, the toolbar and the table: 12, 8 and 8 px', () => {
-    expect(rule('.top')['padding-block-end']).toBe('var(--ov-spacing-12)');
-    expect(rule('.filters')['padding-block-end']).toBe('var(--ov-spacing-8)');
-    expect(rule('.toolbar')['padding-block-end']).toBe('var(--ov-spacing-8)');
+  it('fits the controls in one wrapping line below the full-width title, leaving 8 px before the table', () => {
+    expect(rule('.header')).toMatchObject({ display: 'flex', 'flex-wrap': 'wrap', 'align-items': 'center', gap: 'var(--ov-spacing-8) var(--ov-spacing-12)', 'padding-block-end': 'var(--ov-spacing-8)' });
+    expect(rule('.top')['flex-basis']).toBe('100%');
+    expect(rule('.filters')).toMatchObject({ 'margin-inline-end': 'auto', 'max-width': '100%' });
+    expect(rule('.toolbar')).toMatchObject({ width: 'max-content', 'min-width': 'min(280px, 100%)', 'max-width': '100%' });
   });
 
   it('is a body that holds its table: it never scrolls itself, the table\'s region does', () => {

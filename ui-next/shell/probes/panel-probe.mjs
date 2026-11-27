@@ -509,10 +509,13 @@ async function shift(browser, engine, viewportName, viewport, origin) {
   let worst = 0;
   for (const [region, entry] of Object.entries(mock)) {
     for (const [label, a, b] of [['before', entry.before, before[region]], ['after', entry.after, after[region]]]) {
-      // The mock's tab strip holds the new-tab control (240 wide); the shell's strip is the scroller (208): its place and height are what is compared.
-      const d = a === null || b === null ? 999 : Math.max(...(region === 'tabstrip' ? [0, 1, 3] : [0, 1, 2, 3]).map((k) => delta(a, b)[k]));
+      // The page fills the baseline island; scope shares the top row's vertical bounds, not the baseline's page width. movedBy checks that its entire box stays put.
+      const target = region === 'mainscroll' ? mock.island[label] : region === 'lane' ? mock.topbar[label] : a;
+      // The mock's tab strip also holds its new-tab button; compare the strip's place and height here.
+      const keys = region === 'lane' ? [1, 3] : region === 'tabstrip' ? [0, 1, 3] : [0, 1, 2, 3];
+      const d = target === null || b === null ? 999 : Math.max(...keys.map((k) => delta(target, b)[k]));
       worst = Math.max(worst, d);
-      if (d > 1) fail(`shift ${where}`, `${region} ${label}: mock ${JSON.stringify(a)} shell ${JSON.stringify(b)}`);
+      if (d > 1) fail(`shift ${where}`, `${region} ${label}: wanted ${JSON.stringify(target)} shell ${JSON.stringify(b)}`);
     }
   }
 

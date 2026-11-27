@@ -10,7 +10,7 @@ import styles from './ScopePicker.module.css';
 
 // The popup a scope face opens (HM1): a list of the things that face can say, with a field above it to narrow the list by typing. It is mounted by the face only while it is open, so a closed picker draws nothing and listens to
 // nothing. It is the browser's own popover (`popover="auto"`, the top layer): no ancestor clips it, nothing needs a z-index, and a press outside it, or the browser's own close request, closes it. It is placed once, from the face's
-// rectangle (core/picker/place.ts), and never follows the face: a resize closes it.
+// rectangle (core/picker/place.ts), and never follows the face: resizing the window or scrolling the scope group closes it.
 //
 // The focus stays in the field and names the active option (`aria-activedescendant`), as the palette's does, so an option is not a Tab stop: Tab leaves the picker and the browser goes on from the face. What the picker does with a
 // choice is the host's: it says which id was chosen and stays open until the host answers (the option goes busy, then is the current one, which closes the picker, or it gains a reason).
@@ -155,12 +155,15 @@ export function ScopePicker({ picker, anchor, id, onClose }: ScopePickerProps) {
     };
   }, [anchor]);
 
-  // The popup is placed once and never follows the face: a window that changes size closes it.
+  // The popup is placed once. Close it if the window resizes or its anchor moves in the header's horizontal scroller.
   useEffect(() => {
     const view = anchor.ownerDocument.defaultView;
+    const lane = anchor.parentElement;
+    lane?.addEventListener('scroll', onClose);
     view?.addEventListener('resize', onClose);
     return () => {
       view?.removeEventListener('resize', onClose);
+      lane?.removeEventListener('scroll', onClose);
     };
   }, [anchor, onClose]);
 

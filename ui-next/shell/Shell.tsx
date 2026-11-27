@@ -83,10 +83,8 @@ export type ShellProps = {
 };
 
 /**
- * The window frame (the slice plan, PR 1a.5; ch16 §B): the top row with the tab strip, the plugin frame (the rail's track, the sidebar, the page island with the scope lane above
- * its scroll owner) and the status bar. The island hosts the pages of the mounted tabs (S1b). Regions are landmarks with names, in reading order; F6 and Escape move between them.
- * Every region is drawn from the registration in the first commit and sized by CSS alone, so nothing measures and nothing shifts; a frame that is pending reserves the regions a
- * plugin's frame has. State is in ./core and ./Tree; see README.md for the contract and the decisions.
+ * The window header owns navigation, tabs, scope and window actions. The plugin frame holds the rail, sidebar and page island; the page host fills the island in either layout.
+ * F6 and Escape move between named regions. A loading plugin reserves its navigation, never a scope slot. See README.md for the frame contract.
  */
 export function Shell({ registration, tabs, renderPage, pageKey, empty, onChoose, onSidebarOpen, onSelectRail, onNewTab, onCloseWindow, panel, palette, notices, settings }: ShellProps) {
   const { plugin, rail, sidebar, scope, layout = 'document', pending = false, held = false } = registration;
@@ -103,16 +101,14 @@ export function Shell({ registration, tabs, renderPage, pageKey, empty, onChoose
 
   const hasRail = (rail !== undefined && rail.entries.length > 0) || pending || held;
   const hasSidebar = sidebar !== undefined || pending || held;
-  const hasLane = (scope !== undefined && scope.length > 0) || pending;
   const content = (
     <TabsProvider store={tabs}>
       <div ref={root} className={styles.window} data-shell-part="window">
-        <TopRow prefix={prefix} panelId={panelId} onNewTab={onNewTab} />
+        <TopRow prefix={prefix} panelId={panelId} onNewTab={onNewTab} scope={<ScopeLane label={`${plugin.name} scope`} faces={scope} />} />
         <div className={styles.frame} data-shell-part="frame" data-rail={hasRail ? '' : undefined} data-sidebar={hasSidebar ? '' : undefined}>
           {hasRail ? <Rail rail={rail} onSelect={onSelectRail} /> : null}
           {hasSidebar ? <Sidebar sidebar={sidebar} owner={rail?.current} onChoose={onChoose} onOpen={onSidebarOpen} memory={treeMemory} /> : null}
           <main className={styles.island} data-shell-region="island" data-shell-focus="" tabIndex={-1} aria-label={`${plugin.name} workspace`}>
-            {hasLane ? <ScopeLane label={scope === undefined || scope.length === 0 ? undefined : `${plugin.name} scope`} faces={scope ?? []} /> : null}
             {/* A document page that scrolls is a tab stop of its own, as the tabs pattern asks of a panel that may hold no focusable content: a page of text
                 scrolls from the keyboard. A pane scrolls nothing here: its own region is the stop. */}
             <PageHost renderPage={renderPage} pageKey={pageKey} empty={empty} layout={layout} prefix={prefix} panelId={panelId} />

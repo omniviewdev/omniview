@@ -1,4 +1,4 @@
-import { ErrorBody, LinkProvider, type PageHeaderCrumb } from '@omniviewdev/kit';
+import { ErrorBody, LinkProvider } from '@omniviewdev/kit';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactElement, type ReactNode } from 'react';
 import { DetailPage, ListPage, type PageMemory } from '../../page';
 import {
@@ -559,17 +559,15 @@ type DetailProps = {
   readonly page: string;
   readonly frames: Published<FrameV1>;
   readonly names: ConnectionNames;
-  readonly tabs: TabsStore;
   /** What the plugin asks of the bottom panel: `ctx.panel`. */
   readonly panelHost: PanelHostV1;
 };
 
 /**
  * The detail page's own component, as the list's: its data hook runs here with the route's parameters, and the scope lane's faces it answers are published for the frame to read. The tab's
- * title, glyph and path are not the hook's: they are the route's and the definition's (`describeDetail`), the same before this component has run. The back path above the heading is
- * the same path, its parents links that open in place.
+ * title, glyph and path are not the hook's: the tab model gets them from the route and the definition (`describeDetail`), even before this component mounts.
  */
-function DetailContribution({ entry, route, page: pageId, frames, names, tabs, panelHost }: DetailProps) {
+function DetailContribution({ entry, route, page: pageId, frames, names, panelHost }: DetailProps) {
   const page = entry.contribution.pages[pageId];
   if (page?.kind !== 'detail') {
     throw new Error(`The plugin has no detail page "${pageId}"`);
@@ -582,7 +580,7 @@ function DetailContribution({ entry, route, page: pageId, frames, names, tabs, p
   const source = useGuardedSource(read, entry.id);
   const { definition } = page;
   const pluginName = entry.contribution.plugin.name;
-  // The header's crumbs and the tab's path say the connection by its NAME: the one this page's lane says, else the one the window has learned for the connection, else none. The key is never drawn.
+  // Published frames carry labels. The footer reads the tab's description instead, which retains the list crumb's actual route.
   const name = connectionNameOf(scope, names, entry.id, connection);
   const face = useMemo(() => describeDetail(pluginName, route, definition, name), [pluginName, route, definition, name]);
   // Before the first paint, so the scope lane is there with the page; a frame equal to the one held changes nothing.
@@ -590,42 +588,15 @@ function DetailContribution({ entry, route, page: pageId, frames, names, tabs, p
     frames.publish(routeKey(route), { tab: { title: face.title, icon: definition.tile.icon }, path: (face.path ?? []).map((crumb) => (typeof crumb === 'string' ? crumb : crumb.label)), scope });
   }, [frames, route, face, definition.tile.icon, scope]);
 
-  const crumbs = (face.path ?? []).map((crumb): PageHeaderCrumb => {
-    if (typeof crumb === 'string') {
-      return { label: crumb };
-    }
-
-    const { route: parent } = crumb;
-    return {
-      label: crumb.label,
-      onSelect:
-        parent === undefined
-          ? undefined
-          : () => {
-            tabs.open({ route: parent }, { how: 'smart', source: 'crumb' });
-          },
-    };
-  });
-  return <DetailPage definition={definition} params={route.params} source={source} path={crumbs} />;
+  return <DetailPage definition={definition} params={route.params} source={source} />;
 }
-
-type OverviewProps = {
-  readonly entry: PluginEntry & { readonly phase: 'ready' };
-  readonly route: Route;
-  readonly page: string;
-  readonly frames: Published<FrameV1>;
-  readonly names: ConnectionNames;
-  /** What the plugin asks of the bottom panel: `ctx.panel`. */
-  readonly panelHost: PanelHostV1;
-};
 
 /**
  * The overview page's own component (HM3), as the detail's: its data hook runs here, for the route's connection and with no parameters (the page is the page of a scope, and a route to it names no object), and the faces of the scope lane it answers are published for the
  * frame to read. It draws the detail page unchanged, from a definition made from the overview's (`overviewAsDetail`) and the connection's NAME as the one parameter that definition names its subject by, so the heading is the connection's name (the one this page's lane says,
- * else the one the window has learned; the key is never drawn) and the page's title while the route names none. The tab's title, glyph and path are the route's and the definition's (`describeOverview`), the same before this component has run, and the back path above the
- * heading is the same path: the plugin and the connection.
+ * else the one the window has learned; the key is never drawn) and the page's title while the route names none. The tab model gets its title, glyph and path from the route and the definition (`describeOverview`).
  */
-function OverviewContribution({ entry, route, page: pageId, frames, names, panelHost }: OverviewProps) {
+function OverviewContribution({ entry, route, page: pageId, frames, names, panelHost }: DetailProps) {
   const page = entry.contribution.pages[pageId];
   if (page?.kind !== 'overview') {
     throw new Error(`The plugin has no overview page "${pageId}"`);
@@ -649,7 +620,7 @@ function OverviewContribution({ entry, route, page: pageId, frames, names, panel
   }, [frames, route, face, definition.tile.icon, path, scope]);
 
   const params = useMemo(() => ({ [OVERVIEW_SUBJECT]: name ?? '' }), [name]);
-  return <DetailPage definition={detail} params={params} source={source} path={path.map((label): PageHeaderCrumb => ({ label }))} />;
+  return <DetailPage definition={detail} params={params} source={source} />;
 }
 
 type ConnectionFaceProps = {
@@ -858,7 +829,7 @@ function HostPage({ entries, route, tabId, pluginName, frames, names, tabs, plat
         fallback={(retry) => <PlaceholderPage title={title} state={{ kind: 'failed', message: 'This page failed to display.', retry }} />}
       >
         {found?.kind === 'detail' ? (
-          <DetailContribution entry={entry} route={route} page={page} frames={frames} names={names} tabs={tabs} panelHost={panelHosts(entry.id, panelConnection)} />
+          <DetailContribution entry={entry} route={route} page={page} frames={frames} names={names} panelHost={panelHosts(entry.id, panelConnection)} />
         ) : found?.kind === 'overview' ? (
           <OverviewContribution entry={entry} route={route} page={page} frames={frames} names={names} panelHost={panelHosts(entry.id, panelConnection)} />
         ) : found?.kind === 'custom' ? (

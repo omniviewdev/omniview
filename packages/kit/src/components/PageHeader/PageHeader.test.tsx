@@ -421,7 +421,6 @@ describe('PageHeader, the lane beside or under the title', () => {
   };
 
   it('is short for three controls or fewer, beside for a lane that fits one row, and default for a long one', () => {
-    expect(lane({ commands: { utility: command('refresh', 'Refresh items') } })).toBe('short');
     const many = { primary: command('scale', 'Scale'), secondary: [command('edit', 'Edit'), command('restart', 'Restart')], danger: command('delete', 'Delete'), utility: command('refresh', 'Refresh items'), menu: [{ id: 'x', label: 'X', onSelect: noop }] };
     expect(lane({ commands: many })).toBe('beside');
     expect(lane({ title: 'a-deployment-name-that-is-much-too-long-for-the-room-its-commands-leave-it', commands: many })).toBe('default');
