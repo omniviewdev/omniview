@@ -571,6 +571,7 @@ const INTEGRATION_CONTROLS = {
   'integration-canary-end-log': /after the terminals ended no host log line holds the session's nonce/,
   'integration-canary-end-state': /after the terminals ended no file of the state root holds the session's nonce/,
   'integration-canary-end-tmp': /after the terminals ended no file of the temporary directory holds the session's nonce/,
+  'integration-canary-end-shimdir': /after the terminals ended no file under the host's integration directories/,
   'integration-canary-errors': /the session's nonce is in no error or console line of the page/,
 };
 /** The second page of scenario r7: the 404s of its own calls are what the scenario asks for (RUNTIME_ALLOW). */
@@ -12859,6 +12860,13 @@ async function checkTerminalIntegration(page, host, engine) {
       const files = await filesUnder(os.tmpdir(), { depth: 3, since: sessionStart, skip: (full) => full.startsWith(stateRoot(work)) });
       assert.equal(anyNonce(await blobOf(files)), false, `${engine}: after the terminals ended no file of the temporary directory holds the session's nonce (${String(files.length)} files written since the check began, read, of any type)`);
     });
+    // The host's own integration directory (`<TMPDIR>/omniview-integration-*`, the fish file four levels down) is searched to any depth, a nonce left there is the host's own fault.
+    const plantedShim = path.join(os.tmpdir(), `omniview-integration-seamplanted-${String(process.pid)}`);
+    await asserting('integration-canary-end-shimdir', async () => { await mkdir(path.join(plantedShim, 'data', 'fish', 'vendor_conf.d'), { recursive: true }); await writeFile(path.join(plantedShim, 'data', 'fish', 'vendor_conf.d', 'omniview-integration.fish'), `# ${lastNonce}\n`); }, async () => rm(plantedShim, { recursive: true, force: true }), async () => {
+      const shimDirs = (await readdir(os.tmpdir())).filter((entry) => entry.startsWith('omniview-integration-')).map((entry) => path.join(os.tmpdir(), entry));
+      const files = (await Promise.all(shimDirs.map((one) => filesUnder(one, { depth: 32 })))).flat();
+      assert.equal(anyNonce(await blobOf(files)), false, `${engine}: after the terminals ended no file under the host's integration directories (omniview-integration-*, any depth) holds the session's nonce (${String(shimDirs.length)} directories left, ${String(files.length)} files read)`);
+    });
     note('canary after the end', `after the terminals ended the nonces of ${String(nonces.length)} sessions are in no host log line, no file of the state root and no file written to the temporary directory since the check began`);
     for (const file of INTEGRATION_FILES) {
       const target = path.join(home, file);
@@ -12875,7 +12883,7 @@ async function checkTerminalIntegration(page, host, engine) {
       );
     }
 
-    note('user files', `${INTEGRATION_FILES.join(', ')} have the same sha256 after both shells' sessions (seeded with content, run by the shells)`);
+    note('user files', `${INTEGRATION_FILES.filter((file) => fishRan || !file.endsWith('config.fish')).join(', ')} have the same sha256 after the sessions (seeded with content, run by the shells)${fishRan ? '' : '; config.fish NOT RUN (no fish)'}`);
     assert.deepEqual(errors.filter((message) => !CUT_BY_A_RELOAD.test(message)), [], `${engine}: the page raised no error but the calls a reload cut`);
     verdict(engine);
     console.log(`terminal-integration ${engine}:\n${observed.map((line) => `  ${line}`).join('\n')}`);
