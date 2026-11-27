@@ -56,14 +56,17 @@ PY
 mgr=$root/backend/pkg/terminal/manager.go
 # vitest controls mutate the tracked file in place and put it back (the trap restores it, whatever happens).
 restores=()
-restore_all() { local pair; for pair in "${restores[@]:-}"; do [ -n "$pair" ] && cp "${pair%%|*}" "${pair##*|}"; done; rm -rf "$scratch"; }
+restore_all() { local pair i; for ((i = ${#restores[@]} - 1; i >= 0; i--)); do pair=${restores[i]}; [ -n "$pair" ] && cp "${pair%%|*}" "${pair##*|}"; done; rm -rf "$scratch"; }
 trap restore_all EXIT
 
 vt_run() { # vt_run <test file> -> output in $scratch/last
   pnpm exec vitest run "$1" >"$scratch/last" 2>&1
 }
 
-vt_expect_pass() { if vt_run "$2"; then echo "ok    $1"; else echo "FAIL  $1 (expected pass)"; grep -E "×|AssertionError|Error:" "$scratch/last" | head -8; fail=1; fi; }
+vt_reset() { local pair i; for ((i = ${#restores[@]} - 1; i >= 0; i--)); do pair=${restores[i]}; [ -n "$pair" ] && cp "${pair%%|*}" "${pair##*|}"; done; restores=(); }
+
+# A pass is the second half of a control (the fault and the test with its assertion removed): the files go back after it.
+vt_expect_pass() { if vt_run "$2"; then echo "ok    $1"; else echo "FAIL  $1 (expected pass)"; grep -E "×|AssertionError|Error:" "$scratch/last" | head -8; fail=1; fi; vt_reset; }
 
 vt_expect_trip() { # vt_expect_trip <label> <test file> <assertion text in the failure>
   if vt_run "$2"; then echo "FAIL  $1 (expected the fault to be detected)"; fail=1; return; fi
@@ -143,7 +146,6 @@ vt_mutate "$ch" 's = s.replace("if (!isClosing(error)) {\n          throw error;
 vt_expect_trip "page: a close that rejects on close-timeout is detected by the resolves assertion" "ui-next/shell/panel/terminal/terminalChannel.test.ts" "promise rejected"
 vt_mutate "$cht" 's = s.replace("await expect(r.channels.close(\x27t1\x27)).resolves.toBeUndefined();", "await r.channels.close(\x27t1\x27).catch(() => undefined);")'
 vt_expect_pass "page: the same fault passes undetected when the resolves assertion is removed" "ui-next/shell/panel/terminal/terminalChannel.test.ts"
-cp "${restores[0]%%|*}" "$ch"; cp "${restores[1]%%|*}" "$cht"
 
 echo "== item 2 (legacy drawer): a close-timeout is logged as an error"
 pv=$root/ui/providers/BottomDrawer/provider.tsx
@@ -153,7 +155,7 @@ vt_expect_trip "legacy: a drawer that logs the timeout is detected by the not-lo
 vt_mutate "$pvt" 'import re; s = re.sub(r"    expect\(log\.error\)\.not\.toHaveBeenCalled\(\);\n", "", s).replace("expect(log.error).toHaveBeenCalledTimes(1)", "expect(log.error).toHaveBeenCalled()")'
 vt_expect_pass "legacy: the same fault passes undetected when the not-logged assertion is removed" "ui/providers/BottomDrawer/__tests__/provider.test.tsx"
 vt_mutate "$pv" 's = s.replace("result.reason instanceof Error && !isClosing(result.reason)", "false")'
-vt_expect_trip "legacy: a close of several tabs that reports no failure is detected by the one-failure assertion" "ui/providers/BottomDrawer/__tests__/provider.test.tsx" "expected \"vi.fn()\" to be called 1 times"
+vt_expect_trip "legacy: a close of several tabs that reports no failure is detected by the one-failure assertion" "ui/providers/BottomDrawer/__tests__/provider.test.tsx" "expected \"vi.fn()\" to be called at least once"
 vt_mutate "$pvt" 'import re; s = re.sub(r"    await waitFor\(\(\) => \{\n      expect\(log\.error\)\.toHaveBeenCalledTimes\(1\);\n    \}\);\n    expect\(log\.error\)\.toHaveBeenCalledWith\(real[^\n]*\n", "    void real;\n", s)'
 vt_expect_pass "legacy: the same fault passes undetected when the failure assertions are removed" "ui/providers/BottomDrawer/__tests__/provider.test.tsx"
 
