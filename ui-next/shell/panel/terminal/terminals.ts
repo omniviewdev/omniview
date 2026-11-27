@@ -9,6 +9,7 @@ import { ClosePrompt } from './ClosePrompt';
 import { createCloseGuard } from './closeGuard';
 import type { EngineLoader } from './engine';
 import type { TerminalBusy, TerminalDirectory, TerminalFeedHandle, TerminalRestart, TerminalTarget } from './feed';
+import { createFinishedNotices } from './finishedNotice';
 import { keyOf } from './keys';
 import { localHereTarget, localProfileTarget, localShellTarget } from './localShell';
 import { appShellList, shellMenu, type ShellChoice, type ShellList, type TerminalProfile } from './profiles';
@@ -42,6 +43,11 @@ async function answered(question: Promise<TerminalBusy>): Promise<TerminalBusy> 
       },
     );
   });
+}
+
+/** Whether the window is shown to the person: the document is visible (it is not minimised, and not on another desktop or tab). */
+function documentIsVisible(): boolean {
+  return document.visibilityState === 'visible';
 }
 
 /**
@@ -163,7 +169,21 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
     return items;
   };
 
-  const sessions = createTerminalSessions(store, { reattach, restart, openExternal });
+  // A command that finished is told to the window's notices when it ran long in a terminal that is not in front. In front is the session on screen in an open panel, in a window that is shown; Show brings the terminal forward, and the body
+  // that shows it moves its view to the command (`TerminalSessions.requestJump`).
+  const finishedNotices =
+    options.notices === undefined
+      ? undefined
+      : createFinishedNotices({
+        notices: options.notices,
+        shown: (session) => store.selectors.isShown(store.getSnapshot(), session) && (options.windowShown ?? documentIsVisible)(),
+        show: (session, command) => {
+          store.revealSession(session);
+          sessions.requestJump(session, command);
+        },
+        nameOf: (session) => store.selectors.sessionItem(store.getSnapshot(), session)?.name,
+      });
+  const sessions = createTerminalSessions(store, { reattach, restart, openExternal, finished: finishedNotices?.finished });
   const screenReader = createScreenReaderChoice(restored.screenReader);
   // What the host said of the terminals left for this window, until a window that is attached opens them; whether it was asked (once for the life of the window: a development build attaches, stops and attaches again);
   // and how many attaches are on.
