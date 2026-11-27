@@ -214,7 +214,7 @@ run screen-flush-reads-nothing "$P/screen.ts" \
 
 run screen-continue-keeps-the-old-feed "$P/screen.ts" \
   's/^      stopFeed = next\.subscribe\(heard\);$/      stopFeed = () => undefined;/' \
-  'listens to the new feed and lets go of the ended one|draws what the new feed holds after the separator'
+  'listens to the new feed and lets go of the ended one|draws what the new feed holds after the separator|two restarts before the middle feed'"'"'s bytes are parsed, on the real emulator'
 
 # ---- the body and the words ----
 
@@ -306,7 +306,7 @@ run gutter-seal-keeps-the-prompt "$P/gutter/commandGutter.ts" \
 
 run screen-seal-at-once "$P/screen.ts" \
   's/^      sealAfterQueued\(emulator\);$/      gutter?.seal();/' \
-  'keeps a mark in an old write that the emulator has not parsed at the restart|answers a cursor position query of the NEW feed|reaches the new feed: the barrier after the old writes ends the muting|writes no more of the ended feed'"'"'s replay after the restart'
+  'keeps a mark in an old write that the emulator has not parsed at the restart|writes no more of the ended feed'"'"'s replay after the restart|does not send to the new feed what the OLD feed'"'"'s queued bytes make|sends nothing the middle feed'"'"'s queued bytes make the emulator answer to the third feed|still mutes what the old queued bytes make the emulator answer'
 
 run screen-flush-drops-marks "$P/screen.ts" \
   '/    flush: \(\) => \{/,/^    },/ s/if \(out\.chunks\.length === 0 \&\& out\.marks === undefined\) \{/if (out.chunks.length === 0) {/' \
