@@ -347,6 +347,29 @@ describe('the ratios', () => {
   });
 });
 
+describe('which bodies are on screen', () => {
+  it('every pane of the shown tool\'s group is shown, and only while the panel is open and the tool is on screen', () => {
+    const h = terminalWith(3);
+    const shown = (id: string): boolean => h.store.selectors.isShown(h.snapshot(), id);
+    expect(['s1', 's2', 's3'].map(shown)).toEqual([true, true, true]);
+    h.store.openSession(session('terminal', 'host', 'aside'), { reveal: false });
+    expect(shown('s4')).toBe(false);
+    h.store.hide();
+    expect(['s1', 's2', 's3'].map(shown)).toEqual([false, false, false]);
+    h.store.show({ tool: 'logs' });
+    expect(['s1', 's2', 's3'].map(shown)).toEqual([false, false, false]);
+    h.store.show({ tool: 'terminal' });
+    expect(['s1', 's2', 's3'].map(shown)).toEqual([true, true, true]);
+  });
+
+  it('a tool with no group shows its one session, as before', () => {
+    const h = terminalWith(1);
+    h.store.openSession(session('terminal', 'host', 'two'), { reveal: false });
+    expect(h.store.selectors.isShown(h.snapshot(), 's1')).toBe(true);
+    expect(h.store.selectors.isShown(h.snapshot(), 's2')).toBe(false);
+  });
+});
+
 describe('what a tool draws', () => {
   it('is its panes, shares and active pane, and the same object until one of them changes', () => {
     const h = terminalWith(3);
