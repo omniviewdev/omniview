@@ -1400,9 +1400,11 @@ export function createHost(options = {}) {
     return known;
   }
 
-  /** The title a program set and whether a program runs (protocol 4b): kept, and said to the stream that holds the terminal when that stream asked for it. `faults.titleKept`: the end of the program is never said. */
+  /** The title a program set and whether a program runs (protocol 4b): kept, and said to the stream that holds the terminal when that stream asked for it. `faults.titleKept`: the FIRST end of a program is never said (the host goes on saying that it runs), the later ones are, so that a fault of one section is no fault of the next. */
   function setTitle(pty, title, program) {
-    pty.title = { v: 1, title, program: faults.titleKept ? true : program };
+    const kept = faults.titleKept === true && !program && pty.titleKept !== true;
+    if (kept) pty.titleKept = true;
+    pty.title = { v: 1, title, program: kept ? true : program };
     if (pty.holder !== null && pty.holder !== undefined && pty.holder.title) {
       deliver(pty.holder, jsonFrame(FRAME.title, pty.title));
       log.titles.push({ id: pty.id, program: pty.title.program, length: title.length });
