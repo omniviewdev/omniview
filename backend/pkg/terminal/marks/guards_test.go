@@ -111,12 +111,21 @@ func TestAMarkOfADirectoryPrintsNoDirectory(t *testing.T) {
 	}
 }
 
-func TestATrustedDirectoryHasItsEscapedControlBytesStripped(t *testing.T) {
+func TestATrustedDirectoryWithAnEscapedControlByteIsUnknownAndNeverAStrippedPath(t *testing.T) {
 	s := newTestScanner(t, newClock(), 0)
-	ms := feedAll(s, osc(`633;P;Cwd=/tmp/a\x1bb\x07c\x00d;`+testNonce))
-	sameKinds(t, ms, KindCwd)
-	if ms[0].Cwd != "/tmp/abcd" {
-		t.Fatalf("the directory is %q, want /tmp/abcd", ms[0].Cwd)
+	sameKinds(t, feedAll(s, osc(`633;P;Cwd=/tmp/known;`+testNonce)), KindCwd)
+	for _, body := range []string{`633;P;Cwd=/tmp/a\x1bb;`, `633;P;Cwd=/tmp/a\x07c;`, `633;P;Cwd=/tmp/a\x00d;`, `633;P;Cwd=/tmp/a\x7fd;`} {
+		if ms := feedAll(s, osc(body+testNonce)); len(ms) != 0 {
+			t.Fatalf("%q gives marks %v, want none", body, ms)
+		}
+		if dir, trust := s.Log().Cwd(); dir != "" || trust != TrustUnverified {
+			t.Fatalf("%q leaves the tracked directory %q (%v), want unknown", body, dir, trust)
+		}
+		// A later nonce'd directory that is sound sets it again: clearing hides no later proof.
+		sameKinds(t, feedAll(s, osc(`633;P;Cwd=/tmp/known;`+testNonce)), KindCwd)
+		if dir, trust := s.Log().Cwd(); dir != "/tmp/known" || trust != TrustNonce {
+			t.Fatalf("the next sound directory is %q (%v)", dir, trust)
+		}
 	}
 }
 
