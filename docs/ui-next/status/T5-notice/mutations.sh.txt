@@ -8,7 +8,7 @@
 set -u
 ROOT=$(pwd)
 PKG=./backend/pkg/terminal
-TESTS='TestTheDirectoryIsTheOne|TestADirectoryNoNonce|TestAProvedDirectory|TestTheEventsLanes|TestATerminalWithoutIntegrationAnswers|TestAProofThat|TestTheShellsOwn'
+TESTS='TestTheDirectoryIsTheOne|TestADirectoryNoNonce|TestAProvedDirectory|TestTheEventsLanes|TestATerminalWithoutIntegrationAnswers|TestAProofThat|TestTheShellsOwn|TestAReplacedShell|TestADirectoryReachedThrough|TestAMacShaped|TestARemovedDirectoryIsUnknown'
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
@@ -38,8 +38,8 @@ PY
 }
 
 run no-tracking,tracked,follows,logical-spelling,events-tracked backend/pkg/terminal/manager.go 'tracked, ok := s.trackedDirectory()' 'tracked, ok := s.trackedDirectory(); ok = false'
-run stale-proof,events-stale-proof backend/pkg/terminal/manager.go 'os.SameFile(trackedInfo, pulledInfo) {' 'os.SameFile(trackedInfo, pulledInfo) || true {'
-run logical-spelling backend/pkg/terminal/manager.go 'os.SameFile(trackedInfo, pulledInfo) {
+run stale-proof,events-stale-proof,real-exec-stale backend/pkg/terminal/manager.go 'os.SameFile(trackedInfo, pulledInfo) {' 'os.SameFile(trackedInfo, pulledInfo) || true {'
+run logical-spelling,real-logical,real-mac-shape backend/pkg/terminal/manager.go 'os.SameFile(trackedInfo, pulledInfo) {
 		return tracked, ""' 'os.SameFile(trackedInfo, pulledInfo) {
 		return pulled, ""'
 exit $BAD
