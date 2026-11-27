@@ -210,6 +210,7 @@ import { AGAIN_LABEL, buildConnectionsProcess, buildPortsProcess, buildProcess, 
 import { ASKED, LAPSE_MS, LAPSE_WORDS, LAPSED_LABEL, LONG_ID_LABEL, MANY_LABEL, STOP_ALL_LABEL } from '../fixture/src/ports.ts';
 import { startWithPortRetry } from './hostStart.mjs';
 import { uninstallWords } from '../../shell/plugins-page/core/words.ts';
+import { appearanceOrder } from '../../shell/settings/model/material.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const server = path.join(root, 'bin/Omniview-server');
@@ -6376,8 +6377,10 @@ const SETTINGS_DRAWN_TYPES = ['toggle', 'integer', 'float', 'password', 'text', 
 /** The rows a page of Settings draws for one category of the host's snapshot, in the order it draws them (by id) and with the host's own label: what the host declares, less what the first slice leaves out. */
 function settingsRowsOf(snapshot, category) {
   const settings = snapshot.categories[category]?.settings ?? {};
+  // The rule of the page (shell/settings/model/adapter.ts): with the material settings declared, the rows are in material.ts's order, the unlisted last, ties by id.
+  const rank = (key) => (category === 'appearance' && settings.windowMaterial !== undefined ? appearanceOrder(`${category}.${key}`) : 0);
   return Object.keys(settings)
-    .sort()
+    .sort((a, b) => rank(a) - rank(b) || (a < b ? -1 : a > b ? 1 : 0))
     .map((key) => ({ id: `${category}.${key}`, setting: settings[key] }))
     .filter(({ id, setting }) => {
       const secret = setting.sensitive === true || setting.type === 'password';
