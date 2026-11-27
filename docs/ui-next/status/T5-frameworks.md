@@ -68,7 +68,11 @@ Not controlled, said plainly: a script fault that makes a DUPLICATE record. Inst
 
 ## Commands run and results
 
-See the end of this file for the final run (filled after the last run).
+Environment: Go 1.27.4, `GOWORK=off GOTOOLCHAIN=local`; fish through `/tmp/fishdl/run.sh` (user namespace, overlay of `/usr/share`).
+- `go test -race ./backend/pkg/terminal/...` (with fish visible): `ok terminal 264s`, `ok terminal/marks 12.6s` (on the green commit `b448e41ef`; the later commit changes test code layout and `decodePercent`'s named returns only, and the controls run below ran the framework tests on it).
+- `bash docs/ui-next/status/T5-frameworks/mutations.sh.txt` whole, on `f7ae8a9bf` plus the two optional-set edits of this commit: 15 controls, both halves, exit 0.
+- `~/gl215/golangci-lint run --new-from-rev=origin/main ./backend/pkg/terminal/...`: 0 issues (the first run found 4: gochecknoglobals, gocognit, 2 nonamedreturns; fixed).
+- vitest `ui-next/shell/panel/terminal` with the main checkout's `node_modules` linked: 1532 tests pass, 19 test FILES fail to load (workspace packages not resolvable in this worktree: environment, not run to green). The page reads a mark's `cwd` as optional and `directoryOf` treats `''` as no directory (`execFeed.ts:205-212`), and the host only puts a cwd in a command when its trust is `nonce` (`channel_marks.go:129-145`), so a command with no cwd is the existing case.
 
 ## Not verified
 
