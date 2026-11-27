@@ -63,7 +63,7 @@ run threshold-is-exclusive "$NOTICE" "$NOTICET" 'is raised from the threshold up
 run front-terminal-is-told "$NOTICE" "$NOTICET" 'is not raised for a terminal the person is looking at' "told.has(key) || deps.shown(session)" "told.has(key)"
 run command-told-twice "$NOTICE" "$NOTICET" 'is raised once for each command' "      remember(key);" ""
 run control-characters-pass "$NOTICE" "$NOTICET" 'bounds the words and keeps a command line' "text.replace(CONTROL, ' ')" "text"
-run show-goes-nowhere "$NOTICE" "$NOTICET" 'brings the terminal forward and jumps|newest command' "              deps.show(session, finished.id, generation);" ""
+run show-goes-nowhere "$NOTICE" "$NOTICET" 'brings the terminal forward and jumps|newest command|tells the terminal of the session' "              deps.show(session, finished.id, generation);" ""
 
 SESSIONS=$DIR/TerminalSessions.ts
 SESSIONST=$DIR/TerminalSessionsNotice.test.ts
