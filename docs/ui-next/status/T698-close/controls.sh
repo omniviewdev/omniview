@@ -152,6 +152,10 @@ vt_mutate "$pv" 's = s.replace("=> parseAppError(error).type === \x27omniview:te
 vt_expect_trip "legacy: a drawer that logs the timeout is detected by the not-logged assertion" "ui/providers/BottomDrawer/__tests__/provider.test.tsx" "expected \"vi.fn()\" to not be called at all"
 vt_mutate "$pvt" 'import re; s = re.sub(r"    expect\(log\.error\)\.not\.toHaveBeenCalled\(\);\n", "", s).replace("expect(log.error).toHaveBeenCalledTimes(1)", "expect(log.error).toHaveBeenCalled()")'
 vt_expect_pass "legacy: the same fault passes undetected when the not-logged assertion is removed" "ui/providers/BottomDrawer/__tests__/provider.test.tsx"
+vt_mutate "$pv" 's = s.replace("result.reason instanceof Error && !isClosing(result.reason)", "false")'
+vt_expect_trip "legacy: a close of several tabs that reports no failure is detected by the one-failure assertion" "ui/providers/BottomDrawer/__tests__/provider.test.tsx" "expected \"vi.fn()\" to be called 1 times"
+vt_mutate "$pvt" 'import re; s = re.sub(r"    await waitFor\(\(\) => \{\n      expect\(log\.error\)\.toHaveBeenCalledTimes\(1\);\n    \}\);\n    expect\(log\.error\)\.toHaveBeenCalledWith\(real[^\n]*\n", "    void real;\n", s)'
+vt_expect_pass "legacy: the same fault passes undetected when the failure assertions are removed" "ui/providers/BottomDrawer/__tests__/provider.test.tsx"
 
 [ $fail -eq 0 ] && echo "ALL CONTROLS BEHAVED" || echo "CONTROLS FAILED"
 exit $fail
