@@ -349,6 +349,8 @@ export function createPanesSections({ check, note, report, runAxe }) {
         if (host.log.created.length !== 3 || new Set(host.log.created.map((made) => made.id)).size !== 3) threeProblems.push('three distinct terminals were not made');
       }
 
+      // A photograph for looking at (`SHOTS=<dir>`): the three panes, the keyboard in the last.
+      if (process.env.SHOTS !== undefined && process.env.SHOTS !== '') await page.screenshot({ path: `${process.env.SHOTS}/panes-${engine}-${vp}.png` });
       check('panes.three', threeProblems.length === 0, `${tag}: three panes: ${threeProblems.length === 0 ? `${widthsOf(three).map(rounded).join(', ')} px, two sashes, three terminals` : threeProblems.join('; ')}`);
     } finally {
       await session.close();
