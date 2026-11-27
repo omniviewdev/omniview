@@ -505,6 +505,8 @@ const ISOLATION_CONTROLS = {
 };
 /** The second page of scenario r7: the 404s of its own calls are what the scenario asks for (RUNTIME_ALLOW). */
 const ISOLATION_PAGES = new WeakSet();
+/** The tab that holds the terminal in the displaced-close control of scenario r7, while the control ends the terminal by a call: its lane says the terminal ended, what the check types there is an Enter on that lane, which restarts it (#695 step 5) and lets the ended feed go, and the close of that feed dismisses a terminal the host no longer holds. */
+const ENDED_BY_CALL_PAGES = new WeakSet();
 const PT_GROUP = 'problems-operations';
 const PORTS_GROUP = 'ports';
 const CONTROL = process.env.SEAM_CONTROL ?? '';
@@ -842,6 +844,11 @@ const RUNTIME_ALLOW = [
     phases: [ISOLATION_GROUP],
     reason: "scenario r7 names the first terminal's id in each of the 13 bindings of the events lane that take a bare session id, from its second page, to see that each answers what an id that never existed gets (`omniview:session/not-found`, which the host answers as a 422 whose cause is the 404): that refusal is the answer the scenario asserts. Only those 13 methods, only that answer, only for the second page of r7, and only for the calls the check itself makes (`callAsPage`: their call id starts with `seam-`), so that the same refusal of a call of the page's own code stays a failure",
     test: (failure) => failure.status === 422 && ISOLATION_PAGES.has(failure.page) && failure.asked.includes('"call-id":"seam-') && BARE_BINDINGS.some(([method]) => failure.asked.includes(`"methodID":${String(methodIdOf(EXEC_SERVICE, method))},`)) && failure.answered.includes('omniview:session/not-found'),
+  },
+  {
+    phases: [ISOLATION_GROUP],
+    reason: "the control displaced-close of scenario r7 ends the terminal by a call while the tab that holds it still shows it; the check then types a line into that tab, and the Enter on the lane of an ended terminal restarts it (#695 step 5): the ended feed is let go and its close asks the host to dismiss the terminal, which the host no longer holds and answers `omniview:session/not-found` (a 422 whose cause is the 404). The page treats that answer as the terminal being gone, which it is. Only DismissChannelTerminal, only that answer, only for the tab that holds the terminal of that control (ENDED_BY_CALL_PAGES: set while the control ends the terminal by a call), so a dismiss refused anywhere else, or in the run without the control, is still a failure.",
+    test: (failure) => failure.status === 422 && ENDED_BY_CALL_PAGES.has(failure.page) && failure.asked.includes(`"methodID":${String(methodIdOf(EXEC_SERVICE, 'DismissChannelTerminal'))},`) && failure.answered.includes('omniview:session/not-found'),
   },
 ];
 
@@ -9517,6 +9524,8 @@ async function checkTerminalReattach(page, base, engine) {
   assert.deepEqual([closesOf(streams, second), sinceOf(wire, 'CloseChannelTerminal', second, two.startedAt).length], [1, 0], `${engine}: the page asked the host to end it with one close frame on the terminal's live stream (no call of CloseChannelTerminal); the streams of it: ${JSON.stringify(streams.of(second).map((socket) => ({ open: socket.openedMs, closed: socket.closedMs, frames: socket.frames.filter((frame) => frame.type !== 'ack' && frame.type !== 'output').map((frame) => `${frame.dir}:${frame.type}`) })))}; its calls: ${JSON.stringify(wire.calls.filter((call) => call.askedMs >= two.startedAt).map((call) => `${call.method}:${JSON.stringify(call.args).slice(0, 60)}`).slice(-6))}`);
   names = await tabLabelsOf(page);
   assert.equal(names.length, 1, `${engine}: one tab is left`);
+  // The window's state is written a quiet 400 ms after the last change (session/lifecycle.ts), and a write started by a reload's pagehide is not promised to finish: a reload before the host holds the close would bring the closed tab back as a terminal that is gone ("bash (2), ended"), and it would stay.
+  await waitUntil('the host to hold the saved window without the terminal whose tab was closed', async () => !String((await callHost(base, 'GetState', 'main')).session ?? '').includes(second), 30_000);
   note('two terminals', `both came back ${(two.took / 1000).toFixed(2)} s after the reload began, in their order, each with its own shell (pids ${String(pid)} and ${String(pidB)}); closing the second ended it`);
 
   // (2a) A reload in the middle of a flood (3,000,000 lines, about 26 MB through the pty: longer than the reload takes whatever the machine's speed): the host holds the shell at its mark while nobody acknowledges, the new page's attach gives it the replay (which it
@@ -10727,6 +10736,7 @@ async function checkTerminalIsolation(browser, getHost, engine) {
     watchRequests(p2);
     PAGE_LABELS.set(p1, 'the tab that is displaced and closes');
     PAGE_LABELS.set(p2, 'the tab that holds the terminal');
+    if (endByCall) ENDED_BY_CALL_PAGES.add(p2);
     const seen1 = evidenceOf(p1);
     const seen2 = evidenceOf(p2);
     let ownTerminal;
