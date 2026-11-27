@@ -63,7 +63,7 @@ jobs:
       contents: read
       packages: read
     container:
-      image: ghcr.io/omniviewdev/omniview-ci@sha256:289353ab91800166914d98c79ab71fa06b2261e7963c72a695dca606e36dd784
+      image: ghcr.io/omniviewdev/omniview-ci@sha256:eadd7208e3da5280deb6f15bcf560017926a6a87ab9fb51951c2030f27bdf1b6
       options: --init
       credentials:
         username: ${{ github.actor }}

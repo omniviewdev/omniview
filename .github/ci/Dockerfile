@@ -52,6 +52,8 @@ RUN : "${NODE_VERSION:?pass the inputs of the image: node scripts/ci/check-image
         libgtk-4-dev libwebkitgtk-6.0-dev libwayland-dev \
         build-essential pkg-config \
         git curl ca-certificates unzip zip zstd sudo jq dbus-x11 xvfb \
+        # zsh and fish: real shells besides bash, for the terminal open-where seam and the probes that start a listed shell that is not the default.
+        zsh fish \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
 RUN curl -fsSL --retry 3 --retry-delay 2 -o /tmp/go.tar.gz "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" \
