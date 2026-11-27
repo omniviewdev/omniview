@@ -4,7 +4,7 @@ import { limitsOf, resolveHeight } from '../core/panel';
 import { usePanel } from './context';
 import { PanelBody } from './PanelBody';
 import { PanelHeader } from './PanelHeader';
-import { useHeight, useOpen } from './hooks';
+import { useHeight, useOpen, usePanelSelector } from './hooks';
 import styles from './Panel.module.css';
 import { useSplitter } from './useSplitter';
 
@@ -33,6 +33,7 @@ export function Panel({ platform }: PanelProps) {
   const panelId = `${ids}-region`;
   const element = useRef<HTMLElement>(null);
   const open = useOpen();
+  const maximized = usePanelSelector((state) => state.maximized);
   const height = useHeight();
   const viewport = useViewportHeight();
   // The mock re-clamps what it stored on load and on every resize of the window (S103): a size that does not fit the window is brought within it for good, and when the window grows
@@ -45,7 +46,7 @@ export function Panel({ platform }: PanelProps) {
   const size = Math.round(resolveHeight(height, viewport));
   return (
     <>
-      {open ? (
+      {open && !maximized ? (
         <div
           className={styles.handle}
           role="separator"
@@ -72,13 +73,14 @@ export function Panel({ platform }: PanelProps) {
         id={panelId}
         className={styles.panel}
         hidden={!open}
+        data-maximized={maximized ? '' : undefined}
         aria-label="Panel"
         data-shell-region="panel"
         data-ov-menu-scope=""
         data-shell-part="panel"
         style={{ '--_size': height === null ? undefined : `${String(height)}px` }}
       >
-        <PanelHeader prefix={prefix} controls={deck} platform={platform} />
+        <PanelHeader prefix={prefix} controls={deck} maximized={maximized} platform={platform} />
         <PanelBody prefix={prefix} id={deck} />
       </section>
     </>

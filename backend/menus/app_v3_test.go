@@ -54,6 +54,7 @@ func viewItems(goos string) []menuRow {
 		return []menuRow{
 			{Label: "Search…"},
 			{Label: "Toggle Panel", Accelerator: rendered("Cmd+J")},
+			{Label: "Toggle Maximized Panel", Accelerator: rendered("Cmd+Shift+J")},
 			{Label: "New Terminal", Accelerator: rendered("Ctrl+Shift+`")},
 			{Label: "Next Tab", Accelerator: rendered("Cmd+Shift+]")},
 			{Label: "Previous Tab", Accelerator: rendered("Cmd+Shift+[")},
@@ -62,6 +63,7 @@ func viewItems(goos string) []menuRow {
 		return []menuRow{
 			{Label: "Search…\tCtrl+K"},
 			{Label: "Toggle Panel\tCtrl+J"},
+			{Label: "Toggle Maximized Panel", Accelerator: rendered("Ctrl+Alt+Shift+J")},
 			{Label: "New Terminal", Accelerator: rendered("Ctrl+Shift+T")},
 			{Label: "Next Tab\tCtrl+Tab"},
 			{Label: "Previous Tab\tCtrl+Shift+Tab"},
@@ -70,6 +72,7 @@ func viewItems(goos string) []menuRow {
 		return []menuRow{
 			{Label: "Search…"},
 			{Label: "Toggle Panel"},
+			{Label: "Toggle Maximized Panel", Accelerator: rendered("Ctrl+Alt+Shift+J")},
 			{Label: "New Terminal", Accelerator: rendered("Ctrl+Shift+T")},
 			{Label: "Next Tab"},
 			{Label: "Previous Tab"},

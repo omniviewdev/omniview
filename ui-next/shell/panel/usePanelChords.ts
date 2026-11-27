@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { panelChordOf, platformOf } from '../core/chords';
 import type { PanelStore } from '../core/panel';
-import { focusTab, inPanel, togglePanel } from './focus';
+import { focusTab, inPanel, togglePanel, togglePanelMaximized } from './focus';
 
 /**
  * The panel's chords, on the document for as long as the shell is mounted (ch16 S106, S118): Command or Control J toggles the panel from anywhere, and while the focus is in the panel
@@ -23,6 +23,11 @@ export function usePanelChords(store: PanelStore | undefined): void {
       }
 
       event.preventDefault();
+      if (chord.action === 'maximize') {
+        if (!event.repeat) togglePanelMaximized(store);
+        return;
+      }
+
       if (chord.action === 'toggle') {
         togglePanel(store);
         return;

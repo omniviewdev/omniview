@@ -12,6 +12,8 @@ import {
   TERMINAL_TOOL,
   toggleChordText,
   togglePanel,
+  togglePanelMaximized,
+  maximizeChordText,
   type Contributions,
   type Description,
   type OpenPalette,
@@ -417,6 +419,17 @@ function commandsOf({ tabs, panel, platform, onCloseWindow, openSettings, termin
     run: () => outcomeOf(tabRows[id].run()),
   }));
   if (panel !== undefined) {
+    commands.push({
+      id: 'host.panel.maximize',
+      title: 'Toggle maximized panel',
+      context: 'Panel',
+      icon: 'external-link',
+      shortcut: maximizeChordText(platform, native),
+      run: () => {
+        togglePanelMaximized(panel);
+        return true;
+      },
+    });
     commands.push({
       id: 'host.panel.toggle',
       title: 'Toggle panel',

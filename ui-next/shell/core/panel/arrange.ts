@@ -7,6 +7,10 @@ import type { PanelResult, PanelState, Resize, SessionId, ToolId } from './types
 
 const DONE: PanelResult = Object.freeze({ status: 'done' });
 
+export function toggleMaximized(state: PanelState): Step<PanelResult> {
+  return { state: settle(patch(state, { open: true, maximized: !state.maximized })), result: DONE };
+}
+
 /** The most a remembered height is: a sanity bound, not a limit of any window (the window clamps where the height is drawn). */
 const MAX_REMEMBERED = 10_000;
 
@@ -28,7 +32,7 @@ export function show(state: PanelState, options: ShowOptions = {}): Step<PanelRe
 }
 
 export function hide(state: PanelState): Step<PanelResult> {
-  return state.open ? { state: settle(patch(state, { open: false })), result: DONE } : unchanged(state);
+  return state.open ? { state: settle(patch(state, { open: false, maximized: false })), result: DONE } : unchanged(state);
 }
 
 /** Sets the remembered height, `null` for the default. */

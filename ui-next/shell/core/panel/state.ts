@@ -35,6 +35,7 @@ export function emptyPanel(): PanelState {
   return Object.freeze({
     version: PANEL_VERSION,
     open: false,
+    maximized: false,
     height: null,
     tool: null,
     active: Object.freeze({}),

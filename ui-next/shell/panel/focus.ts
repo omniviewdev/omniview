@@ -65,6 +65,13 @@ export function leaveHandle(): void {
   }
 }
 
+export function togglePanelMaximized(store: PanelStore): void {
+  store.toggleMaximized();
+  if (store.getSnapshot().maximized && !inPanel(document.activeElement)) {
+    queueMicrotask(focusPanel);
+  }
+}
+
 /** The toggle: open and focus, or hide. */
 export function togglePanel(store: PanelStore): void {
   if (store.getSnapshot().open) {
