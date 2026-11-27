@@ -284,7 +284,7 @@ var Terminal = settings.Category{
 		settingCursorBlinkNext: {
 			ID:          settingCursorBlinkNext,
 			Type:        settings.Toggle,
-			Label:       "Cursor Blink (new terminal)",
+			Label:       "Blinking Cursor (new terminal)",
 			Default:     false,
 			Description: "Whether the cursor blinks in the new terminal. A blinking cursor keeps a timer running while the terminal has the focus, so it is off unless you turn it on.",
 		},
