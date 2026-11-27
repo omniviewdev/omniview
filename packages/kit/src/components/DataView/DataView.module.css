@@ -23,25 +23,39 @@
     height: calc(100% - var(--ov-spacing-12));
   }
 
+  /* The title takes a full line. The chip strip and the search share the next line until their content needs two. */
   .header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--ov-spacing-8) var(--ov-spacing-12);
     min-width: 0;
+    padding-block-end: var(--ov-spacing-8);
   }
 
-  /* The gaps are the view's: 12 px under the page header, 8 px under the strip, 8 px under the toolbar, as the mock's header, strip and toolbar own them. A
-     part that is not given leaves no band. */
   .top {
+    flex-basis: 100%;
     min-width: 0;
-    padding-block-end: var(--ov-spacing-12);
   }
 
   .filters {
     min-width: 0;
-    padding-block-end: var(--ov-spacing-8);
+    max-width: 100%;
+    margin-inline-end: auto;
   }
 
+  /* A search alone needs 280 px, not the whole pane. Extra commands get their intrinsic width before wrapping. */
   .toolbar {
-    min-width: 0;
-    padding-block-end: var(--ov-spacing-8);
+    width: max-content;
+    min-width: min(280px, 100%);
+    max-width: 100%;
+  }
+
+  /* Let search give width to filters before the toolbar needs a second line. */
+  .toolbar:has(input[type='search']) {
+    flex: 1 1 12em;
+    min-width: min(12em, 100%);
+    max-width: min(280px, 100%);
   }
 
   /* The body holds the table, whose own region scrolls. A skeleton or a notice has no region of its own, so the body is it, and scrolls. */

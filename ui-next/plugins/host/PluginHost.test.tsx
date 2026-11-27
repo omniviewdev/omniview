@@ -746,21 +746,18 @@ describe('a plugin that is not ready', () => {
   it('draws the regions of a frame that is on its way, empty, and the real ones replace them in the same sidebar element', () => {
     const { set, container } = mount([loading('acme', 'Acme plugin')], { link: link('acme') });
     const sidebar = container.querySelector('[data-shell-region="sidebar"]');
-    const lane = container.querySelector('[data-shell-part="lane"]');
 
     expect(container.querySelector('[data-shell-part="rail"]')).toHaveAttribute('aria-hidden', 'true');
     expect(screen.getByRole('navigation', { name: 'Loading navigation' })).toHaveAttribute('aria-busy', 'true');
     expect(screen.queryByRole('tree')).toBeNull();
-    expect(lane).toHaveAttribute('aria-hidden', 'true');
-    expect(lane).toBeEmptyDOMElement();
+    expect(container.querySelector('[data-shell-part="lane"]')).toBeNull();
 
     set([ready()]);
 
     expect(container.querySelector('[data-shell-region="sidebar"]')).toBe(sidebar);
     expect(screen.getByRole('navigation', { name: 'Acme navigation' })).not.toHaveAttribute('aria-busy');
     expect(screen.getByRole('tree', { name: 'Acme navigation' })).toBeInTheDocument();
-    expect(screen.getByRole('group', { name: 'Acme scope' })).toHaveTextContent('Scope: none');
-    expect(container.querySelector('[data-shell-part="lane"]')).not.toHaveAttribute('aria-hidden');
+    expect(within(screen.getByRole('banner', { name: 'Window' })).getByRole('group', { name: 'Acme scope' })).toHaveTextContent('Scope: none');
   });
 
   it('draws the frame of a plugin that failed with no sidebar: there is nothing to show of its own, and its rail entry is the way back to its page', () => {

@@ -1,6 +1,5 @@
-/* The top row (ch16 §B R2, R3; S4 to S6): 40 px on the window plane. Leading: the safe area for the OS window controls (84), Back and Forward (64) and a drag gap (8), 156 px in all; then the
-   strip and the free space after it, which is the drag lane (48 px at least); then the room of the window actions (138). The strip's budget is the window's width minus 374: the
-   chapter's arithmetic, so a face has the width the mock gives it at every count of tabs. */
+/* A 40 px window header. The OS controls and navigation lead; window actions trail. The strip and drag lane share the width left by the page's
+   actual scope faces, if any. The drag lane keeps its 48 px minimum independently of the scope pickers. */
 @layer ov.shell {
   /* The Wails runtime reads --wails-draggable from the computed style to find the regions that move the window (S5): the row is one,
      and every control in it is not. A name outside the private `--_` scale, so the rule that closes custom properties is off for these lines. */

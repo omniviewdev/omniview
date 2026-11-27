@@ -10,7 +10,7 @@
 //   ?case=names&names=<json>   a sidebar whose one open group holds the entries the probe names, `[{ id, label, count }]` with `count` a number, `{ value, approximate: true }` or absent: the rows whose rooms the
 //                   long-name comparison with the mock reads (strip-probe.mjs, section `names`), and what a label that is cut says when it is pointed at (this case mounts the window's one tooltip)
 //   ?case=injected  the registration a probe puts in `window.__registration` before the page runs, an empty page: the frame compared with the mock's reference screen
-//   ?case=tabs&tabs=N&active=K   N tabs (default 5), the K-th on screen (default the last); `window.__tabs` is the model, `window.__commits` counts the commits of every render
+//   ?case=tabs&tabs=N&active=K   N tabs (default 5), the K-th on screen (default the last); tabs=N also works with other frames, e.g. bare or long. `window.__tabs` is the model, `window.__commits` counts commits.
 //   ?case=titles&pages=<json>   the tabs the probe names, `[{ title, scope? }]`, the first on screen: the text of the strip against the mock's (strip-probe.mjs, sections `titles` and `twins`; strip-text-cases.mjs)
 //   ?case=panel     the frame `full` and the bottom panel (panel/testing.tsx: the real model over the five tools the mock's host offers, the first of which has a `+`), closed; `window.__panel` is the model
 //                   a probe opens, fills and resizes, and `window.__lines()` reads every stream body's count; `window.__opened` lists the addresses a session card's link was asked to open (A21: a link that
@@ -120,7 +120,8 @@ const cases: Record<string, Case> = {
     ),
   },
   tabs: { described: full, page: () => <p>A page.</p> },
-  titles: { described: full, page: () => <p>A page.</p> },
+  // The recorded title truncation cases use the full, unscoped strip width. A tab's own qualifier still comes from the page descriptions below.
+  titles: { described: { ...full, scope: [] }, page: () => <p>A page.</p> },
   panel: { described: full, page: () => <></> },
 };
 
@@ -138,8 +139,8 @@ const chosen = cases[params.get('case') ?? 'full'] ?? cases.full;
 const Page = chosen.page;
 const { tab, path, ...registration } = chosen.described;
 
-/** The tabs of a case: one for a frame case; N for `?case=tabs`, each a page of its own, so no two read alike unless the probe asks. */
-const many = params.get('case') === 'tabs';
+/** Any frame can carry a crowded tab strip, so its scope and the strip's available room can be tested together. */
+const many = params.get('case') === 'tabs' || params.has('tabs');
 /** `?case=titles`: the tabs a probe names in the address, each a page of its own (a title and, when two read alike, the scope that tells them apart). */
 const titled = params.get('case') === 'titles';
 const titledPages = titled ? (JSON.parse(params.get('pages') ?? '[]') as ReadonlyArray<{ readonly title: string; readonly scope?: string }>) : [];

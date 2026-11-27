@@ -1,5 +1,4 @@
-/* The page region (ch16 R7, S15): the island's one tabpanel, under the scope lane, with the pages of the mounted tabs in it. Only the tab on screen is drawn: React hides the rest
-   (`display: none`), so they cost no layout and no paint. */
+/* The island's one tabpanel hosts the mounted pages. React hides all but the tab on screen (`display: none`), so hidden pages cost no layout or paint. */
 @layer ov.shell {
   /* The page's scroll owner (S15): an explicit one, so a scrollbar lane never appears and disappears under the content. */
   .page {
@@ -24,8 +23,7 @@
     padding: var(--ov-spacing-12);
   }
 
-  /* The pane layout (ch12 section 5, ch16 S15): the page owns its scrolling, so the shell scrolls nothing. The content fills the island under the
-     scope lane, and its bottom inset is the page's own: a collection's footer is the pane's terminal lane (ch13 G2), so the 12 px would add beneath it. */
+  /* In pane layout the page owns scrolling and fills the island. Its footer supplies its own bottom inset. */
   .page[data-layout='pane'] {
     display: flex;
     flex-direction: column;

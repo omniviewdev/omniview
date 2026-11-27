@@ -87,7 +87,7 @@ const listed = (): ListPageV1<Widget> => {
   };
 };
 
-const ready = (): PluginEntry => ({ id: 'acme', name: 'Acme plugin', phase: 'ready', contribution: acme({ pages: { ...acme().pages, widgets: listed(), sprocket: sprocketPage } }) });
+const ready = (detail = sprocketPage): PluginEntry => ({ id: 'acme', name: 'Acme plugin', phase: 'ready', contribution: acme({ pages: { ...acme().pages, widgets: listed(), sprocket: detail } }) });
 const deep = (name: string, bay = 'east'): HostRoute => ({ plugin: 'acme', page: 'sprocket', connection: 'north', params: { name, bay } });
 
 // One snapshot for every read, as a store gives: a new array on each read would never settle.
@@ -229,13 +229,40 @@ describe('the detail page of a route', () => {
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 
-  it('draws the back path above the heading, its list crumb a link that goes back to the list', async () => {
-    const { user } = mount({ link: deep('alpha') });
-    const path = within(screen.getByRole('navigation', { name: 'Breadcrumb' }));
-    await user.click(path.getByRole('button', { name: 'Widgets' }));
+  it('shows one path in the footer and opens the declared parent page in the same connection, not a page guessed from the label', async () => {
+    const catalog = [ready({ ...sprocketPage, definition: { ...sprocketPage.definition, list: { page: 'gadgets', label: 'Catalog' } } })];
+    const { user } = mount({ link: deep('alpha'), plugins: { ...plugins, getSnapshot: () => catalog } });
+    const footer = within(screen.getByRole('contentinfo', { name: 'Status bar' }));
+    const path = within(footer.getByRole('navigation', { name: 'Current resource' }));
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Widgets' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'alpha' }).closest('header')?.querySelector('nav')).toBeNull();
+    expect(path.getAllByRole('listitem').map((item) => item.textContent)).toEqual(['Acme', 'north', 'Catalog', 'alpha']);
+    expect(path.getByText('alpha').closest('li')).toHaveAttribute('aria-current', 'page');
+    const parent = path.getByRole('button', { name: 'Catalog' });
+    expect(path.getAllByRole('button')).toEqual([parent]);
+    await user.click(parent);
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Gadgets' })).toBeInTheDocument();
+    expect(selectedTab()).toHaveAccessibleName('Gadgets, north');
     expect(labels()).toHaveLength(1);
+  });
+
+  it.each(['Control-click', 'middle click'])('opens the footer parent in the background on %s; Enter on the same crumb reuses that tab', async (gesture) => {
+    const { user } = mount({ link: deep('alpha') });
+    const path = within(screen.getByRole('navigation', { name: 'Current resource' }));
+    const parent = path.getByRole('button', { name: 'Widgets' });
+    if (gesture === 'Control-click') {
+      fireEvent.click(parent, { ctrlKey: true });
+    } else {
+      fireEvent(parent, new MouseEvent('auxclick', { button: 1, bubbles: true, cancelable: true }));
+    }
+
+    expect(labels()).toHaveLength(2);
+    expect(selectedTab()).toHaveAccessibleName(/alpha · Sprocket/);
+    parent.focus();
+    await user.keyboard('{Enter}');
+    expect(selectedTab()).toHaveAccessibleName('Widgets, north');
+    expect(labels()).toHaveLength(2);
   });
 });
 

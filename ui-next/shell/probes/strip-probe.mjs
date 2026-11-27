@@ -8,8 +8,8 @@
 //   ENGINES=webkit,chromium   VIEWPORTS=1440x900,1280x800   (defaults: both of each)      AXE=<axe.min.js>      REPORT=<file>   the full report as JSON      SHOTS=<dir>   a screenshot per engine and viewport
 //
 // What it checks, per engine and viewport:
-//   parity     for 1, 2, 5, 6, 8, 12 and 30 tabs, the rectangle of every part of the top row (the safe area, Back and Forward and their glyphs, the strip, the scroller, the new-tab control, the drag lane,
-//              every face, and the first and the tab on screen: glyph, title, close control and its glyph) against the mock within 1 px, the scroll state of the strip, and the paint (fill, edge,
+//   parity     without scope, for 1, 2, 5, 6, 8, 12 and 30 tabs, every rectangle of the top row against the mock within 1 px; with long scope values and 30 tabs, the space left for the tabs, the selected tab in view, and the drag lane;
+//              the scroll state of the strip, and the paint (fill, edge,
 //              outline, colour, radius) of the tab on screen, a tab at rest, the close control, the new-tab control and Back, at rest, hovered and focused
 //   keyboard   with real key presses: Tab lands on the tab on screen, the arrows move the focus and select nothing, Home and End, Enter and Space select, Delete closes and moves the focus to the neighbour,
 //              the chords (close, jump to a tab, the last tab), a middle click and the close control close, the new-tab control opens a tab, the page region is labelled by the selected tab
@@ -94,6 +94,9 @@ const READ = () => {
     plus: rect(plus),
     plusSvg: rect(plus === null ? null : q('svg', plus)),
     lane: rect(q('[data-shell-part="dragLane"]')),
+    scope: rect(q('[data-shell-part="lane"]')),
+    scopeDrag: q('[data-shell-part="lane"]') ? getComputedStyle(q('[data-shell-part="lane"]')).getPropertyValue('--wails-draggable').trim() : null,
+    actions: rect(q('[data-shell-part="actions"]')),
     tabs: faces.map(rect),
     first: parts(faces[0]),
     active: parts(faces[active]),
@@ -148,18 +151,33 @@ function compareReading(mock, shell, where, { tolerance = 1 } = {}) {
 async function parity(browser, engine, viewportName, viewport, origin) {
   for (const count of TAB_COUNTS) {
     const where = `${engine} ${viewportName} ${count} tabs`;
-    const { page, context, errors } = await open(browser, fixtureUrl(origin, `case=tabs&tabs=${count}`), viewport);
+    const { page, context, errors } = await open(browser, fixtureUrl(origin, `case=bare&tabs=${count}`), viewport);
     await normalizeFont(page, { rootVar: '--ov-font-ui' });
     await sleep(250);
     const got = await page.evaluate(READ);
     const mock = reference.data[engine][viewportName][count];
     const result = compareReading(mock, got, where);
+    if (got.scope !== null) fail(`parity ${where}`, 'a page without scope reserved a scope slot');
     if (got.faceElements !== NODES_PER_TAB) fail(`counts ${where}`, `a tab is ${got.faceElements} DOM nodes, wanted ${NODES_PER_TAB} (the mock's is ${mock.faceElements})`);
     report.parity[where] = { worst: result.worst, problems: result.problems, faceElements: got.faceElements, mockFaceElements: mock.faceElements, scroll: got.scroll };
     for (const error of errors) fail(`errors ${where}`, error);
     if (SHOTS && count === 5) await page.screenshot({ path: path.join(SHOTS, `strip-${engine}-${viewportName}.png`) });
     await context.close();
   }
+
+  const where = `${engine} ${viewportName} crowded scope and strip`;
+  const { page, context, errors } = await open(browser, fixtureUrl(origin, 'case=long&tabs=30'), viewport);
+  const got = await page.evaluate(READ);
+  const scope = got.scope;
+  const active = got.tabs[got.activeIndex];
+  const [left, , width] = got.scroller ?? [0, 0, 0];
+  const right = (box) => box[0] + box[2];
+  if (!scope || scope[1] !== 0 || scope[3] !== 40 || Math.abs(scope[2] - Math.min(400, viewport.width * 0.3)) > 1 || Math.abs(right(scope) - got.actions[0]) > 1) fail(where, `long scope does not fit its header budget: ${JSON.stringify(scope)}`);
+  if (got.scopeDrag !== 'no-drag') fail(where, 'the scope controls would drag the native window');
+  if (!scope || got.lane[2] < 48 || right(got.lane) > scope[0] + 1 || !got.plusInView || right(got.plus) > got.lane[0] + 1) fail(where, `overlap between tabs, drag lane and scope: ${JSON.stringify([got.plus, got.lane, scope])}`);
+  if (width < 96 || !active || active[2] < 96 || active[0] < left - 1 || right(active) > left + width + 1) fail(where, `selected tab is not fully visible: ${JSON.stringify(active)} in ${JSON.stringify(got.scroller)}`);
+  for (const error of errors) fail(`errors ${where}`, error);
+  await context.close();
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -578,18 +596,17 @@ async function switchTimes(browser, engine, viewportName, viewport, origin) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-const MUST_NOT_MOVE = ['window', 'topRow', 'safeArea', 'frame', 'rail', 'sidebar', 'sidebarHeader', 'island', 'lane', 'page', 'statusBar'];
+const MUST_NOT_MOVE = ['window', 'topRow', 'safeArea', 'frame', 'rail', 'sidebar', 'sidebarHeader', 'island', 'page', 'statusBar'];
 
 /**
  * The window as it opens: nothing but the frame in the first frame, then the plugins arrive. No region moves, and every one is in the first frame. `expected`, for the cases that say what the
  * window ends on (S2a, S3a): the rail's entries in the order the plugins declare (the entry of the plugin that is current marked with a star), the sidebar's name, how many tabs (default 1), whether
- * the page's rows are drawn (default: when there is a tab), whether the empty window's home is (`home`) and whether the scope lane is one of the regions (`lane`, default true). A plugin that registers
+ * the page's rows are drawn (default: when there is a tab), whether the empty window's home is (`home`) and whether the page publishes scope (`lane`, default true). A plugin that registers
  * late moves no entry that is drawn either: the rail and the sidebar are chosen once every plugin has settled, and the entries come with them.
  */
 async function load(browser, engine, viewportName, viewport, origin, query, label, expected) {
   const where = `load ${engine} ${viewportName} ${label}`;
   const want = { tabs: 1, rows: undefined, home: false, lane: true, ...expected };
-  const regions = MUST_NOT_MOVE.filter((name) => want.lane || name !== 'lane');
   const { page, context, errors } = await open(browser, hostUrl(origin, query), viewport, { init: `${SAMPLER}; window.__probeFrames = 150;` });
   await sleep(2800);
   const result = await page.evaluate(() => ({
@@ -598,6 +615,7 @@ async function load(browser, engine, viewportName, viewport, origin, query, labe
     entries: document.querySelectorAll('[role=treeitem]').length,
     rows: document.querySelectorAll('tbody tr').length,
     home: document.querySelector('[data-shell-part="home"]') !== null,
+    lane: document.querySelector('[data-shell-region="topRow"] [data-shell-part="lane"]') !== null,
     unavailable: /This plugin is not installed, or is turned off\./.test(document.body.textContent ?? ''),
     kept: Object.keys(window.sessionStorage).filter((key) => key.includes(':session.invalid.')).length,
     notes: window.__sessionNotes ?? [],
@@ -609,18 +627,13 @@ async function load(browser, engine, viewportName, viewport, origin, query, labe
   if (result.tabs !== want.tabs || (rows && (result.entries === 0 || result.rows === 0)) || result.home !== want.home) {
     fail(where, `the load did not end as it should in the time given: ${result.tabs} tabs (wanted ${want.tabs}), ${result.entries} entries, ${result.rows} rows, home ${result.home} (wanted ${want.home})`);
   }
-  const moved = result.moves.filter((move) => regions.includes(move.part));
-  if (label !== 'a frame without a lane' && label !== 'a saved tab whose plugin is never installed') {
-    if (moved.length > 0) fail(where, `${moved.length} regions moved: ${JSON.stringify(moved.slice(0, 4))}`);
-    const late = regions.filter((name) => result.first[name] !== result.first.window);
-    if (late.length > 0) fail(where, `regions not in the first frame: ${late.map((name) => `${name} at ${result.first[name]}`).join(', ')}`);
-    if (result.gone.some((gone) => regions.includes(gone.part))) fail(where, `a region went away: ${JSON.stringify(result.gone)}`);
-    if (result.layoutShift !== null && result.layoutShift > 0) fail(where, `layout shift ${result.layoutShift} from ${result.shiftSources.join(', ')}`);
-  } else {
-    // A frame that has no scope lane reserved one while it loaded, and gives it back once: the page moves up once. The shape of a plugin's frame is not known before it loads (README), and a
-    // plugin that never comes has none.
-    report.notes.push(`${where}: ${moved.length} moves (${[...new Set(moved.map((move) => move.part))].join(', ')}), layout shift ${result.layoutShift}`);
-  }
+  if (result.lane !== want.lane || (!want.lane && result.first.lane !== undefined)) fail(where, `scope ${result.lane}, first seen at ${result.first.lane}, wanted ${want.lane} with no placeholder`);
+  const moved = result.moves.filter((move) => MUST_NOT_MOVE.includes(move.part) || move.part === 'lane');
+  if (moved.length > 0) fail(where, `${moved.length} regions moved: ${JSON.stringify(moved.slice(0, 4))}`);
+  const late = MUST_NOT_MOVE.filter((name) => result.first[name] !== result.first.window);
+  if (late.length > 0) fail(where, `regions not in the first frame: ${late.map((name) => `${name} at ${result.first[name]}`).join(', ')}`);
+  if (result.gone.some((gone) => MUST_NOT_MOVE.includes(gone.part) || gone.part === 'lane')) fail(where, `a region went away: ${JSON.stringify(result.gone)}`);
+  if (result.layoutShift !== null && result.layoutShift > 0) fail(where, `layout shift ${result.layoutShift} from ${result.shiftSources.join(', ')}`);
   if (expected !== undefined) {
     if (expected.rail !== undefined && result.rail.join() !== expected.rail.join()) fail(where, `the rail lists ${result.rail.join(', ')}, wanted ${expected.rail.join(', ')}`);
     if (expected.sidebar !== undefined && result.sidebar !== expected.sidebar) fail(where, `the sidebar is "${result.sidebar}", wanted "${expected.sidebar}"`);
@@ -756,7 +769,7 @@ for (const engineName of engineNames) {
     const here = (query, label, expected) => load(browser, engineName, viewportName, viewport, production.origin, query, label, expected);
     // A window restored from a session with one tab (the host fixture's default): the tab is in the strip in the first frame, and the plugin loads after it.
     await here('', 'a frame with a lane', { rail: ['Alpha*'], sidebar: 'Alpha navigation' });
-    await here('lane=0', 'a frame without a lane');
+    await here('lane=0', 'a frame without a lane', { lane: false });
     // Two plugins, the second of which registers 700 ms after the first: the rail and the sidebar are chosen once both have settled, with the plugin of the tab on screen current, whether the late
     // one sorts after the first or before it: a tab is open the whole time, and no entry of the rail moves (S2a left this uncovered at 0.00006 in Chromium).
     await here('plugins=2&lateMs=700', 'a second plugin that registers late and sorts last', { rail: ['Alpha*', 'Beta'], sidebar: 'Alpha navigation' });
@@ -766,7 +779,7 @@ for (const engineName of engineNames) {
     // No session: the empty window, with the home content, and no lane: no tab is coming for one.
     await here('session=none&plugins=2&lateMs=700&first=beta', 'a window with no session, a plugin registering late and sorting first', { tabs: 0, home: true, lane: false, rail: ['Beta*', 'Alpha'], sidebar: 'Beta navigation' });
     // A tab whose plugin is never installed stays, and says so once the list of plugins has been read; a text that cannot be used is kept aside and the window is the empty one, with one note.
-    await here('session=gone', 'a saved tab whose plugin is never installed', { rows: false, unavailable: true, rail: ['Alpha*'], sidebar: 'Alpha navigation' });
+    await here('session=gone', 'a saved tab whose plugin is never installed', { rows: false, lane: false, unavailable: true, rail: ['Alpha*'], sidebar: 'Alpha navigation' });
     await here('session=bad', 'a saved text that cannot be used', { tabs: 0, home: true, lane: false, kept: 1, notes: 1, rail: ['Alpha*'], sidebar: 'Alpha navigation' });
     console.log(engineName, viewportName, 'done');
   }

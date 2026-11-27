@@ -211,27 +211,29 @@ describe('the overview page of a route', () => {
     }
   });
 
-  it('draws the back path above the heading from the plugin\'s name and the connection\'s: the page is the last crumb, and it is no link', () => {
+  it('draws the path in the footer alone: the plugin and the current connection have labels but no parent route', () => {
     mount({ link: at(KEY) });
-    const path = within(screen.getByRole('navigation', { name: 'Breadcrumb' }));
+    const footer = within(screen.getByRole('contentinfo', { name: 'Status bar' }));
+    const path = within(footer.getByRole('navigation', { name: 'Current resource' }));
 
     expect(path.getAllByRole('listitem').map((item) => item.textContent)).toEqual(['Acme', 'north']);
+    expect(path.getByText('north').closest('li')).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('heading', { level: 1, name: 'north' }).closest('header')?.querySelector('nav')).toBeNull();
     expect(path.queryByRole('button')).toBeNull();
   });
 
   it('says the plugin alone in the path while no connection is named', () => {
     mount({ link: at() });
-    const path = within(screen.getByRole('navigation', { name: 'Breadcrumb' }));
+    const path = within(screen.getByRole('navigation', { name: 'Current resource' }));
 
     expect(path.getAllByRole('listitem').map((item) => item.textContent)).toEqual(['Acme']);
   });
 
-  it('is a tab titled Overview, whose accessible name carries the connection by its name, and whose status path is the plugin and the connection', () => {
+  it('is a tab titled Overview, whose accessible name carries the connection by its name', () => {
     mount({ link: at(KEY) });
 
     expect(tabs()).toHaveLength(1);
     expect(selectedTab()).toHaveAccessibleName('Overview, north');
-    expect(within(screen.getByRole('navigation', { name: 'Current resource' })).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['Acme', 'north']);
   });
 
   it('is a document: the page scrolls, header and body together, as a detail page does, and not a pane', () => {

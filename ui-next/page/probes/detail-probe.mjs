@@ -40,7 +40,6 @@ void within;
 const section = (id) => `[data-detail-section="${id}"]`;
 const TARGETS = [
   ['header', 'header'],
-  ['breadcrumb', 'header nav[aria-label="Breadcrumb"]'],
   ['row', 'header [data-ov-row]'],
   ['tile', 'header [data-ov-row] > svg, header [data-ov-header-tile]', { keys: 'xy' }],
   ['title', 'header h1', { keys: 'xyh' }],
@@ -72,11 +71,14 @@ async function rects(browser, engine, viewportName, origin) {
   const { page, context, errors } = await openCase(browser, origin, 'detail', NATIVE[viewportName], { ready: '[data-ov-part="tabs"]', extra: '&state=ready' });
   for (const error of errors) say(false, where, `page error: ${error}`);
   const read = await readRects(page, TARGETS.map(([name, sel, o]) => ({ name, sel, nth: o?.i ?? 0 })));
+  const footerPath = page.getByRole('contentinfo', { name: 'Status bar' }).getByRole('navigation', { name: 'Current resource' });
+  say((await footerPath.getByRole('listitem').allTextContents()).join(' › ') === 'Acme › north › Items › orders-api', where, 'the footer shows the detail path');
+  say((await page.locator('[data-detail-part="header"] nav').count()) === 0, where, 'the header does not repeat the footer path');
   const mock = (name) => MOCK_DETAIL.node('detail', engine, viewportName, name)?.r ?? null;
   for (const [name, , o] of TARGETS) {
-    const want = mock(name);
+    const reference = mock(name);
     const got = read[name];
-    if (want === null) {
+    if (reference === null) {
       say(false, where, `${name}: the mock has no such node`);
       continue;
     }
@@ -86,7 +88,9 @@ async function rects(browser, engine, viewportName, origin) {
       continue;
     }
 
-    // The mock's page header draws a breadcrumb row and the page's does too (path): the geometry is the same, so nothing is adjusted.
+    // The scope controls moved out of the page (40 px). The header also lost the mock's 16 px breadcrumb and its 8 px gap.
+    const [x, y, w, h] = reference;
+    const want = name === 'header' ? [x, y - 40, w, h - 24] : [x, y - 40 - 24, w, h];
     const keys = (o?.keys ?? 'xywh').split('');
     const index = { x: 0, y: 1, w: 2, h: 3 };
     const tolerance = o?.flex ?? 1;

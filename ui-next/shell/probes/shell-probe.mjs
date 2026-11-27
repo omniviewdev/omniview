@@ -58,6 +58,12 @@ async function parity(browser, engine, viewportName, viewport, origins) {
     await normalized(page, contextName);
     const got = await readSide(page, 'shell');
     const result = compare(reference.data[engine][viewportName][contextName], got);
+    // Scope now takes only the width of its faces, immediately before the window actions' 138 px. Its first face and the gap are checked relative to the group by TARGETS.
+    if (got.lane && got.face2) {
+      const [x, , w] = got.lane.rect;
+      const [lastX, , lastW] = got.face2.rect;
+      if (Math.abs(x + w - (viewport.width - 138)) > 1 || Math.abs(x + w - (lastX + lastW)) > 1) fail(`parity ${where}`, `scope does not fit its faces before the window actions: ${got.lane.rect}, last face ${got.face2.rect}`);
+    }
     report.parity[where] = { worst: result.worst, problems: result.problems.length, errors };
     for (const problem of result.problems) fail(`parity ${where}`, problem);
     for (const error of errors) fail(`errors ${where}`, error);
@@ -239,7 +245,7 @@ async function variants(browser, engine, origins) {
   // Text longer than its room: nothing moves, nothing overflows, the ellipsis is there and the chevrons keep their 12 px.
   const long = await page('long');
   const longRects = await rects(long.page);
-  for (const name of ['window', 'topRow', 'sidebar', 'island', 'lane', 'page', 'statusBar']) {
+  for (const name of ['window', 'topRow', 'sidebar', 'island', 'page', 'statusBar']) {
     if (longRects[name].join() !== fullRects[name].join()) fail(`variants ${engine} long`, `${name} moved: ${fullRects[name]} -> ${longRects[name]}`);
   }
   const clip = await long.page.evaluate(() => {
@@ -250,7 +256,7 @@ async function variants(browser, engine, origins) {
       tabWidth: tab.getBoundingClientRect().width,
       tabTitleClipped: clipped(tab.querySelector('[data-ov-variant]').parentElement),
       treeLabelsClipped: [...document.querySelectorAll('[role=treeitem] > :nth-child(2)')].map(clipped),
-      faceClipped: [...document.querySelectorAll('[data-shell-part="scopeFace"] span:last-child')].map(clipped),
+      faceClipped: [...document.querySelectorAll('[data-shell-part="scopeFace"]')].map((face) => clipped(face.querySelector('[data-ov-variant]').parentElement)),
       chevrons,
       windowOverflows: document.querySelector('[data-shell-part="window"]').scrollWidth > innerWidth,
     };
@@ -260,6 +266,7 @@ async function variants(browser, engine, origins) {
   if (!clip.tabTitleClipped) fail(`variants ${engine} long`, 'the long tab title is not clipped');
   if (clip.windowOverflows) fail(`variants ${engine} long`, 'the window overflows sideways');
   if (!clip.treeLabelsClipped.every(Boolean)) fail(`variants ${engine} long`, 'a long tree label is not clipped');
+  if (clip.faceClipped.length !== 2 || !clip.faceClipped.every(Boolean)) fail(`variants ${engine} long`, 'long scope values are missing or not clipped within their header budget');
   if (!clip.chevrons.every((w) => w === 12)) fail(`variants ${engine} long`, `a chevron of the path was squeezed: ${clip.chevrons}`);
   await long.context.close();
 
@@ -281,7 +288,7 @@ async function variants(browser, engine, origins) {
   if (tree.sidebarMoved) fail(`variants ${engine} deep`, 'scrolling the tree moved the sidebar');
   await deep.context.close();
 
-  // A page taller than the island scrolls inside it, under the lane.
+  // A tall document scrolls inside the island without moving the scope controls in the window header.
   const scroll = await page('scroll');
   const before = await rects(scroll.page);
   const scrolled = await scroll.page.evaluate(() => {

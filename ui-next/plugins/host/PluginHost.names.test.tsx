@@ -18,7 +18,7 @@ Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true
 } });
 
 // The connection a window says (C1g), through the real window: a route carries a connection by a KEY (`north-57a082bd74`) and the plugin's page says the NAME (`north`) in its scope lane. The tab strip's label and
-// accessible name, the status bar's path, the detail page's header and the scope lane say the name; the key is in no text and no accessible name anywhere in the window, whether the window was opened by a link or
+// accessible name, the status bar's path and the scope lane say the name; the key is in no text and no accessible name anywhere in the window, whether the window was opened by a link or
 // restored from a session that a build before the names saved, and nothing of it is drawn while the plugin is loading.
 
 const KEY = 'north-57a082bd74';
@@ -112,15 +112,13 @@ describe('a window opened at a page of a connection by a link', () => {
   const link = (page: string, params: Record<string, string> = {}): HostRoute => ({ plugin: 'acme', page, connection: KEY, params });
   const entries = [entryReady()];
 
-  it('says the name in the strip, the status bar, the header and the lane, and the key in none of what the window draws', () => {
+  it('says the name in the strip, the status bar and the scope controls, and the key in none of what the window draws', () => {
     mount(entries, { link: link('sprocket', { name: 'alpha' }) });
 
-    expect(path()).toHaveTextContent(`Acme›${NAME}›Widgets›alpha`.replace(/›/g, ''));
     expect(within(path()).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['Acme', NAME, 'Widgets', 'alpha']);
-    expect(tabs().map((tab) => tab.getAttribute('aria-label') ?? tab.textContent)).toBeTruthy();
+    expect(tabs()[0]?.getAttribute('aria-label')).toContain(NAME);
     expect(screen.getByRole('group', { name: 'Acme scope' })).toHaveTextContent(NAME);
-    // The header's own crumbs are the same path: a link back to the list, in the connection, and the object.
-    expect(screen.getAllByText(NAME).length).toBeGreaterThan(2);
+    expect(within(path()).getByRole('button', { name: 'Widgets' })).toBeInTheDocument();
     expect(keysDrawn()).toEqual([]);
   });
 
@@ -195,7 +193,7 @@ describe('a window restored from a session that holds connection keys', () => {
     expect(keysDrawn()).toEqual([]);
   });
 
-  it('says the name in the header of a detail page whose lane has said nothing: the one this window learned for the connection from another page', async () => {
+  it('says the learned connection name in the footer when switching to a detail tab whose own lane has said nothing', async () => {
     const quiet: DetailPageV1 = { ...sprocketPage, usePage: () => ({ scope: [], source: source() }) };
     const entry = { ...entryReady(), contribution: acme({ pages: { ...acme().pages, widgets: widgetPage('Widgets', named), sprocket: quiet } }) };
     const text = JSON.stringify({
@@ -214,7 +212,7 @@ describe('a window restored from a session that holds connection keys', () => {
 
     await userEvent.click(second);
 
-    expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).toHaveTextContent(NAME);
+    expect(path()).toHaveTextContent(NAME);
     expect(keysDrawn()).toEqual([]);
   });
 });

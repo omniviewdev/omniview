@@ -5,9 +5,8 @@ import { ScopePicker } from './ScopePicker';
 import styles from './ScopeLane.module.css';
 
 type ScopeLaneProps = {
-  /** Names the lane. Absent while the plugin's frame is on its way: the lane is there, empty, at its rectangle, and no assistive technology reads it. */
-  readonly label: string | undefined;
-  readonly faces: readonly ShellLaneFace[];
+  readonly label: string;
+  readonly faces: readonly ShellLaneFace[] | undefined;
 };
 
 /** What a face says, drawn: its glyph, and what it is (read, never drawn) with its value. */
@@ -106,12 +105,16 @@ function PickerFace({ face, picker }: { readonly face: ShellLaneFace; readonly p
  * can say instead, with a chevron. Kit part it should become: ScopeLane.
  */
 export function ScopeLane({ label, faces }: ScopeLaneProps) {
+  if (faces === undefined || faces.length === 0) {
+    return null;
+  }
+
   return (
-    <div className={styles.lane} role={label === undefined ? undefined : 'group'} aria-label={label} aria-hidden={label === undefined ? 'true' : undefined} data-shell-part="lane">
+    <div className={styles.lane} role="group" aria-label={label} data-shell-part="lane">
       {faces.map((face) => {
         const { picker } = face;
         return picker === undefined ? (
-          <span key={face.label} className={styles.face} data-shell-part="scopeFace">
+          <span key={face.label} className={styles.face} data-shell-part="scopeFace" {...tip(face.text)}>
             <Inside face={face} />
           </span>
         ) : (

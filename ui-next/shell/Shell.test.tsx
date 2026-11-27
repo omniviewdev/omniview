@@ -121,13 +121,17 @@ describe('regions are landmarks with names', () => {
     expect(screen.getByRole('main')).toContainElement(panel);
   });
 
-  it('puts the scope lane above the page, inside the main landmark', () => {
-    renderShell();
+  it.each(['document', 'pane'] as const)('keeps scope in the window header and gives the %s page the entire island', (layout) => {
+    const { again } = renderShell({ ...registration, layout });
     const main = screen.getByRole('main');
-    const lane = screen.getByRole('group', { name: 'Acme scope' });
+    const header = screen.getByRole('banner', { name: 'Window' });
+    const panel = screen.getByRole('tabpanel');
+    expect(within(header).getByRole('group', { name: 'Acme scope' })).toBeInTheDocument();
+    expect([...main.children]).toEqual([panel]);
 
-    expect(main).toContainElement(lane);
-    expect(lane.compareDocumentPosition(screen.getByRole('tabpanel')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    again({ ...registration, layout, scope: [] });
+    expect(header.querySelector('[data-shell-part="lane"]')).toBeNull();
+    expect([...main.children]).toEqual([panel]);
   });
 
   it('names no control by a title attribute, and leaves every icon to the text beside it', () => {
@@ -189,6 +193,27 @@ describe('the tabs and the top row', () => {
   it('draws the new-tab control after the tabs once the host gives one', () => {
     renderShell(registration, { onNewTab: vi.fn() });
     expect(within(screen.getByRole('banner')).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual(['Back', 'Forward', 'New tab']);
+  });
+
+  it('reaches each scope picker after the tab strip, in contribution order, skipping read-only values', async () => {
+    const user = userEvent.setup();
+    const picker = { title: 'Choices', placeholder: 'Find a value', empty: 'No values', icon: 'box', options: [], current: undefined, onChoose: vi.fn() } as const;
+    renderShell({
+      ...registration,
+      scope: [
+        { label: 'Region', icon: 'box', text: 'West', picker },
+        { label: 'Mode', icon: 'layers', text: 'Live' },
+        { label: 'Account', icon: 'server', text: 'North', picker },
+      ],
+    });
+
+    act(() => {
+      screen.getByRole('tab', { name: 'Widgets' }).focus();
+    });
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'Region: West' })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'Account: North' })).toHaveFocus();
   });
 
   it('draws the tabs the model has, in the order of the strip, with the one on screen selected', () => {
@@ -634,7 +659,7 @@ describe('the rail', () => {
 });
 
 describe('a frame that is pending', () => {
-  it('reserves the rail, the sidebar and the scope lane at their rectangles, empty and out of the reading order', () => {
+  it('reserves the navigation but no scope slot while a plugin is loading', () => {
     const { container } = renderShell({ plugin: { name: 'Acme' }, pending: true });
 
     expect(container.querySelector('[data-shell-part="rail"]')).toHaveAttribute('aria-hidden', 'true');
@@ -644,22 +669,19 @@ describe('a frame that is pending', () => {
     expect(sidebar).toHaveAttribute('aria-busy', 'true');
     expect(within(sidebar).queryByRole('tree')).toBeNull();
     expect(within(sidebar).queryByRole('heading')).toBeNull();
-    const lane = container.querySelector('[data-shell-part="lane"]');
-    expect(lane).toHaveAttribute('aria-hidden', 'true');
-    expect(lane).not.toHaveAttribute('role');
-    expect(lane).toBeEmptyDOMElement();
+    expect(container.querySelector('[data-shell-part="lane"]')).toBeNull();
     expect(screen.queryByRole('group', { name: /scope/i })).toBeNull();
   });
 
   it('is the same sidebar element the registered one lands in, so nothing moves when the frame registers', () => {
     const { again } = renderShell({ plugin: { name: 'Acme' }, pending: true });
     const sidebar = document.querySelector('[data-shell-region="sidebar"]');
-    const lane = document.querySelector('[data-shell-part="lane"]');
+    const page = screen.getByRole('tabpanel');
 
     again(registration);
 
     expect(document.querySelector('[data-shell-region="sidebar"]')).toBe(sidebar);
-    expect(document.querySelector('[data-shell-part="lane"]')).toBe(lane);
+    expect(screen.getByRole('tabpanel')).toBe(page);
     expect(screen.getByRole('navigation', { name: 'Acme items' })).not.toHaveAttribute('aria-busy');
     expect(screen.getByRole('tree', { name: 'Acme items' })).toBeInTheDocument();
     expect(screen.getByRole('group', { name: 'Acme scope' })).toBeInTheDocument();

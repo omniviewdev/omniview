@@ -11,6 +11,36 @@ export const at = (section, id, path) => ({ section, id, path });
 
 const lane = '[role="group"][aria-label$=" commands"]';
 
+// The mock kept scope above the page. The page starts one scope lane higher now; its footer does not move.
+export const PAGE_RISE = 40;
+
+/** Project the recorded component sizes onto the compact layout, keeping the original mock recording intact. */
+export function compactList(record) {
+  const rect = (key) => record[key].r;
+  const right = (key) => rect(key)[0] + rect(key)[2];
+  const next = { ...record };
+  function move(key, dx, dy, dw = 0, dh = 0) {
+    const [x, y, w, h] = rect(key);
+    next[key] = { ...record[key], r: [x + dx, y + dy, w + dw, h + dh] };
+  }
+
+  const controlsY = rect('header')[1] - PAGE_RISE + rect('header')[3] + 8;
+  const searchWidth = 280;
+  const searchX = right('toolbar') - searchWidth;
+  const bodyY = controlsY + rect('toolbar')[3] + 8;
+  const bodyRise = rect('dvBody')[1] - bodyY;
+  move('dataView', 0, -PAGE_RISE, 0, PAGE_RISE);
+  move('dvHeader', 0, -PAGE_RISE, 0, PAGE_RISE - bodyRise);
+  move('dvBody', 0, -bodyRise, 0, bodyRise);
+  for (const key of ['header', 'row', 'title', 'commands', 'cmd1']) move(key, 0, -PAGE_RISE);
+  for (const key of CHIP_NAMES) move(key, 0, controlsY - rect('quick')[1]);
+  move('quick', 0, controlsY - rect('quick')[1], right('chipCompleted') - right('quick'));
+  for (const key of ['toolbar', 'searchInput']) move(key, searchX - rect(key)[0], controlsY - rect(key)[1], searchWidth - rect(key)[2]);
+  move('searchIcon', searchX - rect('searchInput')[0], controlsY - rect('searchInput')[1]);
+  for (const key of ['thead', 'tr0']) move(key, 0, -bodyRise);
+  return next;
+}
+
 /**
  * The page chrome of the list, against the mock's `list` and `listNarrow` records. Both records have
  * the same chrome: listNarrow differs in the table's columns only.
@@ -36,8 +66,7 @@ export const CHROME = [
   { name: 'chipFailed', ref: 'chipFailed', sel: '[data-ov-block="filters"] button', nth: 3 },
   { name: 'chipCompleted', ref: 'chipCompleted', sel: '[data-ov-block="filters"] button', nth: 4 },
   { name: 'toolbar', ref: 'toolbar', sel: '[data-ov-block="toolbar"] > [role="group"]' },
-  // The mock's field shares its lane with two pickers and the Columns chooser (3 siblings and 3 gaps of 8: 344.81 px); the page's takes the whole lane.
-  { name: 'search', ref: (rec) => [rec.searchInput.r[0], rec.searchInput.r[1], rec.toolbar.r[2], rec.searchInput.r[3]], sel: 'input[type="search"]', flex: 'w' },
+  { name: 'search', ref: 'searchInput', sel: 'input[type="search"]', flex: 'w' },
   { name: 'searchIcon', ref: 'searchIcon', sel: '[data-ov-block="toolbar"] svg[data-ov-glyph="search"]' },
   { name: 'thead', ref: 'thead', sel: 'thead' },
   { name: 'firstRow', ref: 'tr0', sel: 'tbody tr[data-ov-index]' },
@@ -48,10 +77,9 @@ export const CHROME = [
 /** The same chips as words: the counts are the mock's, All 89, Running 78, Pending 0, Failed 2, Completed 9. */
 export const CHIP_NAMES = ['chipAll', 'chipRunning', 'chipPending', 'chipFailed', 'chipCompleted'];
 
-/** The gaps the design fixes, from the rectangles read: 12 under the page header, 8 under the strip, 8 under the toolbar. */
+/** The vertical gaps around the shared controls line. */
 export const GAPS = [
-  { name: 'gap header to quick', from: 'pageHeader', to: 'quick', want: 12 },
-  { name: 'gap quick to toolbar', from: 'quick', to: 'toolbar', want: 8 },
+  { name: 'gap header to quick', from: 'pageHeader', to: 'quick', want: 8 },
   { name: 'gap toolbar to thead', from: 'toolbar', to: 'thead', want: 8 },
 ];
 

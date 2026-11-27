@@ -13,7 +13,7 @@
 // The font is normalized as the mock's reference was (normalizeFont: Helvetica for the UI stack on both sides).
 // Stages, in the order of the brief:
 //   chrome   (a) the rectangles of the data view, the page header and its title, the command lane, the quick filters and each chip, the toolbar and the search
-//            field, the table header, the first row and the footer with its count, and the 12/8/8 px gaps, against the mock's `list` and `listNarrow`
+//            field, the table header, the first row and the footer with its count, against the mock's components in the compact layout; also check wrapping in a narrow pane
 //   shift    (b) layout shift: a frame sampler around the page's own Refresh (idle, Refreshing…, Updated, cleared) and around every state of an operation in a
 //            header on its own (with and without an identity line); no part may move by 0.001 px at any frame; the slot at rest is 0 px wide and 28 px high.
 //            Chromium's layout-shift score is printed as information only: it also counts the presenter's own content and the facts that give way by design.
@@ -26,7 +26,7 @@ import { ENGINES, VIEWPORTS } from '../../../packages/kit/probes/probe-lib.mjs';
 import { Report, buildFixture, diffRect, openCase, readRects, reference, round2, serve, showKeys, sleep } from './lib.mjs';
 import { EPS, HEADER_PARTS, LIST_PARTS, OPERATIONS, frames, installSampler } from './shift.mjs';
 import { SORT_VIEWPORTS, perfStage, sortStage } from './sort.mjs';
-import { ABSENT, CHIP_NAMES, CHROME, GAPS } from './targets.mjs';
+import { ABSENT, CHIP_NAMES, CHROME, compactList, GAPS, PAGE_RISE } from './targets.mjs';
 
 const engineNames = (process.env.ENGINES ?? Object.keys(ENGINES).join(',')).split(',');
 const viewportNames = (process.env.VIEWPORTS ?? Object.keys(VIEWPORTS).join(',')).split(',');
@@ -70,7 +70,7 @@ async function chrome(browser, engine, viewportName, viewport, origin) {
   for (const error of errors) report.fail(`${engine} ${viewportName}`, `page error: ${error}`);
 
   for (const section of ['list', 'listNarrow']) {
-    const record = reference(section, undefined, viewportName, engine);
+    const record = compactList(reference(section, undefined, viewportName, engine));
     const where = `${section} ${viewportName} ${engine}`;
     for (const target of CHROME) {
       const want = refOf(record, target.ref);
@@ -117,14 +117,26 @@ async function chrome(browser, engine, viewportName, viewport, origin) {
   // The header of a list is the mock's `h-list` (a title and Refresh alone): title and Refresh to the pixel, with the slot declared and at rest.
   const header = reference('header', 'h-list', viewportName, engine);
   const where = `h-list ${viewportName} ${engine}`;
-  const title = diffRect(header.title.r, rects.title, { flex: 'w' });
+  const title = diffRect(header.title.r, rects.title, { flex: 'w', adjust: { y: -PAGE_RISE } });
   report.line(where, 'title (Refresh alone)', showKeys(title.keys, 0), showKeys(title.keys, 1), title.delta, title.ok ? 'ok' : 'FAIL', 'the slot at rest takes no room beside the title');
-  const refresh = diffRect(header.cmd0.r, rects.refresh);
+  const refresh = diffRect(header.cmd0.r, rects.refresh, { adjust: { y: -PAGE_RISE } });
   report.line(where, 'refresh (alone)', showKeys(refresh.keys, 0), showKeys(refresh.keys, 1), refresh.delta, refresh.ok ? 'ok' : 'FAIL');
   const slot = read.slot;
   const slotMock = reference('slot', undefined, viewportName, engine).rest.slot.r;
   const slotOk = slot !== null && slot[2] === 0 && slot[3] === 28;
   report.line(`slot ${viewportName} ${engine}`, 'slot at rest', `w${slotMock[2]} h${slotMock[3]}`, slot === null ? 'none' : `w${slot[2]} h${slot[3]}`, slot === null ? 'none' : round2(Math.abs(slot[2] - slotMock[2]) + Math.abs(slot[3] - slotMock[3])), slotOk ? 'ok' : 'FAIL');
+  // The two supported widths fit one line. Also force a split-pane width where even the chips need to wrap.
+  await page.setViewportSize({ width: Math.round(viewport.width - rects.dvHeader[2] + 360), height: viewport.height });
+  const narrow = await readRects(page, specsOf(CHROME.filter(({ name }) => ['dvHeader', 'quick', 'chipAll', 'chipCompleted', 'toolbar', 'search', 'thead'].includes(name))));
+  const [x, , width] = narrow.dvHeader;
+  const bottom = (rect) => rect[1] + rect[3];
+  if (narrow.chipCompleted[1] < bottom(narrow.chipAll)) report.fail(where, 'chips did not wrap at narrow width');
+  if (Math.abs(narrow.toolbar[1] - bottom(narrow.quick) - 8) > 1) report.fail(where, 'toolbar did not wrap below the filters');
+  if (Math.abs(narrow.thead[1] - bottom(narrow.toolbar) - 8) > 1) report.fail(where, 'table did not follow the wrapped toolbar');
+  for (const name of ['quick', 'toolbar', 'search']) {
+    const [left, , w] = narrow[name];
+    if (left < x - 1 || left + w > x + width + 1) report.fail(where, `${name} overflowed the narrow pane`);
+  }
   await context.close();
 }
 

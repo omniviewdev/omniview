@@ -29,20 +29,20 @@ describe('a face without a picker', () => {
     expect(within(lane).queryAllByRole('button')).toHaveLength(0);
     const face = lane.querySelector('[data-shell-part="scopeFace"]');
     expect(face?.tagName).toBe('SPAN');
+    expect(face).toHaveAttribute('data-ov-tip', 'Everything');
     expect(face?.querySelectorAll('svg')).toHaveLength(1);
     expect(face?.querySelector('[data-ov-glyph="chevron-down"]')).toBeNull();
     expect(face).not.toHaveAttribute('aria-haspopup');
   });
 
-  it('keeps the lane as it was: a group named by its label, and hidden and unnamed while the frame is on its way', () => {
-    const { rerender } = render(<ScopeLane label="Acme scope" faces={[plain]} />);
+  it('leaves no element or space when the registration withdraws or omits its faces', () => {
+    const { container, rerender } = render(<ScopeLane label="Acme scope" faces={[plain]} />);
     expect(screen.getByRole('group', { name: 'Acme scope' })).toBeInTheDocument();
 
-    rerender(<ScopeLane label={undefined} faces={[]} />);
-    const lane = document.querySelector('[data-shell-part="lane"]');
-    expect(lane).toHaveAttribute('aria-hidden', 'true');
-    expect(lane).not.toHaveAttribute('role');
-    expect(lane).toBeEmptyDOMElement();
+    rerender(<ScopeLane label="Acme scope" faces={[]} />);
+    expect(container).toBeEmptyDOMElement();
+    rerender(<ScopeLane label="Acme scope" faces={undefined} />);
+    expect(container).toBeEmptyDOMElement();
   });
 });
 

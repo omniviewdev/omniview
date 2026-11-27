@@ -96,6 +96,25 @@ export function useTablist({ ids, selected, onClose, onMove, onDragOut }: Tablis
     }
   }, [selected, ids]);
 
+  // Scope can arrive after the selected tab is drawn. A narrower scroller must reveal that tab again without moving keyboard focus.
+  useEffect(() => {
+    const element = ref.current;
+    if (element === null || !hasScroller || typeof ResizeObserver === 'undefined') {
+      return undefined;
+    }
+
+    const observer = new ResizeObserver(() => {
+      const target = element.querySelector<HTMLElement>('[role="tab"]:focus') ?? element.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
+      if (target !== null) {
+        reveal(element, target);
+      }
+    });
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+    };
+  }, [hasScroller]);
+
   // A tab closed from the keyboard hands the focus to its neighbour, once the neighbour is there to take it.
   useEffect(() => {
     const element = ref.current;

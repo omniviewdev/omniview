@@ -11,7 +11,7 @@
 //   size       width and height
 //   rel:<name> the rectangle relative to the top left of another target (a part inside a region), and its size
 //   text       (a flag) a run of text: x, width and the vertical centre, not the height (an inline box's height is the engine's content area)
-// `adjust` is a known, exact difference between the two (the shell's scope faces have no chevron: 12 px and a 4 px gap).
+// `adjust` records exact differences from the baseline: scope moved into the header, the page gained its old 40 px, and read-only faces have no chevron (12 px and a 4 px gap).
 //
 // The mock is opened on its one reference screen, which `packages/kit/probes/mock-screen.mjs` names (the mock's own words stay with the recordings of the mock);
 // the shell is opened on the fixture (fixture.tsx, `?case=full`): the same frame with invented, neutral registrations. The probe names no plugin's screen.
@@ -47,14 +47,14 @@ export const TARGETS = [
   { name: 'entryLabel', mock: `${MOCK_ENTRY} > .tree__label`, shell: `${entry} > :nth-child(2)`, cmp: 'rel:rowEntry', keys: ['x', 'y', 'h'] },
   { name: 'entryCount', mock: `${MOCK_ENTRY} > .tree__count`, shell: `${entry} [data-ov-variant="caption"]`, cmp: 'rel:rowEntry', text: true },
   { name: 'island', mock: '.frame__island', shell: '[data-shell-region="island"]', cmp: 'abs' },
-  { name: 'lane', mock: '.frame__lane', shell: '[data-shell-part="lane"]', cmp: 'abs' },
-  { name: 'face1', mock: '.frame__lane button:nth-of-type(1)', shell: face(1), cmp: 'abs', adjust: { w: -16 } },
+  { name: 'lane', mock: '.frame__lane', shell: '[data-shell-part="lane"]', cmp: 'y-h', adjust: { y: -40 } },
+  { name: 'face1', mock: '.frame__lane button:nth-of-type(1)', shell: face(1), cmp: 'rel:lane', adjust: { x: -12, w: -16 } },
   { name: 'face1Icon', mock: '.frame__lane button:nth-of-type(1) > .ic:first-child svg', shell: `${face(1)} svg`, cmp: 'rel:face1' },
   { name: 'face1Label', mock: '.frame__lane button:nth-of-type(1) [data-scope-label]', shell: `${face(1)} [data-ov-variant]`, cmp: 'rel:face1', text: true },
-  { name: 'face2', mock: '.frame__lane button:nth-of-type(2)', shell: face(2), cmp: 'abs', adjust: { x: -16, w: -16 } },
+  { name: 'face2', mock: '.frame__lane button:nth-of-type(2)', shell: face(2), cmp: 'rel:lane', adjust: { x: -28, w: -16 } },
   { name: 'face2Icon', mock: '.frame__lane button:nth-of-type(2) > .ic:first-child svg', shell: `${face(2)} svg`, cmp: 'rel:face2' },
   { name: 'face2Label', mock: '.frame__lane button:nth-of-type(2) [data-scope-label]', shell: `${face(2)} [data-ov-variant]`, cmp: 'rel:face2', text: true },
-  { name: 'page', mock: '.frame__page', shell: '[data-shell-part="page"]', cmp: 'abs' },
+  { name: 'page', mock: '.frame__page', shell: '[data-shell-part="page"]', cmp: 'abs', adjust: { y: -40, h: 40 } },
   { name: 'statusBar', mock: '.statusbar', shell: '[data-shell-region="statusBar"]', cmp: 'abs' },
   { name: 'path', mock: '.status-path', shell: crumbs, cmp: 'y-h' },
   { name: 'crumb1', mock: '.status-path > :nth-child(1)', shell: `${crumbs} li:nth-child(1) [data-ov-variant]`, cmp: 'rel:path', text: true },

@@ -1082,7 +1082,7 @@ async function checkHealthy(page, base, engine) {
   await page.getByText('2 desired · 2 ready · 2 up to date').waitFor();
   await page.getByRole('button', { name: 'Scale' }).click();
   await page.getByText('3 desired · 3 ready · 3 up to date').waitFor();
-  await page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('button', { name: 'Items' }).click();
+  await page.getByRole('navigation', { name: 'Current resource' }).getByRole('button', { name: 'Items' }).click();
   await page.getByRole('link', { name: 'ghost-service' }).waitFor();
   // Command (Control elsewhere) opens a background tab; each data state has its own words, and a Retry that is the plugin's.
   const key = (await page.evaluate(() => navigator.platform.includes('Mac'))) ? 'Meta' : 'Control';
@@ -1652,7 +1652,7 @@ async function checkTwins(page, base, engine) {
  * j3. The connection a row says (C1f), on the real host. The window is opened by an address that names a connection by its KEY (`#/fixture-a-ok/items?connection=north-57a082bd74`: the way a link does, in the shape the host's own keys
  * have), and the fixture's page says its NAME in its scope lane (`north`, laneOf in the fixture). The palette says the name, in its chips and, once they are removed, in the rows of Go to and their accessible names, and the key is in
  * nothing it draws: no text and no accessible name. The shell says it the same way (C1g): the tab on screen says it in its accessible name and its tooltip, and on a detail page opened by an address that names the item and the
- * connection (the path of a detail page is the host's, made from the route; a list page's is the plugin's own words) the status bar's path and the header's breadcrumb say `north` too. The key is in no text, no accessible name, no
+ * connection (the path of a detail page is the host's, made from the route; a list page's is the plugin's own words) the status bar's path says `north` too. The key is in no text, no accessible name, no
  * tooltip and no title the window draws (the address carries it; the page does not show it). SHOTS=<dir> writes WebKit's `connection-names-webkit-void-1440x900.png` of that detail page.
  */
 async function checkConnection(page, base, engine) {
@@ -1694,7 +1694,7 @@ async function checkConnection(page, base, engine) {
         drawn: [document.body.innerText, ...attributes],
         tab: { name: tab?.getAttribute('aria-label') ?? null, tip: tab?.getAttribute('data-ov-tip') ?? null },
         status: [...document.querySelectorAll('nav[aria-label="Current resource"] li')].map((item) => item.textContent ?? ''),
-        header: document.querySelector('header nav[aria-label="Breadcrumb"]')?.textContent ?? null,
+        headerHasPath: document.querySelector('[data-detail-part="header"] nav') !== null,
       };
     });
   const says = (text) => typeof text === 'string' && /\bnorth\b/.test(text);
@@ -1707,15 +1707,14 @@ async function checkConnection(page, base, engine) {
   };
   sound(await shellOf(), 'the list page', false);
 
-  // A detail page of an item of the connection, opened by the address a link makes: its header, the strip and the status bar say the name; the page is loaded afresh (a hash alone does not open a link).
+  // Open a detail page afresh (a hash alone does not open a link). Its tab and footer name the connection without repeating the path above the heading.
   await page.goto('about:blank');
   await open(page, base, `#/${OK}/item?name=alpha&group=east&connection=${key}`);
-  await page.locator('header nav[aria-label="Breadcrumb"]').waitFor({ timeout: 30_000 });
+  await page.getByRole('heading', { level: 1, name: 'alpha' }).waitFor({ timeout: 30_000 });
   await page.locator('[data-shell-part="lane"]').getByText('north', { exact: true }).waitFor({ timeout: 30_000 });
   const detail = await shellOf();
   sound(detail, 'the detail page', true);
-  // The breadcrumb's text is its crumbs one after the other, with no separator between them (`Seam FixturenorthItemsalpha`): the name is in it, and the key (above) is in no text of the window.
-  assert.ok(typeof detail.header === 'string' && detail.header.includes('north'), `${engine}: the header of the detail page says the connection by its name: ${JSON.stringify(detail.header)}`);
+  assert.equal(detail.headerHasPath, false, `${engine}: the detail header does not repeat the footer path`);
   if (process.env.SHOTS !== undefined && engine === 'webkit') {
     await mkdir(process.env.SHOTS, { recursive: true });
     await page.screenshot({ path: path.join(process.env.SHOTS, 'connection-names-webkit-void-1440x900.png') });
@@ -3970,8 +3969,8 @@ async function checkConnectionsAndHome(browser, engine, binary, work) {
       .locator('[data-detail-section]')
       .filter({ visible: true })
       .evaluateAll((cards) => cards.map((card) => [card.getAttribute('data-detail-section'), card.querySelector('h2')?.textContent ?? '', card.querySelector('table') !== null ? 'table' : card.querySelector('dl') !== null ? 'kv' : card.querySelector('ul') !== null ? 'list' : 'nothing']));
-  /** The crumbs of a path, root first: the header's (`Breadcrumb`) or the status bar's (`Current resource`). */
-  const crumbsOf = async (target, name) => target.getByRole('navigation', { name, exact: true }).getByRole('listitem').allTextContents();
+  /** The active tab's path in the footer, root first. */
+  const crumbsOf = async (target) => target.getByRole('contentinfo', { name: 'Status bar' }).getByRole('navigation', { name: 'Current resource' }).getByRole('listitem').allTextContents();
   /** The entries of the sidebar that are the current ones, by their accessible names. */
   const currentEntries = async (target) => target.getByRole('treeitem', { selected: true }).evaluateAll((items) => items.map((item) => item.getAttribute('aria-label') ?? item.textContent ?? ''));
   /** SEAM_SHOTS=<dir> writes WebKit's pictures of the overview (theme void, 1440 x 900): `overview-<state>-webkit-void-1440x900.png`, taken with the pointer out of the way and no control focused (a focused chip shows its tooltip over the path). */
@@ -4603,8 +4602,8 @@ async function checkConnectionsAndHome(browser, engine, binary, work) {
       },
     );
     assert.deepEqual(await keysDrawn(landed), [], `${engine}: the key of a connection is in nothing the overview draws: no text, no accessible name, no tooltip`);
-    assert.deepEqual(await crumbsOf(landed, 'Breadcrumb'), ['Seam Connections', 'north'], `${engine}: the path above the heading is the plugin and the connection, by name`);
-    assert.deepEqual(await crumbsOf(landed, 'Current resource'), ['Seam Connections', 'north'], `${engine}: and the status bar's path says the same`);
+    assert.deepEqual(await crumbsOf(landed), ['Seam Connections', 'north'], `${engine}: the footer path is the plugin and the connection, by name`);
+    assert.equal(await landed.locator('[data-detail-part="header"] nav').count(), 0, `${engine}: the overview header does not repeat the footer path`);
     assert.deepEqual(await landed.getByRole('tablist', { name: 'Overview sections' }).getByRole('tab').allTextContents(), ['Overview'], `${engine}: the page's own strip is the one tab the plugin declared`);
     await asserting(
       'overview-sidebar',
@@ -4689,7 +4688,7 @@ async function checkConnectionsAndHome(browser, engine, binary, work) {
         assert.deepEqual(await itemsShown(landed), southRows, `${engine}: after the chip's choice of south the tab is still the overview, and its table is south's`);
       },
     );
-    assert.deepEqual(await crumbsOf(landed, 'Breadcrumb'), ['Seam Connections', 'south'], `${engine}: the path above the heading says south now`);
+    assert.deepEqual(await crumbsOf(landed), ['Seam Connections', 'south'], `${engine}: the footer path says south now`);
     assert.deepEqual(await keysDrawn(landed), [], `${engine}: and the key of neither connection is in anything the overview draws`);
     await shoot(landed, 'south');
     await landed.close();

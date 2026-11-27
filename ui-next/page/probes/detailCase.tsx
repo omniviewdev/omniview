@@ -144,7 +144,6 @@ const registration: ShellRegistration = {
     { label: 'Scope', icon: 'folder-tree', text: 'Everything' },
   ],
 };
-const path = [{ label: 'Acme', onSelect: noop }, { label: 'north' }, { label: 'Items', onSelect: noop }, { label: 'orders-api' }] as const;
 
 /** The two states of an object that is not there (K2c-2), as the design mock words them: a plugin that knows the object was deleted titles it, and one that gives no title has the page's own. */
 const NOT_THERE = {
@@ -170,7 +169,7 @@ export function DetailCase({ start, expose }: { readonly start: DetailStart; rea
   return (
     <LinkProvider handler={handler}>
       <StaticShell registration={registration} tabs={tabs}>
-        <DetailPage definition={definition} params={{ name: 'orders-api' }} source={source} path={path} />
+        <DetailPage definition={definition} params={{ name: 'orders-api' }} source={source} />
       </StaticShell>
     </LinkProvider>
   );
