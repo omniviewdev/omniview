@@ -57,6 +57,7 @@ import type { EngineLoader, FindOptions } from '../panel/terminal/engine';
 import { loadXtermEngine } from '../panel/terminal/loadEngine';
 import { attachLocalTerminal, localRestartTarget, localShellTarget, restoreLocalTerminals } from '../panel/terminal/localShell';
 import { loadTerminalChannels, sessionCapabilityStorage, type ChannelClient, type ChannelSocket } from '../panel/terminal/terminalChannel';
+import { createShellList, type ShellList } from '../panel/terminal/profiles';
 import { loadSession, windowStorage, type WindowState } from '../session';
 import { createHost, FRAME, fromBase64, KNOWN, toBase64, URLS } from './terminal-host.mjs';
 
@@ -1225,6 +1226,23 @@ const openExternal = async (url: string): Promise<void> => {
 };
 
 const givesOpenExternal = params.get('openExternal') !== 'off' || control === 'open-given';
+
+/**
+ * `?shells=bash=/bin/bash*,zsh=/usr/bin/zsh`: the shells the host says it found (`name=path`, a `*` after the path marks the default), which the `+`'s menu lists. Without it the page asks the runtime, as in the app (which this page has none of).
+ * The list is the host's answer to `ListTerminalShells`; choosing one starts a terminal through the page's own runtime, which this fixture does not have, so a probe that chooses a shell watches the request that the choice makes of the runtime (its POST to /wails/runtime).
+ */
+const shellsAsked = params.get('shells');
+const shells: ShellList | undefined =
+  shellsAsked === null
+    ? undefined
+    : createShellList({
+      list: async () =>
+        shellsAsked.split(',').map((entry) => {
+          const [name = '', path = ''] = entry.split('=');
+          return { name, path: path.replace(/\*$/, ''), default: path.endsWith('*') };
+        }),
+      onChanged: () => () => undefined,
+    });
 if (control === 'search-eager') {
   void import('@xterm/addon-search');
 }
@@ -1277,7 +1295,7 @@ async function mount(): Promise<void> {
             onRetry={() => undefined}
             onRetryInventory={() => undefined}
             session={session}
-            terminals={{ target: () => localShellTarget(channels), load, restore: async () => restoreLocalTerminals(channels), reattach: (id: string) => attachLocalTerminal(id, undefined, channels), restart: (made, tab: string) => localRestartTarget(made, tab, channels), ...(givesOpenExternal ? { openExternal } : {}) }}
+            terminals={{ target: () => localShellTarget(channels), load, restore: async () => restoreLocalTerminals(channels), reattach: (id: string) => attachLocalTerminal(id, undefined, channels), restart: (made, tab: string) => localRestartTarget(made, tab, channels), ...(givesOpenExternal ? { openExternal } : {}), ...(shells === undefined ? {} : { shells }) }}
           />
         </Profiler>
       </MenuHost>

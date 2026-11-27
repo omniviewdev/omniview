@@ -58,7 +58,7 @@ test('the check has at least the phases and the controls it had when N29 split i
   assert.ok(LIST.controls.length >= 29);
   assert.ok(CONTROLS_IN_CHECK >= 104);
   // The controls of a table are one run for the whole table; every other one is a run of its own, the settings controls among them (`SEAM_CONTROL=settings` does not detect `settings-reach`).
-  assert.deepEqual(LIST.controls.filter((entry) => entry.proves.length > 1).map((entry) => entry.run), ['process', 'failed-load', 'plugins-page', 'connections', 'problems-operations', 'ports', 'terminal-reconnect', 'terminal-isolation']);
+  assert.deepEqual(LIST.controls.filter((entry) => entry.proves.length > 1).map((entry) => entry.run), ['process', 'failed-load', 'plugins-page', 'connections', 'problems-operations', 'ports', 'terminal-reconnect', 'terminal-isolation', 'terminal-where']);
   assert.ok(LIST.controls.some((entry) => entry.run === 'settings-reach'));
   assert.ok(!LIST.controls.some((entry) => entry.run === 'settings'));
 });
@@ -102,6 +102,10 @@ test('listFromText reads the phase list and the control tables, and says what is
     'const ISOLATION_CONTROLS = {',
     "  'i1': /x/,",
     '};',
+    'const WHERE_CONTROLS = {',
+    "  'x1': /x/,",
+    "  'x2': /x/,",
+    '};',
     'const PROFILE_CONTROLS = {',
     "  'q1': /x/,",
     '};',
@@ -127,6 +131,7 @@ test('listFromText reads the phase list and the control tables, and says what is
       { run: 'terminal-reconnect', proves: ['r1'] },
       { run: 'terminal-isolation', proves: ['i1'] },
       { run: 'terminal-profile', proves: ['q1'] },
+      { run: 'terminal-where', proves: ['x1', 'x2'] },
     ],
   });
   assert.throws(() => listFromText(text.replace('const PHASE_IDS = [', 'const OTHER = [')), /no `const PHASE_IDS = \[` list/);

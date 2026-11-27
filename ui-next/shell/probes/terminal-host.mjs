@@ -58,7 +58,7 @@ export const URLS = Object.freeze(['docs: https://example.com/docs/alpha for the
 const CAPABILITY = /^[A-Za-z0-9_-]{43}$/;
 
 /** The types of the frames (protocol section 4): below 0x80 the page's, from 0x80 the host's. Version 2 added `applied`, `released` and `unsupported`; the marks frame (0x8b) is additive inside version 2, sent only to a page that asks for it in its attach (`marks: 1`, section 4a). */
-export const FRAME = Object.freeze({ attach: 0x01, input: 0x02, resize: 0x03, ack: 0x04, detach: 0x05, close: 0x06, ready: 0x81, output: 0x82, gap: 0x83, ended: 0x84, takenOver: 0x85, notFound: 0x86, applied: 0x87, released: 0x88, unsupported: 0x89, closeRefused: 0x8a, marks: 0x8b });
+export const FRAME = Object.freeze({ attach: 0x01, input: 0x02, resize: 0x03, ack: 0x04, detach: 0x05, close: 0x06, ready: 0x81, output: 0x82, gap: 0x83, ended: 0x84, takenOver: 0x85, notFound: 0x86, applied: 0x87, released: 0x88, unsupported: 0x89, closeRefused: 0x8a, marks: 0x8b, title: 0x8c });
 
 // ---- the frames --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -696,6 +696,8 @@ export function createHost(options = {}) {
     attaches: [],
     lists: [],
     frames: [],
+    /** The title frames the host delivered to a stream that asked for them (protocol 4b), in order: the probe waits on this count, never on time. */
+    titles: [],
     writes: [],
     writeAt: [],
     resizes: [],
@@ -978,6 +980,18 @@ export function createHost(options = {}) {
         break;
       }
 
+      case 'title':
+        // A program sets its title and goes on running: the host says the title and that a program runs (protocol 4b).
+        setTitle(pty, args.join(' '), true);
+        break;
+      case 'untitle':
+        // The program has ended: the host says the same title with no program. `faults.titleKept`: it never says so.
+        setTitle(pty, pty.title?.title ?? '', false);
+        break;
+      case 'title-hostile':
+        // Untrusted text the host did not clean (the page does it again): a control character, a right-to-left override, markup, and 100,000 characters.
+        setTitle(pty, `ab\u0001cd\u202eevil<b>x</b>${'x'.repeat(100_000)}`, true);
+        break;
       case 'known':
         out(pty, `${(faults.knownShort ? KNOWN.slice(0, 4) : KNOWN).join('\r\n')}\r\n`);
         break;
@@ -1295,7 +1309,7 @@ export function createHost(options = {}) {
       if (from !== undefined && from !== null && (!Number.isSafeInteger(from) || from < 0)) return undefined;
       // A writer that is present and is not 32 lowercase hex digits makes the attach malformed.
       if (request.writer !== undefined && (typeof request.writer !== 'string' || !/^[0-9a-f]{32}$/.test(request.writer))) return undefined;
-      return { cap: request.cap, from: from ?? undefined, v: request.v, writer: request.writer, marks: request.marks };
+      return { cap: request.cap, from: from ?? undefined, v: request.v, writer: request.writer, marks: request.marks, title: request.title };
     } catch {
       return undefined;
     }
@@ -1326,7 +1340,7 @@ export function createHost(options = {}) {
     const pty = find(request.cap);
     const end = kept.get(request.cap);
     if (pty !== undefined && !pty.finishing) {
-      claim(conn, pty, request.from, request.writer, request.marks);
+      claim(conn, pty, request.from, request.writer, request.marks, request.title);
     } else if (end !== undefined) {
       serveEnded(conn, end, request.from, request.marks);
     } else if (pty !== undefined) {
@@ -1386,7 +1400,18 @@ export function createHost(options = {}) {
     return known;
   }
 
-  function claim(conn, pty, from, writer, asked) {
+  /** The title a program set and whether a program runs (protocol 4b): kept, and said to the stream that holds the terminal when that stream asked for it. `faults.titleKept`: the FIRST end of a program is never said (the host goes on saying that it runs), the later ones are, so that a fault of one section is no fault of the next. */
+  function setTitle(pty, title, program) {
+    const kept = faults.titleKept === true && !program && pty.titleKept !== true;
+    if (kept) pty.titleKept = true;
+    pty.title = { v: 1, title, program: kept ? true : program };
+    if (pty.holder !== null && pty.holder !== undefined && pty.holder.title) {
+      deliver(pty.holder, jsonFrame(FRAME.title, pty.title));
+      log.titles.push({ id: pty.id, program: pty.title.program, length: title.length });
+    }
+  }
+
+  function claim(conn, pty, from, writer, asked, titleAsked) {
     if (from !== undefined && from > pty.ring.end) {
       log.attaches.push({ stream: conn.id, id: pty.id, from_offset: from, outcome: 'bad-offset', at: now() });
       shut(conn);
@@ -1424,6 +1449,8 @@ export function createHost(options = {}) {
     conn.pty = pty;
     conn.terminal = pty.id;
     const ready = readyOf(pty, conn, from);
+    conn.title = titleAsked === 1;
+    if (conn.title) ready.title = 1;
     conn.cursor = ready.start;
     conn.replayEnd = ready.end;
     conn.markNext = markStart(from, ready.start);
@@ -1439,6 +1466,7 @@ export function createHost(options = {}) {
       // `faults.replayGap`: the replay lacks its last bytes, which the stream then skips as if they were sent.
       if (faults.replayGap) conn.cursor = Math.max(conn.cursor, ready.end - 1000);
       deliver(conn, jsonFrame(FRAME.ready, ready));
+      if (conn.title && pty.title !== undefined) deliver(conn, jsonFrame(FRAME.title, pty.title));
       if (faults.unmutedReply) log.writes.push({ stream: conn.id, id: pty.id, data: '\u001b[1;1R', at: now() });
       conn.held = false;
       sendOutput(conn);

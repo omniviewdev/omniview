@@ -601,7 +601,16 @@
       "gutter-jump-lost",
       "gutter-clipboard-dropped",
       "gutter-reload-forgets",
-      "gutter-axe"
+      "gutter-axe",
+      "where-menu-default-unmarked",
+      "where-menu-focus-lost",
+      "where-menu-wrong-shell",
+      "where-title-kept",
+      "where-title-raw",
+      "where-rename-unpinned",
+      "where-restart-hidden",
+      "where-restart-transcript-lost",
+      "where-axe"
     ]
   },
   "ui-next/shell/probes/terminal-reattach-b-probe.mjs": {
@@ -625,6 +634,10 @@
     "controls": []
   },
   "ui-next/shell/probes/terminal-reattach-probe.mjs": {
+    "probe": true,
+    "controls": []
+  },
+  "ui-next/shell/probes/terminal-where-probe.mjs": {
     "probe": true,
     "controls": []
   },
