@@ -11,7 +11,7 @@ type Rig = {
   readonly show: ReturnType<typeof vi.fn<(session: string, command: string) => void>>;
   readonly front: Set<string>;
   readonly finished: (session: string, finished: Partial<TerminalFinished> & { readonly id: string }) => void;
-  readonly records: () => ReturnType<ReturnType<typeof makeNotices>['store']['recent']>;
+  readonly records: () => ReturnType<ReturnType<typeof makeNotices>['store']['selectors']['recent']>;
 };
 
 function rig(): Rig {
@@ -19,7 +19,7 @@ function rig(): Rig {
   const show = vi.fn<(session: string, command: string) => void>();
   const front = new Set<string>();
   const notices = createFinishedNotices({ notices: fixture.store, shown: (session) => front.has(session), show, nameOf: (session) => (session === 's1' ? 'zsh' : session === 's2' ? 'zsh (2)' : undefined) });
-  return { fixture, show, front, finished: notices.finished, records: () => fixture.store.recent() };
+  return { fixture, show, front, finished: notices.finished, records: () => fixture.store.selectors.recent() };
 }
 
 describe('the notice of a command that finished', () => {
@@ -74,8 +74,19 @@ describe('the notice of a command that finished', () => {
     expect(r.records(), 'the same command twice').toHaveLength(1);
     r.finished('s2', { id: 'c1', durationMs: 20_000, timeMs: 100 });
     expect(r.records(), 'the same id in another terminal').toHaveLength(2);
-    r.finished('s1', { id: 'c1', durationMs: 20_000, timeMs: 900_000 });
+    r.finished('s1', { id: 'c1', durationMs: 25_000, timeMs: 900_000 });
     expect(r.records(), 'a restarted shell counts from c1 again, at another time').toHaveLength(3);
+  });
+
+  it('leaves a repeat of the same words to the shell\'s notices, which fold it into one record with a count, and the action then goes to the newest command', () => {
+    const r = rig();
+    r.finished('s1', { id: 'c1', durationMs: 20_000, command: 'make test', timeMs: 100 });
+    r.finished('s1', { id: 'c2', durationMs: 20_000, command: 'make test', timeMs: 200 });
+    const records = r.records();
+    expect(records).toHaveLength(1);
+    expect(records[0]?.count).toBe(2);
+    r.fixture.store.run(records[0]?.id ?? '', 'show');
+    expect(r.show).toHaveBeenCalledWith('s1', 'c2');
   });
 
   it('keeps no more than it must of what it has told: a flood of commands is bounded, and the newest is still not told twice', () => {
@@ -104,6 +115,7 @@ describe('the notice of a command that finished', () => {
     const r = rig();
     r.finished('s1', { id: 'c1', durationMs: 20_000, command: `echo \u001b[31m${'x'.repeat(500)}\nrm -rf /`, timeMs: 1 });
     const record = r.records()[0];
+    expect(record, 'a notice was raised').toBeDefined();
     expect(record?.title.length).toBeLessThanOrEqual(80);
     expect(record?.text.length).toBeLessThanOrEqual(120);
     // eslint-disable-next-line no-control-regex -- the point of the test
