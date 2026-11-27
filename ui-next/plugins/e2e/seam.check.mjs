@@ -6371,13 +6371,19 @@ async function standIn(page, answer) {
 /** The pages of Settings in the order the sheet lists them (the design's table), and what it leaves out of its first slice: two settings that are pickers in the old window, and whatever is for developers only. */
 const SETTINGS_PAGE_ORDER = ['appearance', 'general', 'editor', 'terminal', 'notifications', 'telemetry', 'developer'];
 const SETTINGS_NOT_DRAWN = ['appearance.theme', 'terminal.nativeApplication'];
+/** The order the Appearance page draws its rows in once the host declares the material settings (ui-next/shell/settings/model/material.ts): the host sends them by id, and the design's table is the order. The rows it does not list follow, by id. */
+const SETTINGS_APPEARANCE_ORDER = ['windowMaterial', 'glassStyle', 'chromeOpacity', 'contentOpacity', 'menuOpacity', 'sheetOpacity', 'density', 'textSize', 'motion'];
 const SETTINGS_DRAWN_TYPES = ['toggle', 'integer', 'float', 'password', 'text', 'select'];
 
 /** The rows a page of Settings draws for one category of the host's snapshot, in the order it draws them (by id) and with the host's own label: what the host declares, less what the first slice leaves out. */
 function settingsRowsOf(snapshot, category) {
   const settings = snapshot.categories[category]?.settings ?? {};
+  const rank = (key) => {
+    const index = category === 'appearance' && settings.windowMaterial !== undefined ? SETTINGS_APPEARANCE_ORDER.indexOf(key) : -1;
+    return index === -1 ? SETTINGS_APPEARANCE_ORDER.length : index;
+  };
   return Object.keys(settings)
-    .sort()
+    .sort((a, b) => rank(a) - rank(b) || (a < b ? -1 : a > b ? 1 : 0))
     .map((key) => ({ id: `${category}.${key}`, setting: settings[key] }))
     .filter(({ id, setting }) => {
       const secret = setting.sensitive === true || setting.type === 'password';
