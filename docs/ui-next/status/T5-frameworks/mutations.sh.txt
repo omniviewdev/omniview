@@ -70,7 +70,7 @@ T9=TestBashPreexecOnBash53RecordsEveryCommandWithItsOwnLine
 T8=TestADirectoryWhoseNameHoldsAnEscapeByteNeitherEndsTheCwdMarkEarlyNorGivesAWrongPath
 
 # powerlevel10k: the guard on P9K_VERSION is gone, the hooks of the integration are installed next to p10k's.
-run p10k-guard-removed "$Z" 's|if (( ! ${+P9K_VERSION} )); then|if true; then|' "$T3"
+run p10k-guard-removed "$Z" 's|if (( ! ${+P9K_VERSION} )); then|if true; then|' "$T3" "$T5"
 
 # zsh4humans: the integration's preexec is put last again, after the framework's own 133;C.
 run zsh-preexec-last "$Z" 's|preexec_functions=(__omniview_preexec $preexec_functions)|preexec_functions+=(__omniview_preexec)|' "$T1"

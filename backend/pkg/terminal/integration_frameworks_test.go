@@ -356,7 +356,8 @@ func TestAFrameworksPromptTextIsUnchangedAndNothingIsPrintedOutsideTheMarks(t *t
 			raw := f.sink.output(info.ID)
 			text := string(oscs.ReplaceAll(raw, nil))
 			if c.shell == "fish" {
-				text = typedText(raw)
+				// fish repaints the line it edits at its own pace: a space it draws before the newline is a timing, not text.
+				text = regexp.MustCompile(` +\n`).ReplaceAllString(typedText(raw), "\n")
 			}
 			// What the shell draws after the last command is repainted at its own pace: the runs are held to what comes before it.
 			end := strings.LastIndex(text, c.exit3) + len(c.exit3)
