@@ -7,6 +7,9 @@ export {
 };
 
 export {
+    AppearanceMaterial,
+    AppearancePreferences,
+    AppearanceSnapshot,
     CommitResult,
     Scope,
     Snapshot

@@ -133,7 +133,6 @@
     block-size: 28px;
     padding-inline: var(--ov-spacing-12);
     border-block-start: 1px solid var(--ov-border-subtle);
-    background-color: var(--ov-bg-island);
     color: var(--ov-fg-muted);
     font-family: var(--ov-font-ui);
     font-feature-settings: var(--ov-font-features);

@@ -7,7 +7,7 @@
   :root,
   [data-ov-theme] {
     color: var(--ov-fg);
-    background-color: var(--ov-bg-window);
+    background-color: var(--ov-surface-backdrop);
     font-family: var(--ov-font-ui);
     font-size: var(--ov-fs-13);
     font-weight: 400;

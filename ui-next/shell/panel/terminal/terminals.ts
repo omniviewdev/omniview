@@ -1,5 +1,6 @@
 import { createElement, type ReactElement } from 'react';
 import { platformOf } from '../../core/chords';
+import type { NoticesStore } from '../../core/notices';
 import type { PanelStore, Session, SessionId } from '../../core/panel';
 import type { PanelCard, PanelEmpty, PanelNewSession } from '../host';
 import { focusTab } from '../focus';
@@ -8,6 +9,7 @@ import { ClosePrompt } from './ClosePrompt';
 import { createCloseGuard } from './closeGuard';
 import type { EngineLoader } from './engine';
 import type { TerminalBusy, TerminalDirectory, TerminalFeedHandle, TerminalRestart, TerminalTarget } from './feed';
+import { createFinishedNotices } from './finishedNotice';
 import { keyOf } from './keys';
 import { localHereTarget, localProfileTarget, localShellTarget } from './localShell';
 import { appShellList, shellMenu, type ShellChoice, type ShellList, type TerminalProfile } from './profiles';
@@ -41,6 +43,11 @@ async function answered(question: Promise<TerminalBusy>): Promise<TerminalBusy> 
       },
     );
   });
+}
+
+/** Whether the window is shown to the person: the document is visible (it is not minimised, and not on another desktop or tab). */
+function documentIsVisible(): boolean {
+  return document.visibilityState === 'visible';
 }
 
 /**
@@ -97,6 +104,13 @@ export type TerminalsOptions = {
    * a link only when it was given one (`TerminalSessions.canOpenExternal`: no dead link), and gives it only http and https addresses; a way that throws or rejects is one warning on the console and nothing else. Absent: no link is drawn.
    */
   readonly openExternal?: ((url: string) => void | Promise<void>) | undefined;
+  /**
+   * The window's notices (the shell's `core/notices` store): the tool tells them of a command that ran long in a terminal that is not in front (`finishedNotice.ts`), once for each command, with a Show that brings the terminal forward and moves
+   * its view to the command. Absent: the window says nothing of a finished command.
+   */
+  readonly notices?: Pick<NoticesStore, 'notify'> | undefined;
+  /** Whether the window is shown to the person (not minimised, not on another desktop): a terminal in front of a window nobody looks at is not in front. Default: the document is visible. */
+  readonly windowShown?: (() => boolean) | undefined;
 };
 
 /** What the window restored of the tool's own state (`shell/session`). Nothing restored is the tool as it starts. */
@@ -155,7 +169,23 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
     return items;
   };
 
-  const sessions = createTerminalSessions(store, { reattach, restart, openExternal });
+  // A command that finished is told to the window's notices when it ran long in a terminal that is not in front. In front is the session on screen in an open panel, in a window that is shown; Show brings the terminal forward, and the body
+  // that shows it moves its view to the command (`TerminalSessions.requestJump`).
+  const finishedNotices =
+    options.notices === undefined
+      ? undefined
+      : createFinishedNotices({
+        notices: options.notices,
+        shown: (session) => store.selectors.isShown(store.getSnapshot(), session) && (options.windowShown ?? documentIsVisible)(),
+        show: (session, command, generation) => {
+          store.revealSession(session);
+          if (!sessions.requestJump(session, command, generation)) {
+            options.notices?.notify({ title: 'That terminal was closed', detail: 'The command is no longer in any terminal.', severity: 'info', initiator: 'system' });
+          }
+        },
+        nameOf: (session) => store.selectors.sessionItem(store.getSnapshot(), session)?.name,
+      });
+  const sessions = createTerminalSessions(store, { reattach, restart, openExternal, finished: finishedNotices?.finished });
   const screenReader = createScreenReaderChoice(restored.screenReader);
   // What the host said of the terminals left for this window, until a window that is attached opens them; whether it was asked (once for the life of the window: a development build attaches, stops and attaches again);
   // and how many attaches are on.

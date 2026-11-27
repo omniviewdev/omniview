@@ -12,7 +12,6 @@
     align-items: center;
     min-inline-size: 0;
     block-size: 40px;
-    background-color: var(--ov-bg-window);
   }
   /* stylelint-enable property-disallowed-list */
 

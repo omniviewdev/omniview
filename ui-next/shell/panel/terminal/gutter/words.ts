@@ -78,6 +78,8 @@ export function jumpWords(command: CommandFacts, index: number, count: number): 
 export const NO_PREVIOUS = 'No previous command';
 export const NO_NEXT = 'No next command, back at the prompt';
 export const NO_COMMANDS = 'No commands yet';
+export const NO_SUCH_COMMAND = 'That command is no longer in the terminal';
+export const SCREEN_TAKEN = 'A program has the screen, so the command cannot be shown';
 export const NO_OUTPUT = 'This command printed no output';
 export const SELECTED_OUTPUT = 'Selected the output of the command';
 export const COPIED_OUTPUT = 'Copied the output of the command';

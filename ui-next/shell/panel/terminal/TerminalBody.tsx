@@ -11,6 +11,7 @@ import type { EngineLoader } from './engine';
 import { offersTakeBack, type TerminalFeedHandle, type TerminalFeedSnapshot } from './feed';
 import { createFindSession, useTerminalFind } from './find';
 import { useCommandGutter } from './gutter/useCommandGutter';
+import { integrationWords } from './integration';
 import { loadXtermEngine } from './loadEngine';
 import { useTerminalLinks, useTerminalMenu } from './menu';
 import { createScreen } from './screen';
@@ -327,6 +328,21 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader, na
       screen.focus();
     }
   }, [screen, sessions, session.id, visible, view.ready, running, takeKeyboard]);
+  // A request to show a command (the finished-command notice's Show): once this body is on screen and its screen is there, the view moves to the command, and the keyboard goes in the terminal, which the person asked for by pressing Show,
+  // wherever it was. The registry keeps the request until it is taken; a command the screen no longer holds is said, and the request is spent all the same.
+  const jump = useSyncExternalStore(sessions.subscribeJumps, () => sessions.pendingJump(session.id));
+  useEffect(() => {
+    if (jump === undefined || !visible || !view.ready) {
+      return;
+    }
+
+    const generation = sessions.jumpGeneration(session.id);
+    const command = sessions.takeJump(session.id);
+    if (command !== undefined) {
+      screen.commands.reveal(command, generation);
+      screen.focus();
+    }
+  }, [screen, sessions, session.id, jump, visible, view.ready]);
   // The lane offers the way back for a terminal that this page lost and that nobody holds now.
   const takeable = canTakeBack(sessions, session.id, status);
   // The lane offers Restart for a terminal that is over for good, and Enter in the screen is its key. What the ended feed still holds is drawn first: the registry lets that feed go with the swap, and what was not drawn would be lost.
@@ -390,7 +406,8 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader, na
   const gutter = useCommandGutter({ screen, say });
 
   const lane = view.error === undefined ? laneOf(status) : { words: 'The terminal view could not be loaded.', note: `${view.error}.` };
-  const hint = `Escape and Tab go to the shell. Press F6 to move to the next part of the window${platform === 'mac' ? `, or ${toggleChordText(platform)} to hide the panel` : ''}. ${screenReaderWords(reading, platform)}`;
+  const tier = integrationWords(status);
+  const hint = `Escape and Tab go to the shell. Press F6 to move to the next part of the window${platform === 'mac' ? `, or ${toggleChordText(platform)} to hide the panel` : ''}. ${screenReaderWords(reading, platform)}${tier === undefined ? '' : ` Shell integration. ${tier.text}`}`;
 
   return (
     <div className={styles.terminal} data-shell-part="terminalBody">

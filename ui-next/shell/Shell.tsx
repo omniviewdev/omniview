@@ -108,10 +108,10 @@ export function Shell({ registration, tabs, renderPage, pageKey, empty, onChoose
         <div className={styles.frame} data-shell-part="frame" data-rail={hasRail ? '' : undefined} data-sidebar={hasSidebar ? '' : undefined}>
           {hasRail ? <Rail rail={rail} onSelect={onSelectRail} /> : null}
           {hasSidebar ? <Sidebar sidebar={sidebar} owner={rail?.current} onChoose={onChoose} onOpen={onSidebarOpen} memory={treeMemory} /> : null}
-          <main className={styles.island} data-shell-region="island" data-shell-focus="" tabIndex={-1} aria-label={`${plugin.name} workspace`}>
+          <main className={styles.island} data-shell-region="island" data-split={layout === 'split' ? '' : undefined} data-shell-focus="" tabIndex={-1} aria-label={`${plugin.name} workspace`}>
             {/* A document page that scrolls is a tab stop of its own, as the tabs pattern asks of a panel that may hold no focusable content: a page of text
                 scrolls from the keyboard. A pane scrolls nothing here: its own region is the stop. */}
-            <PageHost renderPage={renderPage} pageKey={pageKey} empty={empty} layout={layout} prefix={prefix} panelId={panelId} />
+            <PageHost renderPage={renderPage} pageKey={pageKey} empty={empty} layout={layout === 'split' ? 'pane' : layout} prefix={prefix} panelId={panelId} />
           </main>
         </div>
         {panel === undefined ? null : <Panel platform={platform} />}

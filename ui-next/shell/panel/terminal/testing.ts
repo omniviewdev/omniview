@@ -855,6 +855,8 @@ export type ReadyInit = {
   readonly shellRequested?: string;
   /** The directory the host says the shell started in (`ready.session.cwd`). Default: `/home/u`. */
   readonly startedIn?: string;
+  /** The host's word on the shell integration (`ready.session.integration`: `{ state, reason? }`). Default: the host says none. */
+  readonly integration?: Readonly<Record<string, unknown>>;
   readonly ended?: unknown;
   /** The bytes of input the host has applied from the capability, across streams (`ready.input_applied`). Default: 0. */
   readonly inputApplied?: number;
@@ -1039,7 +1041,7 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
           start_modes: { ...PLAIN_MODES, ...init.startModes },
           cwd: { path: '/home/u' },
           busy: { state: 'idle' },
-          session: { id, pid: 4242, shell: { path: init.shellPath ?? `/bin/${init.shell ?? 'zsh'}`, name: init.shell ?? 'zsh', ...(init.shellRequested === undefined ? {} : { requested: init.shellRequested }) }, cwd: init.startedIn ?? '/home/u', cols: size.cols, rows: size.rows, lease_ms: 300_000 },
+          session: { id, pid: 4242, shell: { path: init.shellPath ?? `/bin/${init.shell ?? 'zsh'}`, name: init.shell ?? 'zsh', ...(init.shellRequested === undefined ? {} : { requested: init.shellRequested }) }, cwd: init.startedIn ?? '/home/u', cols: size.cols, rows: size.rows, lease_ms: 300_000, ...(init.integration === undefined ? {} : { integration: init.integration }) },
           lease_ms: 300_000,
           ended: init.ended ?? null,
           ...init.raw,

@@ -97,6 +97,16 @@ retain their separate macOS 14 minimum. Verify the resulting Mach-O build
 versions when checking a release package; do not infer OS support from the
 release tag alone.
 
+`OMNIVIEW_UI=next` selects both the frontend and the Go `ui_next` build tag.
+Only that desktop flavour compiles the macOS 26+ WebKit `drawsBackground`
+opt-in used for window materials. It checks the result and uses solid native
+backing when unavailable. It does not enable Wails' `private_mac_apis` tag or
+raise the deployment minimum. GTK4 requires a composited RGBA display for
+desktop transparency. Windows, browser and older macOS use in-page tint.
+Run `GOWORK=off GOTOOLCHAIN=local go test -tags ui_next ./internal/windowmaterial`
+on a desktop to exercise real toolkit objects, including resize, switching
+materials and restoration. This checks the view hierarchy, not composed pixels.
+
 The package verifier checks each architecture separately for compatibility with
 Apple `lipo` versions that reject multiple architectures in one verification call.
 

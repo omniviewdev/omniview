@@ -428,7 +428,7 @@ func (g *BuildGraph) applicationFixtureServer(ctx context.Context, node BuildNod
 	}
 	// Task build:server's DEV=true backend recipe, after staged bindings and
 	// frontend publication. Do not call the aggregate target and rebuild them.
-	_, err = g.run(ctx, node.Directory, "go", "build", "-tags", "server,devcontrol,e2eapplication", "-buildvcs=false", "-gcflags=all=-l", "-modfile="+path, "-o", filepath.Join(artifacts, "bin", "Omniview-server"), ".")
+	_, err = g.run(ctx, node.Directory, "go", "build", "-tags", hostUITags("server,devcontrol,e2eapplication"), "-buildvcs=false", "-gcflags=all=-l", "-modfile="+path, "-o", filepath.Join(artifacts, "bin", "Omniview-server"), ".")
 	if err != nil {
 		return err
 	}

@@ -1,6 +1,6 @@
 import type { IconName } from '@omniviewdev/kit';
 import type { ReactNode } from 'react';
-import type { ModifierEvent, Route, TabId, TabsStore } from '../../shell';
+import type { ModifierEvent, Route, ShellRegistration, TabId, TabsStore } from '../../shell';
 import type { HostConnections } from './connections';
 import type { PluginSource } from './contributions';
 
@@ -42,8 +42,8 @@ export type HostPageDefinition = {
    * Whether the page is one tab in the whole window (ch16 S9, S26): Plugins is. Absent: it is. `false` is an ordinary tab, of which several may exist (Home), and the palette's command for it opens a new tab every time, as the design lab's does (`openHostPage`, `plain: 'new'`).
    */
   readonly singleton?: boolean | undefined;
-  /** Who scrolls the page (the shell's `layout`): `pane` (the default) when the page owns its scrolling, as the Plugins page does with its two lists; `document` when the island scrolls it as a whole, as the design lab's Home is. */
-  readonly layout?: 'document' | 'pane' | undefined;
+  /** How the shell presents the page: bounded `pane` by default, `document` to scroll it as a whole, or `split` when the page paints its own islands. */
+  readonly layout?: ShellRegistration['layout'];
 };
 
 const pages = new Map<string, HostPageDefinition>();

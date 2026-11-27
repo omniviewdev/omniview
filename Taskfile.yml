@@ -246,10 +246,12 @@ tasks:
           DEV:
             ref: .DEV
     cmds:
-      - |
-        set -e
-        HOST_MODFILE="$({{.HOST_BOOTSTRAP}})"
-        GOWORK=off GOFLAGS= go build {{.BUILD_FLAGS}} -modfile="$HOST_MODFILE" -o "{{.BIN_DIR}}/{{.APP_NAME}}-server" .
+      - task: common:compile:host
+        vars:
+          BUILD_FLAGS:
+            ref: .BUILD_FLAGS
+          OUTPUT: "{{.BIN_DIR}}/{{.APP_NAME}}-server"
+          HOST_TARGET: server
 
   # ──────────────────────────────────────────────
   # CI / Verification targets

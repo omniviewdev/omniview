@@ -6,6 +6,7 @@
 //
 //   FIXTURE_DIST=<dir>         probe an existing fixture build instead of building       FONT_DELAY_MS=40   hold every font file back, as a runner does (packages/kit/probes/serve.mjs)
 //   ENGINES=webkit,chromium   VIEWPORTS=1440x900,1030x720   (defaults: both of each)
+//   MATERIALS_ONLY=1          probe just the real host's surface paints and accessibility override
 //   AXE=<path to axe.min.js>   also run axe-core over every case (default: the kit's own axe-core)
 //   SHOTS=<dir>                write a screenshot per engine and viewport
 //   REPORT=<file>              write the full report as JSON
@@ -32,6 +33,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const reference = JSON.parse(readFileSync(path.join(here, 'mock-shell.json'), 'utf8'));
 const engineNames = (process.env.ENGINES ?? Object.keys(ENGINES).join(',')).split(',');
 const viewportNames = (process.env.VIEWPORTS ?? Object.keys(VIEWPORTS).join(',')).split(',');
+const materialsOnly = process.env.MATERIALS_ONLY === '1';
 const SHOTS = process.env.SHOTS;
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 
@@ -81,6 +83,70 @@ async function themes(browser, engine, origins) {
     for (const problem of result.problems) fail(`theme ${engine} ${themeId}`, problem);
   }
   await context.close();
+}
+
+/** Exercise the document's committed paint contract on real surfaces, including a portaled menu and a top-layer dialog.
+ * The root's paint is the WebView canvas, not proof of what the OS composited behind it. */
+async function materialPaints(browser, engine, origins) {
+  const url = `${origins.fixture}/shell/probes/host-fixture.html?rows=3&inventoryMs=0&loadMs=0&nodesMs=0&dataMs=0`;
+  const { page, context } = await open(browser, url, VIEWPORTS['1440x900']);
+  try {
+    const root = page.locator('html');
+    const chrome = page.locator('[data-shell-part="window"]');
+    const island = page.locator('[data-shell-region="island"]');
+    const header = page.getByRole('columnheader').first();
+    await header.waitFor();
+    const bg = (element) => element.evaluate((el) => getComputedStyle(el).backgroundColor);
+    const check = async (name, element, opacity) => {
+      const fill = await bg(element);
+      const percent = fill.startsWith('rgb(') ? 100 : Math.round(100 * Number(/^rgba\([^()]+,\s*([\d.]+)\)$/.exec(fill)?.[1]));
+      if (percent !== opacity) fail(`material ${engine}`, `${name}: ${fill}, expected ${opacity}%`);
+    };
+    const setMode = (mode) => root.evaluate((el, value) => { el.dataset.ovMaterial = value; }, mode);
+    const original = await bg(chrome);
+    const text = await island.evaluate((el) => getComputedStyle(el).color);
+    await root.evaluate((el) => {
+      el.dataset.ovChromeOpacity = '62';
+      el.dataset.ovContentOpacity = '0';
+      el.dataset.ovMenuOpacity = '73';
+      el.dataset.ovSheetOpacity = '96';
+    });
+    await check('unset mode', island, 100);
+    await setMode('in-page');
+    await check('browser backing', root, 100);
+    if (await bg(root) === original) fail(`material ${engine}`, 'the browser backing matches the chrome; changing its alpha would have no effect');
+    await check('chrome', chrome, 62);
+    await check('top row', page.locator('[data-shell-region="topRow"]'), 0);
+    await check('status bar', page.locator('[data-shell-region="statusBar"]'), 0);
+    await check('content', island, 0);
+    await check('sidebar', page.locator('[data-shell-region="sidebar"]'), 0);
+    await check('sticky header', header, 100);
+    if (await island.evaluate((el) => getComputedStyle(el).color) !== text) fail(`material ${engine}`, 'tint changed the foreground');
+
+    await page.locator('[data-shell-part="tab"] [role="tab"]').first().click({ button: 'right' });
+    await check('menu', page.getByRole('menu').first(), 73);
+    await page.keyboard.press('Escape');
+    await page.locator('[data-shell-part="search"]').click();
+    const sheet = page.locator('[data-palette-part="frame"]');
+    await check('dialog', sheet, 96);
+    for (const mode of ['glass', 'translucent']) {
+      await setMode(mode);
+      await check(`${mode} canvas`, root, 0);
+      await check(`${mode} dialog`, sheet, 96);
+    }
+    await root.evaluate((el) => { el.dataset.ovTheme = 'high-contrast-dark'; });
+    await check('high contrast backing', root, 100);
+    await check('high contrast content', island, 100);
+    await check('high contrast dialog', sheet, 100);
+    await root.evaluate((el) => { el.dataset.ovTheme = 'light'; });
+    await check('restored request', sheet, 96);
+    await setMode('opaque');
+    await check('opaque backing', root, 100);
+    await check('opaque content', island, 100);
+    await check('opaque dialog', sheet, 100);
+  } finally {
+    await context.close();
+  }
 }
 
 async function states(browser, engine, origins) {
@@ -267,10 +333,15 @@ async function a11y(browser, engine, origins, axe) {
 // ---------------------------------------------------------------------------------------------------------------------------
 const fixture = await serveFixtures(buildFixtures());
 const origins = { fixture: fixture.origin };
-const axe = readFileSync(AXE, 'utf8');
+const axe = materialsOnly ? null : readFileSync(AXE, 'utf8');
 
 for (const engineName of engineNames) {
   const browser = await launch(engineName);
+  await materialPaints(browser, engineName, origins);
+  if (materialsOnly) {
+    await browser.close();
+    continue;
+  }
   for (const viewportName of viewportNames) {
     await parity(browser, engineName, viewportName, VIEWPORTS[viewportName], origins);
     await load(browser, engineName, viewportName, VIEWPORTS[viewportName], origins);

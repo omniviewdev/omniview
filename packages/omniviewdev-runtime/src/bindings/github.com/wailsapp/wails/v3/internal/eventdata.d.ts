@@ -36,6 +36,7 @@ import type * as networker$0 from "../../../../omniviewdev/plugin-sdk/pkg/v1/net
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
+            "appearance/changed": number;
             "connection/status": resource$0.ConnectionStatusPayload;
             "core/networker/portforward/closed": networker$0.PortForwardSession | null;
             "core/networker/portforward/created": networker$0.PortForwardSession | null;

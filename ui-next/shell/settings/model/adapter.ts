@@ -1,4 +1,5 @@
 import { readValue, type Constraints, type FieldKind, type FieldSpec, type FormSchema, type Json, type Option, type RemoteValidation, type SectionSpec } from '../../core/fields';
+import { appearanceOrder, materialField } from './material';
 import type { HostCategory, HostSetting, HostSnapshot } from './types';
 
 // The adapter: what the host's settings service declares (its snapshot: categories of typed settings) written as the form model's schema, so that Settings draws each field by its kind from DECLARED data and no
@@ -89,18 +90,19 @@ function drawnAs(setting: HostSetting): Drawn | undefined {
   }
 }
 
-function specOf(id: string, setting: HostSetting, drawn: Drawn): FieldSpec {
+function specOf(id: string, setting: HostSetting, drawn: Drawn, materialPage: boolean): FieldSpec {
   const { kind } = drawn;
   const secret = kind === 'secret';
   const fallback = secret ? undefined : readValue(kind, setting.default, false);
+  const presentation = materialPage ? materialField(id) : undefined;
   const constraints: Constraints | undefined = kind === 'number' && setting.type === 'integer' ? { integer: true } : kind === 'path' ? { pathKind: setting.fileSelection?.allowFolders === true ? 'directory' : 'file' } : undefined;
-  const validate: RemoteValidation | undefined = kind === 'text' || kind === 'path' || kind === 'number' ? { remote: 'host' } : undefined;
+  const validate: RemoteValidation | undefined = kind === 'text' || kind === 'path' || (kind === 'number' && presentation?.display !== 'slider') ? { remote: 'host' } : undefined;
 
   return {
     id,
     kind,
     label: setting.label === '' ? setting.id : setting.label,
-    ...(setting.description === '' ? {} : { help: setting.description }),
+    ...(materialPage || setting.description === '' ? {} : { help: setting.description }),
     ...(secret ? { sensitive: true } : {}),
     ...(fallback?.ok === true && fallback.value !== undefined ? { default: fallback.value } : {}),
     ...(drawn.options === undefined ? {} : { options: drawn.options }),
@@ -109,6 +111,7 @@ function specOf(id: string, setting: HostSetting, drawn: Drawn): FieldSpec {
     ...(validate === undefined ? {} : { validate }),
     ...(constraints === undefined ? {} : { constraints }),
     ...(kind === 'path' ? { mono: true } : {}),
+    ...presentation,
   };
 }
 
@@ -134,6 +137,7 @@ export function modelOf(snapshot: HostSnapshot): SettingsModel {
 
   for (const entry of orderOf(snapshot.categories)) {
     const fields: FieldSpec[] = [];
+    const materialPage = entry.id === 'appearance' && entry.settings.windowMaterial !== undefined;
     for (const key of Object.keys(entry.settings).toSorted(byCode)) {
       const setting = entry.settings[key];
       if (setting === undefined) {
@@ -177,15 +181,21 @@ export function modelOf(snapshot: HostSnapshot): SettingsModel {
         pendingRestart.push(id);
       }
 
-      fields.push(specOf(id, setting, drawn));
+      fields.push(specOf(id, setting, drawn, materialPage));
     }
 
     if (fields.length === 0) {
       continue;
     }
 
-    pages.push({ id: entry.id, title: entry.label === '' ? entry.id : entry.label, description: entry.description, icon: entry.icon, fields: fields.map((field) => field.id) });
-    sections.push({ id: entry.id, label: entry.label === '' ? entry.id : entry.label, ...(entry.description === '' ? {} : { help: entry.description }), fields });
+    if (materialPage) {
+      fields.sort((a, b) => appearanceOrder(a.id) - appearanceOrder(b.id));
+    }
+
+    const description = materialPage ? '' : entry.description;
+    const title = entry.label || entry.id;
+    pages.push({ id: entry.id, title, description, icon: entry.icon, fields: fields.map((field) => field.id) });
+    sections.push({ id: entry.id, label: title, ...(description === '' ? {} : { help: description }), fields });
   }
 
   return Object.freeze({

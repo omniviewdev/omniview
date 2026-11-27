@@ -1,0 +1,101 @@
+#!/bin/bash
+# Negative controls of the page's side of the notice, the tier and the tracked directory's consumers (issue #694 step 6): one fault at a time in one source file. A control is good when the run of its test file FAILS in the
+# test named for it and in no other, and when the same fault PASSES with the named test left out of the run.
+#
+# usage, from the worktree root (the kit built):  bash docs/ui-next/status/T5-notice/mutations-page.sh.txt            (ONLY="name name" runs those alone)
+# It refuses to run when a file it mutates has edits, and puts each file back from a copy on exit and on interruption.
+set -u
+BAD=0
+DIR=ui-next/shell/panel/terminal
+COPIES=$(mktemp -d)
+FILES=""
+restore() {
+  for f in $FILES; do cp "$COPIES/$(echo "$f" | tr / _)" "$f"; done
+  rm -rf "$COPIES"
+}
+trap restore EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+keep() {
+  f=$1
+  if ! git diff --quiet -- "$f" || ! git diff --cached --quiet -- "$f"; then echo "$f has edits: commit them first"; exit 2; fi
+  case " $FILES " in *" $f "*) ;; *) cp "$f" "$COPIES/$(echo "$f" | tr / _)"; FILES="$FILES $f";; esac
+}
+
+# run <control name> <file> <test file> <regex of the names of the tests it is named for> <old> <new>
+run() {
+  name=$1 file=$2 test=$3 only=$4 old=$5 new=$6
+  if [ -n "${ONLY:-}" ] && [[ " $ONLY " != *" $name "* ]]; then return; fi
+  keep "$file"
+  python3 - "$file" "$old" "$new" <<'PY'
+import sys
+p, old, new = sys.argv[1:4]
+s = open(p).read()
+assert old in s, "the fault does not apply: " + old
+open(p, 'w').write(s.replace(old, new, 1))
+PY
+  [ $? -eq 0 ] || { echo "CONTROL $name: DOES NOT APPLY"; BAD=1; cp "$COPIES/$(echo "$file" | tr / _)" "$file"; return; }
+  out=$(pnpm exec vitest run "$test" 2>&1); s1=$?
+  fails=$(echo "$out" | grep -E '^ FAIL ' | sort -u)
+  named=$(echo "$fails" | grep -c -E "$only")
+  others=$(echo "$fails" | grep -v -c -E "$only")
+  escaped=$only
+  out2=$(pnpm exec vitest run "$test" -t "^(?!.*(${escaped})).*" 2>&1); s2=$?
+  echo "CONTROL $name: exit $s1 (want nonzero), named test red: $named (want 1+), other failures: $others (want 0), named test left out: exit $s2 (want 0)"
+  if [ $s1 -eq 0 ] || [ "$named" -lt 1 ] || [ "$others" -ne 0 ] || [ $s2 -ne 0 ]; then BAD=1; fi
+  cp "$COPIES/$(echo "$file" | tr / _)" "$file"
+}
+
+FEED=$DIR/execFeed.ts
+FEEDT=$DIR/execFeed.test.ts
+run historical-marks-are-news "$FEED" "$FEEDT" 'is not the end mark of the bytes a reconnect continues' "!(mark.end > historicalFrom && mark.end <= historicalEnd) && " ""
+run unverified-proves "$FEED" "$FEEDT" 'is proven by a directory the shell vouched for' "if (mark.trust === 'nonce' && !proven) {" "if (!proven) {"
+run proof-goes-with-the-screen "$FEED" "$FEEDT" 'stays proven when the screen is brought afresh' "    running = false;
+    lastStart = undefined;" "    running = false;
+    proven = false;
+    lastStart = undefined;"
+run integration-state-unchecked "$FEED" "$FEEDT" 'takes no word it cannot read' "!INTEGRATION_STATES.includes(state)" "false"
+run unverified-line-taken "$FEED" "$FEEDT" 'has no command line when the shell did not prove it' "command: mark.trust === 'nonce' ? mark.command : undefined" "command: mark.command"
+run finished-without-end-mark "$FEED" "$FEEDT" 'finished while the page watched|a shell that proved itself' "if (live && !(mark.end > historicalFrom && mark.end <= historicalEnd) && mark.kind === 'command-end' && mark.id !== undefined) {" "if (live && !(mark.end > historicalFrom && mark.end <= historicalEnd) && mark.kind === 'command-start' && mark.id !== undefined) {"
+
+NOTICE=$DIR/finishedNotice.ts
+NOTICET=$DIR/finishedNotice.test.ts
+run threshold-is-exclusive "$NOTICE" "$NOTICET" 'is raised from the threshold up' "durationMs < LONG_COMMAND_MS" "durationMs <= LONG_COMMAND_MS"
+run front-terminal-is-told "$NOTICE" "$NOTICET" 'is not raised for a terminal the person is looking at' "told.has(key) || deps.shown(session)" "told.has(key)"
+run command-told-twice "$NOTICE" "$NOTICET" 'is raised once for each command' "      remember(key);" ""
+run control-characters-pass "$NOTICE" "$NOTICET" 'bounds the words and keeps a command line' "text.replace(CONTROL, ' ')" "text"
+run show-goes-nowhere "$NOTICE" "$NOTICET" 'brings the terminal forward and jumps|newest command|tells the terminal of the session' "              deps.show(session, finished.id, generation);" ""
+
+SESSIONS=$DIR/TerminalSessions.ts
+SESSIONST=$DIR/TerminalSessionsNotice.test.ts
+run finished-on-every-status "$SESSIONS" "$SESSIONST" 'is not told again for a status that changed|which terminal of a session' "snapshot.finished !== before && " ""
+run jump-is-not-spent "$SESSIONS" "$SESSIONST" 'the request to move a terminal|which terminal of a session' "        jumps.delete(session);
+        tellJumps();" "        tellJumps();"
+run jump-outlives-its-tab "$SESSIONS" "$SESSIONST" 'goes with the session' "    if (jumps.delete(id)) {
+      tellJumps();
+    }" ""
+
+BODY=$DIR/TerminalBody.tsx
+BODYT=$DIR/TerminalBodyJump.test.tsx
+run jump-ignores-visibility "$BODY" "$BODYT" 'waits for the terminal to be on screen' "if (jump === undefined || !visible || !view.ready) {" "if (jump === undefined || !view.ready) {"
+run jump-without-keyboard "$BODY" "$BODYT" 'a request to show a command' "      screen.commands.reveal(command, generation);
+      screen.focus();" "      screen.commands.reveal(command, generation);"
+
+TOOL=$DIR/terminals.ts
+TOOLT=$DIR/terminalsNotice.test.ts
+run in-front-is-told "$TOOL" "$TOOLT" 'is told to the notices when the terminal is not the one in front' "store.selectors.isShown(store.getSnapshot(), session) && (options.windowShown ?? documentIsVisible)()" "false"
+run hidden-window-is-in-front "$TOOL" "$TOOLT" 'is told when the person is looking at the terminal in a window that is not shown' "&& (options.windowShown ?? documentIsVisible)()" ""
+
+TIER=$DIR/integration.ts
+TIERT=$DIR/integration.test.ts
+run proof-upgrades-none "$TIER" "$TIERT" 'the tier of a terminal|the words of the tier|shell integration' "if (state !== 'on' && state !== 'unconfirmed') {" "if (state === undefined) {"
+run basic-is-rich "$TIER" "$TIERT" 'the tier of a terminal|the words of the tier' "return status.proven === true ? 'rich' : 'basic';" "return 'rich';"
+
+GUT=$DIR/gutter/commandGutter.ts
+GUTT=$DIR/gutter/commandGutter.test.ts
+run reveal-ignores-epoch "$GUT" "$GUTT" 'revealing a command of an earlier terminal' "const wanted = of === undefined || of === epoch ? idOf(id) : of === 0 ? id : \`\${String(of)}:\${id}\`;" "const wanted = idOf(id);"
+run restart-is-not-counted "$SESSIONS" "$SESSIONST" 'which terminal of a session a command finished in' "generation: what === 'restart the terminal' ? old.generation + 1 : old.generation" "generation: old.generation"
+run closed-show-is-silent "$TOOL" "$TOOLT" 'says that the terminal was closed' "options.notices?.notify({ title: 'That terminal was closed'" "void ({ title: 'That terminal was closed'"
+
+exit $BAD

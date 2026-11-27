@@ -38,6 +38,11 @@
     min-block-size: 0;
   }
 
+  /* The panel already paints the content plane behind this embedded viewer. Its sticky header still paints its own solid mask. */
+  .view > [data-log-session] {
+    background-color: transparent;
+  }
+
   /* The session's polite announcements (a copy that was made, one that was not): in the body and read, never drawn. It takes no room and holds no focus. */
   .live {
     position: absolute;

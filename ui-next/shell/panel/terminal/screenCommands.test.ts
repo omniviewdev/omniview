@@ -475,3 +475,54 @@ describe('review of #791: nothing with a line break reaches the new shell from a
     expect(next.typed().join('')).not.toMatch(/[\r\n]/);
   });
 });
+
+describe('revealing a command by its id (#694 step 6; fake emulator)', () => {
+  const gone = { kind: 'said', words: 'That command is no longer in the terminal' };
+
+  async function withTwo() {
+    const r = await rig();
+    r.feed.push('$ one\r\na\r\n$ two\r\nb\r\n', [placed(0, A()), placed(2, B()), placed(7, C('one')), placed(10, D(0)), placed(10, A('c2')), placed(12, B('c2')), placed(17, C('two', 'c2')), placed(20, D(3, 'c2'))]);
+    r.frame();
+    return r;
+  }
+
+  it('moves the view to the command of a placed screen, and says where it went', async () => {
+    const { screen, engine, events } = await withTwo();
+    screen.commands.reveal('c2');
+    expect(engine().scrolls.length).toBeGreaterThan(0);
+    expect(events.at(-1)).toEqual({ kind: 'said', words: 'Command 2 of 2, Failed, exit 3, took 1.5 s: two' });
+  });
+
+  it('holds the request until the screen has placed the marks it holds, then goes to the command: nothing is said before', async () => {
+    const r = await rig();
+    r.feed.push('$ one\r\na\r\n', [placed(0, A()), placed(2, B()), placed(7, C('one')), placed(10, D(0))]);
+    r.screen.commands.reveal('c1');
+    expect(r.events.filter((one) => one.kind === 'said'), 'held: no word yet').toEqual([]);
+    expect(r.engine().scrolls).toEqual([]);
+    r.frame();
+    expect(r.engine().scrolls.length).toBeGreaterThan(0);
+    expect(r.events.filter((one) => one.kind === 'said')).toHaveLength(1);
+  });
+
+  it('says a command that the placed screen does not hold is gone, once', async () => {
+    const { screen, events, frame } = await withTwo();
+    screen.commands.reveal('c99');
+    frame();
+    expect(events.filter((one) => one.kind === 'said' && one.words === gone.words)).toEqual([gone]);
+  });
+
+  it('says it is gone when the placed screen has no command at all', async () => {
+    const { screen, events, frame } = await rig();
+    frame();
+    screen.commands.reveal('c1');
+    expect(events.filter((one) => one.kind === 'said')).toEqual([gone]);
+  });
+
+  it('moves nothing on the alternate screen: a program has it, and its lines are not the commands\'', async () => {
+    const { screen, engine } = await withTwo();
+    engine().alternateScreen(true);
+    const before = engine().scrolls.length;
+    screen.commands.reveal('c2');
+    expect(engine().scrolls.length).toBe(before);
+  });
+});

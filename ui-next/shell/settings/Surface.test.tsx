@@ -69,7 +69,9 @@ describe('the pages', () => {
     expect(screen.getByRole('button', { name: 'Appearance' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('region', { name: 'Appearance' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 3, name: 'Appearance' })).toBeInTheDocument();
-    expect(screen.getByText('Customize the look and feel of the application')).toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { level: 4 }).map((heading) => heading.textContent)).toEqual(['Window material', 'Surface opacity', 'Interface']);
+    expect(screen.queryByText('Customize the look and feel of the application')).toBeNull();
+    expect(screen.queryByText(/Only backgrounds change|Active (here|in this window)/i)).toBeNull();
   });
 
   it('draw the glyph the host names for each category, now that the kit has all six, in a column of their own', async () => {
@@ -101,10 +103,13 @@ describe('the pages', () => {
 
   it('do not offer a setting the sheet has no part for, nor a page left empty by that', async () => {
     await mount();
-    // Appearance has a theme in the host's schema; its editor is a picker, which is not built: three rows, not four.
+    // Theme is a picker, not a text field. Its absence does not hide the host's material and interface settings.
     expect(screen.queryByRole('textbox', { name: 'Theme' })).toBeNull();
     const rows = document.querySelectorAll('[data-settings-row]');
-    expect([...rows].map((row) => row.getAttribute('data-settings-row'))).toEqual(['appearance.density', 'appearance.motion', 'appearance.textSize']);
+    expect([...rows].map((row) => row.getAttribute('data-settings-row'))).toEqual([
+      'appearance.windowMaterial', 'appearance.glassStyle', 'appearance.chromeOpacity', 'appearance.contentOpacity', 'appearance.menuOpacity', 'appearance.sheetOpacity',
+      'appearance.density', 'appearance.textSize', 'appearance.motion',
+    ]);
   });
 });
 
@@ -123,6 +128,14 @@ describe('each setting has the control its kind asks for', () => {
     const m = await mount();
     await goTo(m, 'Terminal');
     expect(screen.getByRole('switch', { name: 'Cursor Blink' })).toHaveAccessibleDescription(/Whether the cursor should blink in the terminal/);
+  });
+
+  it('draws the opt-out of the shell integration in the Terminal page: a switch that is on, and says that it applies to terminals opened after the change and that no startup file is edited', async () => {
+    const m = await mount();
+    await goTo(m, 'Terminal');
+    const row = screen.getByRole('switch', { name: 'Shell Integration' });
+    expect(row).toHaveAttribute('aria-checked', 'true');
+    expect(row).toHaveAccessibleDescription(/Applies to terminals opened after the change; the shell's startup files are never edited\./);
   });
 
   it('a secret says whether the host holds one, never what it is', async () => {
@@ -144,6 +157,16 @@ describe('a change', () => {
     expect(m.host.calls.commit).toEqual([{ 'terminal.cursorBlink': false }]);
     expect(screen.getByRole('switch', { name: 'Cursor Blink' })).toHaveAttribute('aria-checked', 'false');
     expect(screen.getByRole('button', { name: 'Reset Cursor Blink to default' }).querySelector('svg')).toHaveAttribute('data-ov-glyph', 'rotate-ccw');
+  });
+
+  it('turns the shell integration off when its switch is pressed: the host is told the one setting', async () => {
+    const m = await mount();
+    await goTo(m, 'Terminal');
+    await m.user.click(screen.getByRole('switch', { name: 'Shell Integration' }));
+    await settle(m.clock);
+    expect(m.host.calls.commit).toEqual([{ 'terminal.shellIntegration': false }]);
+    expect(screen.getByRole('switch', { name: 'Shell Integration' })).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByRole('button', { name: 'Reset Shell Integration to default' })).toBeInTheDocument();
   });
 
   it('is undone by Reset, which then goes, and the keyboard is on the row\'s control', async () => {

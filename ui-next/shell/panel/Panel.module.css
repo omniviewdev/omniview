@@ -73,7 +73,7 @@
     block-size: clamp(120px, var(--_size, var(--_default)), calc(100vh - 312px));
     overflow: clip;
     border-radius: var(--ov-radius-island);
-    background-color: var(--ov-bg-island);
+    background-color: var(--ov-surface-content);
   }
 
   .panel[hidden] {

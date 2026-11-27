@@ -57,6 +57,17 @@ export const entries = {
       'Validate the draft yourself and explain errors in Field. Typing never clamps the value; keyboard steps require a valid number, but pointer steps clamp their result to the bounds.',
     ],
   },
+  Slider: {
+    category,
+    summary: 'Adjust one number within a bounded range. Use NumberInput when users need to type an exact value.',
+    guidance: [
+      'Give the slider a Field or a standalone label. Set min, max, and step for the allowed values. Use unit to include the unit in the visible and spoken readout.',
+      'Keep value at the last accepted number. The thumb and readout preview edits locally; use onValueChange only to preview the effect elsewhere.',
+      'Update value in onCommit. A changed drag or key adjustment commits once on release. A standalone adjustment from assistive technology commits immediately.',
+      'Escape cancels the active adjustment and restores the latest accepted value without committing.',
+      'Use readOnly for a fixed value or disabledReason to explain why it cannot change. Both keep the slider focusable.',
+    ],
+  },
   SecretInput: {
     category,
     summary: 'Set or replace a password, key, or token without loading the saved secret into the input.',

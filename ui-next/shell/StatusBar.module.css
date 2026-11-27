@@ -10,7 +10,6 @@
     min-inline-size: 0;
     block-size: 32px;
     padding-inline: var(--ov-spacing-12);
-    background-color: var(--ov-bg-window);
     color: var(--ov-fg-muted);
     font-family: var(--ov-font-ui);
     font-size: var(--ov-fs-12);

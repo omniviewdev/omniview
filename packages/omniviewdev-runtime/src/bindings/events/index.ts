@@ -9,6 +9,11 @@ import type {} from "../github.com/wailsapp/wails/v3/internal/eventdata.js";
 import "../github.com/wailsapp/wails/v3/internal/eventcreate.js";
 
 /**
+ * Name of the custom event "appearance/changed".
+ */
+export const AppearanceChanged = "appearance/changed";
+
+/**
  * Name of the custom event "connection/status".
  */
 export const ConnectionStatus = "connection/status";

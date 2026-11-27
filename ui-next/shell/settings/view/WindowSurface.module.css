@@ -12,7 +12,7 @@
     min-block-size: 0;
     min-inline-size: 0;
     overflow: hidden;
-    background-color: var(--ov-bg-dialog);
+    background-color: var(--ov-surface-sheet);
     color: var(--ov-fg);
   }
 

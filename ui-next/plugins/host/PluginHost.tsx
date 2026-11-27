@@ -279,8 +279,6 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
   const restored = session?.restore({ contributions });
   const store = panel ?? createPanelStore({ initial: restored?.panel });
   const logs = createLogStreams(store);
-  // The Terminal's screen reader choice is the window's: it comes back from the session as the person left it (off when the session says nothing), and the session saves it again.
-  const terminals = createTerminals(store, terminalOptions, { screenReader: restored?.terminalScreenReader });
   const tabs = withWindows(createTabsStore({ contributions, initial: restored?.tabs }), store, windows);
   // A page forwards a port where the window has a networker to ask, from a user action: the Ports tool is shown once a forward has started, and a plugin that stops has no forwards left (the host says nothing of it, the window's own store does).
   const forwarding: PortForwarding | undefined =
@@ -305,6 +303,9 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
   const ports = createPorts(store, { openExternal, names: portNamesOf(connections?.store, names), ...portsOptions });
   seedRoutes(tabs, routes);
   const notices = createHostNotices({ tabs, plugins, contributions, platform: platformOf(navigator), saved });
+  // The Terminal's screen reader choice is the window's: it comes back from the session as the person left it (off when the session says nothing), and the session saves it again. A command that ran long in a terminal that is not in front is
+  // told to the window's notices (the tool's own rule); what a test gives as the options wins.
+  const terminals = createTerminals(store, { notices: notices.store, ...terminalOptions }, { screenReader: restored?.terminalScreenReader });
   // The Problems and Operations tools read the window's producers: its plugins, its connections and the activity service's records. Without a feed there are none of the last (a window of a test, or of a part that reports nothing).
   const feed = activity ?? createActivityFeed({ cancel: async () => undefined, markRead: async () => undefined }).feed;
   const resolve = resolverOf(plugins, connections?.store);
