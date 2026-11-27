@@ -8,6 +8,7 @@ const radius = `var\\(--ov-radius-(?:${alternatives(Object.keys(RADII))})\\)`;
 // One to four values of a shorthand, each a step of the scale (or one of the extras).
 const sides = (value) => `/^${value}(?: ${value}){0,3}$/`;
 const colour = `(?:var\\(--ov-[a-z0-9-]+\\)|var\\(--_[a-z0-9-]+\\)|transparent|currentcolor|inherit|none)`;
+const colourFunctions = ['rgb', 'rgba', 'hsl', 'hsla', 'hwb', 'lab', 'lch', 'oklab', 'oklch', 'color', 'color-mix'];
 
 const spacingProperties = (kind) =>
   `/^(?:${kind}(?:-(?:block|inline)(?:-(?:start|end))?|-(?:top|right|bottom|left))?)$/`;
@@ -26,7 +27,7 @@ export default {
     'property-disallowed-list': [['backdrop-filter', 'text-shadow', '/^--(?!_)/'], { message: 'Declare only private custom properties here: --_name. Tokens are generated.' }],
     'color-no-hex': true,
     'color-named': 'never',
-    'function-disallowed-list': ['rgb', 'rgba', 'hsl', 'hsla', 'hwb', 'lab', 'lch', 'oklab', 'oklch', 'color', 'color-mix'],
+    'function-disallowed-list': colourFunctions,
     // The kit writes no rule for html, body or *; the host's reset is the one exception (see overrides).
     'selector-disallowed-list': [['/^\\*/', '/^(?:html|body)(?![\\w-])/'], { message: 'Style your own element. Document-level rules belong to the host entry.' }],
     'declaration-property-value-allowed-list': {
@@ -50,6 +51,7 @@ export default {
       files: ['src/generated/**/*.css'],
       rules: {
         'color-no-hex': null,
+        'function-disallowed-list': colourFunctions.filter((fn) => fn !== 'rgb'),
         'property-disallowed-list': null,
         'declaration-property-value-allowed-list': null,
         'no-unknown-custom-properties': null,

@@ -366,7 +366,13 @@ export type TokenName =
   | '--ov-tint-red'
   | '--ov-tint-purple'
   | '--ov-tint-cyan'
-  | '--ov-tint-gray';
+  | '--ov-tint-gray'
+  | '--ov-surface-backdrop'
+  | '--ov-surface-chrome'
+  | '--ov-surface-content'
+  | '--ov-surface-menu'
+  | '--ov-surface-sheet'
+  | '--ov-surface-sheet-raised';
 export const TOKEN_NAMES = [
   '--ov-font-ui',
   '--ov-font-code',
@@ -486,4 +492,10 @@ export const TOKEN_NAMES = [
   '--ov-tint-purple',
   '--ov-tint-cyan',
   '--ov-tint-gray',
+  '--ov-surface-backdrop',
+  '--ov-surface-chrome',
+  '--ov-surface-content',
+  '--ov-surface-menu',
+  '--ov-surface-sheet',
+  '--ov-surface-sheet-raised',
 ] as const satisfies readonly TokenName[];

@@ -24,19 +24,30 @@ export function Commit(scope: $models.Scope, values: { [_ in string]?: any }): $
     });
 }
 
+/**
+ * GetAppearance reads only this caller's presentation and the public appearance preferences.
+ * Browser pages have no native window; never let a caller supply another window's name.
+ */
+export function GetAppearance(): $CancellablePromise<$models.AppearanceSnapshot> {
+    return $Call.ByID(3277428299).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
 export function GetSnapshot(scope: $models.Scope): $CancellablePromise<$models.Snapshot> {
     return $Call.ByID(3969198041, scope).then(($result: any) => {
-        return $$createType1($result);
+        return $$createType2($result);
     });
 }
 
 export function Validate(scope: $models.Scope, id: string, value: any): $CancellablePromise<settings$0.ValidationResult> {
     return $Call.ByID(3964153809, scope, id, value).then(($result: any) => {
-        return $$createType2($result);
+        return $$createType3($result);
     });
 }
 
 // Private type creation functions
 const $$createType0 = $models.CommitResult.createFrom;
-const $$createType1 = $models.Snapshot.createFrom;
-const $$createType2 = settings$0.ValidationResult.createFrom;
+const $$createType1 = $models.AppearanceSnapshot.createFrom;
+const $$createType2 = $models.Snapshot.createFrom;
+const $$createType3 = settings$0.ValidationResult.createFrom;

@@ -20,7 +20,7 @@ const keysOf = (target) => target.keys ?? (target.text ? ['x', 'w', 'cy'] : KEYS
 export async function readSide(page, side) {
   const wanted = TARGETS.map((target) => {
     const style = STYLES.find((entry) => entry.name === target.name);
-    return { name: target.name, selector: target[side], props: style?.props ?? [], path: style?.path ?? null };
+    return { name: target.name, selector: target[side], props: style?.props ?? [], path: style?.path ?? null, sharedFill: style?.sharedFill === true };
   });
   return page.evaluate((specs) => {
     const round = (value) => Math.round(value * 100) / 100;
@@ -38,6 +38,12 @@ export async function readSide(page, side) {
         style[prop] = prop === 'edge'
           ? (parseFloat(computed.borderTopWidth) > 0 ? computed.borderTopColor : computed.boxShadow.match(/rgba?\([^)]*\)/)?.[0] ?? '')
           : computed[prop];
+      }
+      // The window paints one chrome surface. Compare its visible colour through an unpainted row, not transparent black.
+      if (spec.sharedFill) {
+        for (let parent = element.parentElement; style.backgroundColor === 'rgba(0, 0, 0, 0)' && parent !== null; parent = parent.parentElement) {
+          style.backgroundColor = getComputedStyle(parent).backgroundColor;
+        }
       }
       if (spec.path !== null) {
         const path = element.querySelector('path');

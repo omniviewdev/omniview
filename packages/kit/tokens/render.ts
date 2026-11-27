@@ -11,6 +11,7 @@ import {
   RADII,
   SHADOWS,
   SPACING,
+  SURFACE_FILLS,
   TEXT_SIZES,
   TOKEN_PREFIX,
 } from './manifest.ts';
@@ -24,6 +25,8 @@ const px = (value: number): string => `${value}px`;
 
 const densityTokenNames = Object.keys(DENSITY_TOKENS) as Array<keyof typeof DENSITY_TOKENS>;
 const groups = Object.entries(COLOR_ROLE_GROUPS) as Array<[ColorRoleGroup, readonly string[]]>;
+const surfaceFills = Object.entries(SURFACE_FILLS);
+const surfaceOpacities = [...new Set(surfaceFills.map(([, fill]) => fill.opacity))];
 
 /** Every token name the CSS defines, in the order it declares them. The typed `TokenName` is exactly this list. */
 export function tokenNames(): readonly string[] {
@@ -40,6 +43,8 @@ export function tokenNames(): readonly string[] {
     ...Object.keys(SHADOWS).map((role) => name(`shadow-${role}`)),
     ...densityTokenNames.map((token) => name(token)),
     ...groups.flatMap(([, roles]) => roles.map((role) => name(role))),
+    name('surface-backdrop'),
+    ...surfaceFills.map(([role]) => name(`surface-${role}`)),
   ];
 }
 
@@ -49,6 +54,41 @@ function declarations(entries: ReadonlyArray<readonly [string, string]>, indent:
 
 function densityEntries(density: Density): Array<[string, string]> {
   return densityTokenNames.map((token) => [name(token), px(DENSITY_TOKENS[token][density])]);
+}
+
+/** All engines used by the host accept RGB with a percentage alpha; no relative colours or typed attr() required. */
+function surfaceEntries(theme: ThemeDefinition): Array<[string, string]> {
+  return surfaceFills.map(([role, { colour, opacity }]) => {
+    const hex = theme.colors[colour];
+    const rgb = [1, 3, 5].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16)).join(' ');
+    return [name(`surface-${role}`), `rgb(${rgb} / max(var(--_material-floor, 100%), var(--_${opacity}-opacity, 100%)))`];
+  });
+}
+
+/** Committed integer attributes only. A missing or invalid percentage falls back to 100%; no rules run on slider input. */
+function materialRules(): string {
+  const solid = [['--_material-floor', '100%'], [name('surface-backdrop'), `var(${name('bg-window')})`]] as const;
+  return [
+    '  /* Material paints: no material attribute (including before the host is ready) means opaque. */',
+    '  :root:where([data-ov-material="glass"], [data-ov-material="translucent"]) {',
+    '    --_material-floor: 0%;',
+    `    ${name('surface-backdrop')}: transparent;`,
+    '  }',
+    '  :root:where([data-ov-material="in-page"]) {',
+    '    --_material-floor: 0%;',
+    `    ${name('surface-backdrop')}: var(${name('bg-feedback')});`,
+    '  }',
+    ...surfaceOpacities.flatMap((role) => Array.from({ length: 100 }, (_, percent) =>
+      `  :root[data-ov-${role}-opacity='${percent}'] { --_${role}-opacity: ${percent}%; }`)),
+    '  [data-ov-theme^="high-contrast-"] {',
+    declarations(solid, '    '),
+    '  }',
+    '  @media (prefers-reduced-transparency: reduce), (prefers-contrast: more), (forced-colors: active) {',
+    '    :root {',
+    declarations(solid, '      '),
+    '    }',
+    '  }',
+  ].join('\n');
 }
 
 /** The token stylesheet: every custom property the kit defines, inside the `ov.tokens` layer. */
@@ -130,9 +170,13 @@ export function renderTokensCss(themes: readonly ThemeDefinition[], defaultTheme
       }
     }
 
+    lines.push(`    ${name('surface-backdrop')}: var(${name('bg-window')});`, declarations(surfaceEntries(theme), '    '));
+
     lines.push('  }');
     blocks.push(lines.join('\n'));
   }
+
+  blocks.push(materialRules());
 
   return `/* ${BANNER} */\n@layer ov.tokens {\n${blocks.join('\n\n')}\n}\n`;
 }

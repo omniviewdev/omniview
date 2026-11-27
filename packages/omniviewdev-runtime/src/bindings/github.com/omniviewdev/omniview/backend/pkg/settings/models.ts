@@ -9,6 +9,137 @@ import { Create as $Create } from "@wailsio/runtime";
 // @ts-ignore: Unused imports
 import * as settings$0 from "../../../../plugin-sdk/settings/models.js";
 
+/**
+ * AppearanceMaterial describes what this window can actually render. Capabilities
+ * do not replace the user's portable preferences when a platform falls back.
+ */
+export class AppearanceMaterial {
+    "effective": string;
+    "glass": boolean;
+    "translucent": boolean;
+    "forcedOpaque": boolean;
+    "reason": string;
+
+    /** Creates a new AppearanceMaterial instance. */
+    constructor($$source: Partial<AppearanceMaterial> = {}) {
+        if (!("effective" in $$source)) {
+            this["effective"] = "";
+        }
+        if (!("glass" in $$source)) {
+            this["glass"] = false;
+        }
+        if (!("translucent" in $$source)) {
+            this["translucent"] = false;
+        }
+        if (!("forcedOpaque" in $$source)) {
+            this["forcedOpaque"] = false;
+        }
+        if (!("reason" in $$source)) {
+            this["reason"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AppearanceMaterial instance from a string or object.
+     */
+    static createFrom($$source: any = {}): AppearanceMaterial {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new AppearanceMaterial($$parsedSource as Partial<AppearanceMaterial>);
+    }
+}
+
+export class AppearancePreferences {
+    "windowMaterial": string;
+    "glassStyle": string;
+    "chromeOpacity": number;
+    "contentOpacity": number;
+    "menuOpacity": number;
+    "sheetOpacity": number;
+    "theme": string;
+    "density": string;
+    "textSize": string;
+
+    /** Creates a new AppearancePreferences instance. */
+    constructor($$source: Partial<AppearancePreferences> = {}) {
+        if (!("windowMaterial" in $$source)) {
+            this["windowMaterial"] = "";
+        }
+        if (!("glassStyle" in $$source)) {
+            this["glassStyle"] = "";
+        }
+        if (!("chromeOpacity" in $$source)) {
+            this["chromeOpacity"] = 0;
+        }
+        if (!("contentOpacity" in $$source)) {
+            this["contentOpacity"] = 0;
+        }
+        if (!("menuOpacity" in $$source)) {
+            this["menuOpacity"] = 0;
+        }
+        if (!("sheetOpacity" in $$source)) {
+            this["sheetOpacity"] = 0;
+        }
+        if (!("theme" in $$source)) {
+            this["theme"] = "";
+        }
+        if (!("density" in $$source)) {
+            this["density"] = "";
+        }
+        if (!("textSize" in $$source)) {
+            this["textSize"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AppearancePreferences instance from a string or object.
+     */
+    static createFrom($$source: any = {}): AppearancePreferences {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new AppearancePreferences($$parsedSource as Partial<AppearancePreferences>);
+    }
+}
+
+export class AppearanceSnapshot {
+    "revision": number;
+    "preferences": AppearancePreferences;
+    "material": AppearanceMaterial;
+
+    /** Creates a new AppearanceSnapshot instance. */
+    constructor($$source: Partial<AppearanceSnapshot> = {}) {
+        if (!("revision" in $$source)) {
+            this["revision"] = 0;
+        }
+        if (!("preferences" in $$source)) {
+            this["preferences"] = (new AppearancePreferences());
+        }
+        if (!("material" in $$source)) {
+            this["material"] = (new AppearanceMaterial());
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AppearanceSnapshot instance from a string or object.
+     */
+    static createFrom($$source: any = {}): AppearanceSnapshot {
+        const $$createField1_0 = $$createType0;
+        const $$createField2_0 = $$createType1;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("preferences" in $$parsedSource) {
+            $$parsedSource["preferences"] = $$createField1_0($$parsedSource["preferences"]);
+        }
+        if ("material" in $$parsedSource) {
+            $$parsedSource["material"] = $$createField2_0($$parsedSource["material"]);
+        }
+        return new AppearanceSnapshot($$parsedSource as Partial<AppearanceSnapshot>);
+    }
+}
+
 export class CommitResult {
     "snapshot": Snapshot;
     "applied": boolean;
@@ -37,7 +168,7 @@ export class CommitResult {
      * Creates a new CommitResult instance from a string or object.
      */
     static createFrom($$source: any = {}): CommitResult {
-        const $$createField0_0 = $$createType0;
+        const $$createField0_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("snapshot" in $$parsedSource) {
             $$parsedSource["snapshot"] = $$createField0_0($$parsedSource["snapshot"]);
@@ -95,9 +226,9 @@ export class Snapshot {
      * Creates a new Snapshot instance from a string or object.
      */
     static createFrom($$source: any = {}): Snapshot {
-        const $$createField0_0 = $$createType1;
-        const $$createField1_0 = $$createType2;
-        const $$createField2_0 = $$createType5;
+        const $$createField0_0 = $$createType3;
+        const $$createField1_0 = $$createType4;
+        const $$createField2_0 = $$createType7;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("scope" in $$parsedSource) {
             $$parsedSource["scope"] = $$createField0_0($$parsedSource["scope"]);
@@ -113,14 +244,16 @@ export class Snapshot {
 }
 
 // Private type creation functions
-const $$createType0 = Snapshot.createFrom;
-const $$createType1 = Scope.createFrom;
-var $$createType2 = (function $$initCreateType2(...args: any[]): any {
-    if ($$createType2 === $$initCreateType2) {
-        $$createType2 = $$createType4;
+const $$createType0 = AppearancePreferences.createFrom;
+const $$createType1 = AppearanceMaterial.createFrom;
+const $$createType2 = Snapshot.createFrom;
+const $$createType3 = Scope.createFrom;
+var $$createType4 = (function $$initCreateType4(...args: any[]): any {
+    if ($$createType4 === $$initCreateType4) {
+        $$createType4 = $$createType6;
     }
-    return $$createType2(...args);
+    return $$createType4(...args);
 });
-const $$createType3 = settings$0.Category.createFrom;
-const $$createType4 = $Create.Map($Create.Any, $$createType3);
-const $$createType5 = $Create.Map($Create.Any, $Create.Any);
+const $$createType5 = settings$0.Category.createFrom;
+const $$createType6 = $Create.Map($Create.Any, $$createType5);
+const $$createType7 = $Create.Map($Create.Any, $Create.Any);

@@ -1,7 +1,9 @@
 import { Text } from '@omniviewdev/kit';
 import type { FormStore } from '../../core/fields';
 import type { SettingsPage } from '../model/adapter';
+import { WINDOW_MATERIAL } from '../model/material';
 import type { SettingsSession } from '../model/session';
+import { AppearanceGroups } from './AppearanceGroups';
 import styles from './Page.module.css';
 import { SettingRow } from './SettingRow';
 
@@ -14,11 +16,7 @@ type PageProps = {
   readonly session: SettingsSession;
 };
 
-/**
- * One page of Settings (ch16 S124): a heading (18/24 in a 28 px lane), the category's one-line description, and the rows of its settings in the order the host gives them. Every row is drawn from the page's fields and none is written by hand.
- * Not built: the sections the mock groups rows into (the host declares none), the status slot at the end of the heading (the states it carries need a restart command and the store's own state, which the host does not say),
- * and the page menu.
- */
+/** One host category. Appearance groups the host's fields; other categories keep the host's flat list. */
 export function Page({ headingLevel, page, form, session }: PageProps) {
   return (
     <section className={styles.page} aria-label={page.title} data-settings-part="page" data-settings-page-id={page.id}>
@@ -32,11 +30,15 @@ export function Page({ headingLevel, page, form, session }: PageProps) {
           </Text>
         )}
       </header>
-      <div className={styles.rows} data-settings-part="rows">
-        {page.fields.map((id) => (
-          <SettingRow key={id} form={form} session={session} id={id} />
-        ))}
-      </div>
+      {page.fields.includes(WINDOW_MATERIAL) ? (
+        <AppearanceGroups fields={page.fields} level={headingLevel === 'h2' ? 'h3' : 'h4'} form={form} session={session} />
+      ) : (
+        <div className={styles.rows} data-settings-part="rows">
+          {page.fields.map((id) => (
+            <SettingRow key={id} form={form} session={session} id={id} />
+          ))}
+        </div>
+      )}
     </section>
   );
 }

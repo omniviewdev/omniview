@@ -8,7 +8,7 @@
     min-block-size: 0;
     overflow: hidden;
     border-radius: var(--ov-radius-island);
-    background-color: var(--ov-bg-island);
+    background-color: var(--ov-surface-content);
   }
 
   .header {

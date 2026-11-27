@@ -1,5 +1,6 @@
 import { compileSchema, createFormStore, sameValue, type FormStore, type Json, type RemoteValidator, type Scheduler, type SubmitOutcome, type SubmitPayload } from '../../core/fields';
 import { modelOf, type SettingsModel } from './adapter';
+import { MATERIAL_FIELDS, materialResetBlock, RESETTING_MATERIAL } from './material';
 import type { HostSnapshot, SettingsClient } from './types';
 
 // The session is Settings' whole dealing with the host: it reads the snapshot, makes the form from it (the model of ../../core/fields, in the mode of a setting: a value applies the moment it is chosen or committed),
@@ -32,6 +33,8 @@ export type SettingsSession = {
   readonly load: () => void;
   /** Asks the host what it holds now and gives it to the form: a window that was hidden and is shown again. A no-op until the first load has finished. */
   readonly refresh: () => void;
+  /** Restores only the material fields to their declared defaults, in one host transaction. */
+  readonly resetMaterial: () => Promise<boolean>;
   readonly elsewhere: Elsewhere;
   /** What the form says to a screen reader (a new error or warning raised on commit, S127): Settings draws it in a polite live region of its own, because the window's are behind the sheet's modal. */
   readonly announcements: Announcements;
@@ -131,7 +134,7 @@ export function createSettingsSession({ client, scheduler }: SessionOptions): Se
     return { valid: answer.valid, ...(answer.message === undefined || answer.message === '' ? {} : { message: answer.message }), ...(answer.code === undefined || answer.code === '' ? {} : { code: answer.code }) };
   };
 
-  const submit = async ({ values }: SubmitPayload): Promise<SubmitOutcome> => {
+  const commitPatch = async (values: Readonly<Record<string, Json>>): Promise<Record<string, Json>> => {
     inflight += 1;
     epoch += 1;
     try {
@@ -159,7 +162,7 @@ export function createSettingsSession({ client, scheduler }: SessionOptions): Se
         state.form.rebase({}, { pendingRestart: waiting() });
       }
 
-      return { ok: true, values: canonical };
+      return canonical;
     } finally {
       inflight -= 1;
       epoch += 1;
@@ -167,6 +170,35 @@ export function createSettingsSession({ client, scheduler }: SessionOptions): Se
         wantsRefresh = false;
         void refresh(0);
       }
+    }
+  };
+
+  const submit = async ({ values }: SubmitPayload): Promise<SubmitOutcome> => ({ ok: true, values: await commitPatch(values) });
+
+  const resetMaterial = async (): Promise<boolean> => {
+    if (disposed || state.phase !== 'ready' || materialResetBlock(state.form) !== undefined) {
+      return false;
+    }
+
+    const { form } = state;
+    const defaults = Object.fromEntries(MATERIAL_FIELDS.map((id) => [id, form.field(id)!.default!]));
+    form.setContext({ [RESETTING_MATERIAL]: true });
+    try {
+      const values = await commitPatch(defaults);
+      if (!disposed) {
+        form.rebase(values);
+        for (const id of MATERIAL_FIELDS) {
+          if (form.field(id)?.dirty) {
+            form.revert(id);
+          }
+        }
+      }
+
+      return true;
+    } catch {
+      return false;
+    } finally {
+      form.setContext({ [RESETTING_MATERIAL]: false });
     }
   };
 
@@ -384,6 +416,7 @@ export function createSettingsSession({ client, scheduler }: SessionOptions): Se
       };
     },
     load,
+    resetMaterial,
     refresh: () => {
       retries = 0;
       void refresh(0);

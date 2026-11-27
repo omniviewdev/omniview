@@ -1,0 +1,139 @@
+@layer ov.components {
+  .root {
+    --_fill: var(--ov-accent);
+    --_track: var(--ov-progress-track);
+    --_thumb: var(--ov-fg-over-accent);
+    --_edge: var(--ov-border-raised);
+
+    display: inline-flex;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    inline-size: clamp(128px, 26vw, 320px);
+    max-inline-size: 100%;
+    min-inline-size: 0;
+    min-block-size: var(--ov-control-height);
+    vertical-align: middle;
+  }
+
+  .rail {
+    display: grid;
+    flex: 1 1 auto;
+    align-items: center;
+    min-inline-size: 0;
+  }
+
+  .input {
+    grid-area: 1 / 1;
+    box-sizing: border-box;
+    inline-size: 100%;
+    min-inline-size: 0;
+    block-size: var(--ov-control-height);
+    min-block-size: 24px;
+    margin: 0;
+    padding: 0;
+    border-radius: var(--ov-radius-control);
+    cursor: pointer;
+    touch-action: pan-y pinch-zoom;
+  }
+
+  .input:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: 0;
+  }
+
+  .input[aria-invalid='true']:focus-visible {
+    outline-color: var(--ov-error-control);
+  }
+
+  .input[aria-disabled='true'],
+  .input[aria-readonly='true'] {
+    cursor: default;
+  }
+
+  .root[data-ov-disabled='true'] {
+    --_fill: var(--ov-icon-disabled);
+    --_track: var(--ov-border-disabled);
+    --_thumb: var(--ov-icon-disabled);
+    --_edge: var(--ov-border-control);
+  }
+
+  .value {
+    box-sizing: content-box;
+    min-inline-size: 4ch;
+    padding: var(--ov-spacing-2) var(--ov-spacing-6);
+    border-radius: var(--ov-radius-control);
+    background-color: var(--ov-bg-inline);
+    color: var(--ov-fg);
+    font-family: var(--ov-font-code);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-12);
+    font-variant-numeric: tabular-nums;
+    line-height: var(--ov-lh-16);
+    text-align: end;
+    white-space: nowrap;
+  }
+
+  .root[data-ov-disabled='true'] > .value {
+    color: var(--ov-fg-muted);
+  }
+
+  /* In forced colors leave the entire range, not just its thumb, to the system. The native input always owns hit testing, stepping and direction. */
+  @media (forced-colors: none) {
+    .rail::before {
+      content: '';
+      grid-area: 1 / 1;
+      block-size: 6px;
+      border-radius: var(--ov-radius-control);
+      background: linear-gradient(var(--_direction, to right), var(--_fill) var(--_position, 0%), var(--_track) var(--_position, 0%));
+      pointer-events: none;
+    }
+
+    .rail:dir(rtl) {
+      --_direction: to left;
+    }
+
+    .input {
+      appearance: none;
+      border: 0;
+      background: transparent;
+    }
+
+    .input:not([aria-disabled]):not([aria-readonly]):is(:hover, :focus-visible, :active) {
+      --_edge: var(--ov-accent);
+    }
+
+    /* Keep the native track the thumb's full height. The slimmer painted track runs underneath it. */
+    .input::-webkit-slider-runnable-track {
+      block-size: 16px;
+      background: transparent;
+    }
+
+    .input::-moz-range-track {
+      block-size: 16px;
+      background: transparent;
+    }
+
+    .input::-moz-range-progress {
+      background: transparent;
+    }
+
+    .input::-webkit-slider-thumb {
+      box-sizing: border-box;
+      appearance: none;
+      inline-size: 24px;
+      block-size: 16px;
+      border: 1px solid var(--_edge);
+      border-radius: var(--ov-radius-popup);
+      background-color: var(--_thumb);
+    }
+
+    .input::-moz-range-thumb {
+      box-sizing: border-box;
+      inline-size: 24px;
+      block-size: 16px;
+      border: 1px solid var(--_edge);
+      border-radius: var(--ov-radius-popup);
+      background-color: var(--_thumb);
+    }
+  }
+}

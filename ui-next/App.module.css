@@ -4,14 +4,14 @@
     display: flex;
     min-height: 100vh;
     padding: var(--ov-spacing-4);
-    background-color: var(--ov-bg-window);
+    background-color: var(--ov-surface-chrome);
   }
 
   .island {
     flex: 1;
     padding: var(--ov-spacing-24);
     border-radius: var(--ov-radius-island);
-    background-color: var(--ov-bg-island);
+    background-color: var(--ov-surface-content);
   }
 
   .rows {

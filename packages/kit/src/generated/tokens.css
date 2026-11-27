@@ -178,6 +178,12 @@
     --ov-tint-purple: #3B3750;
     --ov-tint-cyan: #2C3E3D;
     --ov-tint-gray: #393B3E;
+    --ov-surface-backdrop: var(--ov-bg-window);
+    --ov-surface-chrome: rgb(38 40 44 / max(var(--_material-floor, 100%), var(--_chrome-opacity, 100%)));
+    --ov-surface-content: rgb(25 26 28 / max(var(--_material-floor, 100%), var(--_content-opacity, 100%)));
+    --ov-surface-menu: rgb(38 40 44 / max(var(--_material-floor, 100%), var(--_menu-opacity, 100%)));
+    --ov-surface-sheet: rgb(25 26 28 / max(var(--_material-floor, 100%), var(--_sheet-opacity, 100%)));
+    --ov-surface-sheet-raised: rgb(38 40 44 / max(var(--_material-floor, 100%), var(--_sheet-opacity, 100%)));
   }
 
   [data-ov-theme='dark'] {
@@ -267,6 +273,12 @@
     --ov-tint-purple: #3F3B55;
     --ov-tint-cyan: #304142;
     --ov-tint-gray: #3E3F43;
+    --ov-surface-backdrop: var(--ov-bg-window);
+    --ov-surface-chrome: rgb(43 45 48 / max(var(--_material-floor, 100%), var(--_chrome-opacity, 100%)));
+    --ov-surface-content: rgb(30 31 34 / max(var(--_material-floor, 100%), var(--_content-opacity, 100%)));
+    --ov-surface-menu: rgb(43 45 48 / max(var(--_material-floor, 100%), var(--_menu-opacity, 100%)));
+    --ov-surface-sheet: rgb(30 31 34 / max(var(--_material-floor, 100%), var(--_sheet-opacity, 100%)));
+    --ov-surface-sheet-raised: rgb(43 45 48 / max(var(--_material-floor, 100%), var(--_sheet-opacity, 100%)));
   }
 
   [data-ov-theme='light'] {
@@ -356,6 +368,12 @@
     --ov-tint-purple: #DBD7F5;
     --ov-tint-cyan: #C9E0DE;
     --ov-tint-gray: #D9D9DB;
+    --ov-surface-backdrop: var(--ov-bg-window);
+    --ov-surface-chrome: rgb(237 238 240 / max(var(--_material-floor, 100%), var(--_chrome-opacity, 100%)));
+    --ov-surface-content: rgb(255 255 255 / max(var(--_material-floor, 100%), var(--_content-opacity, 100%)));
+    --ov-surface-menu: rgb(237 238 240 / max(var(--_material-floor, 100%), var(--_menu-opacity, 100%)));
+    --ov-surface-sheet: rgb(255 255 255 / max(var(--_material-floor, 100%), var(--_sheet-opacity, 100%)));
+    --ov-surface-sheet-raised: rgb(237 238 240 / max(var(--_material-floor, 100%), var(--_sheet-opacity, 100%)));
   }
 
   [data-ov-theme='obsidian'] {
@@ -445,6 +463,12 @@
     --ov-tint-purple: #342F47;
     --ov-tint-cyan: #253534;
     --ov-tint-gray: #2E2E30;
+    --ov-surface-backdrop: var(--ov-bg-window);
+    --ov-surface-chrome: rgb(22 22 24 / max(var(--_material-floor, 100%), var(--_chrome-opacity, 100%)));
+    --ov-surface-content: rgb(15 15 16 / max(var(--_material-floor, 100%), var(--_content-opacity, 100%)));
+    --ov-surface-menu: rgb(22 22 24 / max(var(--_material-floor, 100%), var(--_menu-opacity, 100%)));
+    --ov-surface-sheet: rgb(15 15 16 / max(var(--_material-floor, 100%), var(--_sheet-opacity, 100%)));
+    --ov-surface-sheet-raised: rgb(22 22 24 / max(var(--_material-floor, 100%), var(--_sheet-opacity, 100%)));
   }
 
   [data-ov-theme='carbon'] {
@@ -534,6 +558,12 @@
     --ov-tint-purple: #3E3B56;
     --ov-tint-cyan: #2F4143;
     --ov-tint-gray: #3A3E45;
+    --ov-surface-backdrop: var(--ov-bg-window);
+    --ov-surface-chrome: rgb(38 42 49 / max(var(--_material-floor, 100%), var(--_chrome-opacity, 100%)));
+    --ov-surface-content: rgb(28 31 36 / max(var(--_material-floor, 100%), var(--_content-opacity, 100%)));
+    --ov-surface-menu: rgb(38 42 49 / max(var(--_material-floor, 100%), var(--_menu-opacity, 100%)));
+    --ov-surface-sheet: rgb(28 31 36 / max(var(--_material-floor, 100%), var(--_sheet-opacity, 100%)));
+    --ov-surface-sheet-raised: rgb(38 42 49 / max(var(--_material-floor, 100%), var(--_sheet-opacity, 100%)));
   }
 
   [data-ov-theme='solarized-dark'] {
@@ -623,6 +653,12 @@
     --ov-tint-purple: #1E3E59;
     --ov-tint-cyan: #13434A;
     --ov-tint-gray: #1C414A;
+    --ov-surface-backdrop: var(--ov-bg-window);
+    --ov-surface-chrome: rgb(7 54 66 / max(var(--_material-floor, 100%), var(--_chrome-opacity, 100%)));
+    --ov-surface-content: rgb(0 43 54 / max(var(--_material-floor, 100%), var(--_content-opacity, 100%)));
+    --ov-surface-menu: rgb(7 54 66 / max(var(--_material-floor, 100%), var(--_menu-opacity, 100%)));
+    --ov-surface-sheet: rgb(0 43 54 / max(var(--_material-floor, 100%), var(--_sheet-opacity, 100%)));
+    --ov-surface-sheet-raised: rgb(7 54 66 / max(var(--_material-floor, 100%), var(--_sheet-opacity, 100%)));
   }
 
   [data-ov-theme='solarized-light'] {
@@ -712,6 +748,12 @@
     --ov-tint-purple: #DDD3E0;
     --ov-tint-cyan: #CCDCCB;
     --ov-tint-gray: #D8D6C9;
+    --ov-surface-backdrop: var(--ov-bg-window);
+    --ov-surface-chrome: rgb(238 232 213 / max(var(--_material-floor, 100%), var(--_chrome-opacity, 100%)));
+    --ov-surface-content: rgb(253 246 227 / max(var(--_material-floor, 100%), var(--_content-opacity, 100%)));
+    --ov-surface-menu: rgb(238 232 213 / max(var(--_material-floor, 100%), var(--_menu-opacity, 100%)));
+    --ov-surface-sheet: rgb(253 246 227 / max(var(--_material-floor, 100%), var(--_sheet-opacity, 100%)));
+    --ov-surface-sheet-raised: rgb(238 232 213 / max(var(--_material-floor, 100%), var(--_sheet-opacity, 100%)));
   }
 
   [data-ov-theme='high-contrast-dark'] {
@@ -801,6 +843,12 @@
     --ov-tint-purple: #28243B;
     --ov-tint-cyan: #192A28;
     --ov-tint-gray: #313131;
+    --ov-surface-backdrop: var(--ov-bg-window);
+    --ov-surface-chrome: rgb(0 0 0 / max(var(--_material-floor, 100%), var(--_chrome-opacity, 100%)));
+    --ov-surface-content: rgb(0 0 0 / max(var(--_material-floor, 100%), var(--_content-opacity, 100%)));
+    --ov-surface-menu: rgb(0 0 0 / max(var(--_material-floor, 100%), var(--_menu-opacity, 100%)));
+    --ov-surface-sheet: rgb(0 0 0 / max(var(--_material-floor, 100%), var(--_sheet-opacity, 100%)));
+    --ov-surface-sheet-raised: rgb(0 0 0 / max(var(--_material-floor, 100%), var(--_sheet-opacity, 100%)));
   }
 
   [data-ov-theme='high-contrast-light'] {
@@ -890,5 +938,431 @@
     --ov-tint-purple: #DBD7F5;
     --ov-tint-cyan: #C9E0DE;
     --ov-tint-gray: #CECECE;
+    --ov-surface-backdrop: var(--ov-bg-window);
+    --ov-surface-chrome: rgb(255 255 255 / max(var(--_material-floor, 100%), var(--_chrome-opacity, 100%)));
+    --ov-surface-content: rgb(255 255 255 / max(var(--_material-floor, 100%), var(--_content-opacity, 100%)));
+    --ov-surface-menu: rgb(255 255 255 / max(var(--_material-floor, 100%), var(--_menu-opacity, 100%)));
+    --ov-surface-sheet: rgb(255 255 255 / max(var(--_material-floor, 100%), var(--_sheet-opacity, 100%)));
+    --ov-surface-sheet-raised: rgb(255 255 255 / max(var(--_material-floor, 100%), var(--_sheet-opacity, 100%)));
+  }
+
+  /* Material paints: no material attribute (including before the host is ready) means opaque. */
+  :root:where([data-ov-material="glass"], [data-ov-material="translucent"]) {
+    --_material-floor: 0%;
+    --ov-surface-backdrop: transparent;
+  }
+  :root:where([data-ov-material="in-page"]) {
+    --_material-floor: 0%;
+    --ov-surface-backdrop: var(--ov-bg-feedback);
+  }
+  :root[data-ov-chrome-opacity='0'] { --_chrome-opacity: 0%; }
+  :root[data-ov-chrome-opacity='1'] { --_chrome-opacity: 1%; }
+  :root[data-ov-chrome-opacity='2'] { --_chrome-opacity: 2%; }
+  :root[data-ov-chrome-opacity='3'] { --_chrome-opacity: 3%; }
+  :root[data-ov-chrome-opacity='4'] { --_chrome-opacity: 4%; }
+  :root[data-ov-chrome-opacity='5'] { --_chrome-opacity: 5%; }
+  :root[data-ov-chrome-opacity='6'] { --_chrome-opacity: 6%; }
+  :root[data-ov-chrome-opacity='7'] { --_chrome-opacity: 7%; }
+  :root[data-ov-chrome-opacity='8'] { --_chrome-opacity: 8%; }
+  :root[data-ov-chrome-opacity='9'] { --_chrome-opacity: 9%; }
+  :root[data-ov-chrome-opacity='10'] { --_chrome-opacity: 10%; }
+  :root[data-ov-chrome-opacity='11'] { --_chrome-opacity: 11%; }
+  :root[data-ov-chrome-opacity='12'] { --_chrome-opacity: 12%; }
+  :root[data-ov-chrome-opacity='13'] { --_chrome-opacity: 13%; }
+  :root[data-ov-chrome-opacity='14'] { --_chrome-opacity: 14%; }
+  :root[data-ov-chrome-opacity='15'] { --_chrome-opacity: 15%; }
+  :root[data-ov-chrome-opacity='16'] { --_chrome-opacity: 16%; }
+  :root[data-ov-chrome-opacity='17'] { --_chrome-opacity: 17%; }
+  :root[data-ov-chrome-opacity='18'] { --_chrome-opacity: 18%; }
+  :root[data-ov-chrome-opacity='19'] { --_chrome-opacity: 19%; }
+  :root[data-ov-chrome-opacity='20'] { --_chrome-opacity: 20%; }
+  :root[data-ov-chrome-opacity='21'] { --_chrome-opacity: 21%; }
+  :root[data-ov-chrome-opacity='22'] { --_chrome-opacity: 22%; }
+  :root[data-ov-chrome-opacity='23'] { --_chrome-opacity: 23%; }
+  :root[data-ov-chrome-opacity='24'] { --_chrome-opacity: 24%; }
+  :root[data-ov-chrome-opacity='25'] { --_chrome-opacity: 25%; }
+  :root[data-ov-chrome-opacity='26'] { --_chrome-opacity: 26%; }
+  :root[data-ov-chrome-opacity='27'] { --_chrome-opacity: 27%; }
+  :root[data-ov-chrome-opacity='28'] { --_chrome-opacity: 28%; }
+  :root[data-ov-chrome-opacity='29'] { --_chrome-opacity: 29%; }
+  :root[data-ov-chrome-opacity='30'] { --_chrome-opacity: 30%; }
+  :root[data-ov-chrome-opacity='31'] { --_chrome-opacity: 31%; }
+  :root[data-ov-chrome-opacity='32'] { --_chrome-opacity: 32%; }
+  :root[data-ov-chrome-opacity='33'] { --_chrome-opacity: 33%; }
+  :root[data-ov-chrome-opacity='34'] { --_chrome-opacity: 34%; }
+  :root[data-ov-chrome-opacity='35'] { --_chrome-opacity: 35%; }
+  :root[data-ov-chrome-opacity='36'] { --_chrome-opacity: 36%; }
+  :root[data-ov-chrome-opacity='37'] { --_chrome-opacity: 37%; }
+  :root[data-ov-chrome-opacity='38'] { --_chrome-opacity: 38%; }
+  :root[data-ov-chrome-opacity='39'] { --_chrome-opacity: 39%; }
+  :root[data-ov-chrome-opacity='40'] { --_chrome-opacity: 40%; }
+  :root[data-ov-chrome-opacity='41'] { --_chrome-opacity: 41%; }
+  :root[data-ov-chrome-opacity='42'] { --_chrome-opacity: 42%; }
+  :root[data-ov-chrome-opacity='43'] { --_chrome-opacity: 43%; }
+  :root[data-ov-chrome-opacity='44'] { --_chrome-opacity: 44%; }
+  :root[data-ov-chrome-opacity='45'] { --_chrome-opacity: 45%; }
+  :root[data-ov-chrome-opacity='46'] { --_chrome-opacity: 46%; }
+  :root[data-ov-chrome-opacity='47'] { --_chrome-opacity: 47%; }
+  :root[data-ov-chrome-opacity='48'] { --_chrome-opacity: 48%; }
+  :root[data-ov-chrome-opacity='49'] { --_chrome-opacity: 49%; }
+  :root[data-ov-chrome-opacity='50'] { --_chrome-opacity: 50%; }
+  :root[data-ov-chrome-opacity='51'] { --_chrome-opacity: 51%; }
+  :root[data-ov-chrome-opacity='52'] { --_chrome-opacity: 52%; }
+  :root[data-ov-chrome-opacity='53'] { --_chrome-opacity: 53%; }
+  :root[data-ov-chrome-opacity='54'] { --_chrome-opacity: 54%; }
+  :root[data-ov-chrome-opacity='55'] { --_chrome-opacity: 55%; }
+  :root[data-ov-chrome-opacity='56'] { --_chrome-opacity: 56%; }
+  :root[data-ov-chrome-opacity='57'] { --_chrome-opacity: 57%; }
+  :root[data-ov-chrome-opacity='58'] { --_chrome-opacity: 58%; }
+  :root[data-ov-chrome-opacity='59'] { --_chrome-opacity: 59%; }
+  :root[data-ov-chrome-opacity='60'] { --_chrome-opacity: 60%; }
+  :root[data-ov-chrome-opacity='61'] { --_chrome-opacity: 61%; }
+  :root[data-ov-chrome-opacity='62'] { --_chrome-opacity: 62%; }
+  :root[data-ov-chrome-opacity='63'] { --_chrome-opacity: 63%; }
+  :root[data-ov-chrome-opacity='64'] { --_chrome-opacity: 64%; }
+  :root[data-ov-chrome-opacity='65'] { --_chrome-opacity: 65%; }
+  :root[data-ov-chrome-opacity='66'] { --_chrome-opacity: 66%; }
+  :root[data-ov-chrome-opacity='67'] { --_chrome-opacity: 67%; }
+  :root[data-ov-chrome-opacity='68'] { --_chrome-opacity: 68%; }
+  :root[data-ov-chrome-opacity='69'] { --_chrome-opacity: 69%; }
+  :root[data-ov-chrome-opacity='70'] { --_chrome-opacity: 70%; }
+  :root[data-ov-chrome-opacity='71'] { --_chrome-opacity: 71%; }
+  :root[data-ov-chrome-opacity='72'] { --_chrome-opacity: 72%; }
+  :root[data-ov-chrome-opacity='73'] { --_chrome-opacity: 73%; }
+  :root[data-ov-chrome-opacity='74'] { --_chrome-opacity: 74%; }
+  :root[data-ov-chrome-opacity='75'] { --_chrome-opacity: 75%; }
+  :root[data-ov-chrome-opacity='76'] { --_chrome-opacity: 76%; }
+  :root[data-ov-chrome-opacity='77'] { --_chrome-opacity: 77%; }
+  :root[data-ov-chrome-opacity='78'] { --_chrome-opacity: 78%; }
+  :root[data-ov-chrome-opacity='79'] { --_chrome-opacity: 79%; }
+  :root[data-ov-chrome-opacity='80'] { --_chrome-opacity: 80%; }
+  :root[data-ov-chrome-opacity='81'] { --_chrome-opacity: 81%; }
+  :root[data-ov-chrome-opacity='82'] { --_chrome-opacity: 82%; }
+  :root[data-ov-chrome-opacity='83'] { --_chrome-opacity: 83%; }
+  :root[data-ov-chrome-opacity='84'] { --_chrome-opacity: 84%; }
+  :root[data-ov-chrome-opacity='85'] { --_chrome-opacity: 85%; }
+  :root[data-ov-chrome-opacity='86'] { --_chrome-opacity: 86%; }
+  :root[data-ov-chrome-opacity='87'] { --_chrome-opacity: 87%; }
+  :root[data-ov-chrome-opacity='88'] { --_chrome-opacity: 88%; }
+  :root[data-ov-chrome-opacity='89'] { --_chrome-opacity: 89%; }
+  :root[data-ov-chrome-opacity='90'] { --_chrome-opacity: 90%; }
+  :root[data-ov-chrome-opacity='91'] { --_chrome-opacity: 91%; }
+  :root[data-ov-chrome-opacity='92'] { --_chrome-opacity: 92%; }
+  :root[data-ov-chrome-opacity='93'] { --_chrome-opacity: 93%; }
+  :root[data-ov-chrome-opacity='94'] { --_chrome-opacity: 94%; }
+  :root[data-ov-chrome-opacity='95'] { --_chrome-opacity: 95%; }
+  :root[data-ov-chrome-opacity='96'] { --_chrome-opacity: 96%; }
+  :root[data-ov-chrome-opacity='97'] { --_chrome-opacity: 97%; }
+  :root[data-ov-chrome-opacity='98'] { --_chrome-opacity: 98%; }
+  :root[data-ov-chrome-opacity='99'] { --_chrome-opacity: 99%; }
+  :root[data-ov-content-opacity='0'] { --_content-opacity: 0%; }
+  :root[data-ov-content-opacity='1'] { --_content-opacity: 1%; }
+  :root[data-ov-content-opacity='2'] { --_content-opacity: 2%; }
+  :root[data-ov-content-opacity='3'] { --_content-opacity: 3%; }
+  :root[data-ov-content-opacity='4'] { --_content-opacity: 4%; }
+  :root[data-ov-content-opacity='5'] { --_content-opacity: 5%; }
+  :root[data-ov-content-opacity='6'] { --_content-opacity: 6%; }
+  :root[data-ov-content-opacity='7'] { --_content-opacity: 7%; }
+  :root[data-ov-content-opacity='8'] { --_content-opacity: 8%; }
+  :root[data-ov-content-opacity='9'] { --_content-opacity: 9%; }
+  :root[data-ov-content-opacity='10'] { --_content-opacity: 10%; }
+  :root[data-ov-content-opacity='11'] { --_content-opacity: 11%; }
+  :root[data-ov-content-opacity='12'] { --_content-opacity: 12%; }
+  :root[data-ov-content-opacity='13'] { --_content-opacity: 13%; }
+  :root[data-ov-content-opacity='14'] { --_content-opacity: 14%; }
+  :root[data-ov-content-opacity='15'] { --_content-opacity: 15%; }
+  :root[data-ov-content-opacity='16'] { --_content-opacity: 16%; }
+  :root[data-ov-content-opacity='17'] { --_content-opacity: 17%; }
+  :root[data-ov-content-opacity='18'] { --_content-opacity: 18%; }
+  :root[data-ov-content-opacity='19'] { --_content-opacity: 19%; }
+  :root[data-ov-content-opacity='20'] { --_content-opacity: 20%; }
+  :root[data-ov-content-opacity='21'] { --_content-opacity: 21%; }
+  :root[data-ov-content-opacity='22'] { --_content-opacity: 22%; }
+  :root[data-ov-content-opacity='23'] { --_content-opacity: 23%; }
+  :root[data-ov-content-opacity='24'] { --_content-opacity: 24%; }
+  :root[data-ov-content-opacity='25'] { --_content-opacity: 25%; }
+  :root[data-ov-content-opacity='26'] { --_content-opacity: 26%; }
+  :root[data-ov-content-opacity='27'] { --_content-opacity: 27%; }
+  :root[data-ov-content-opacity='28'] { --_content-opacity: 28%; }
+  :root[data-ov-content-opacity='29'] { --_content-opacity: 29%; }
+  :root[data-ov-content-opacity='30'] { --_content-opacity: 30%; }
+  :root[data-ov-content-opacity='31'] { --_content-opacity: 31%; }
+  :root[data-ov-content-opacity='32'] { --_content-opacity: 32%; }
+  :root[data-ov-content-opacity='33'] { --_content-opacity: 33%; }
+  :root[data-ov-content-opacity='34'] { --_content-opacity: 34%; }
+  :root[data-ov-content-opacity='35'] { --_content-opacity: 35%; }
+  :root[data-ov-content-opacity='36'] { --_content-opacity: 36%; }
+  :root[data-ov-content-opacity='37'] { --_content-opacity: 37%; }
+  :root[data-ov-content-opacity='38'] { --_content-opacity: 38%; }
+  :root[data-ov-content-opacity='39'] { --_content-opacity: 39%; }
+  :root[data-ov-content-opacity='40'] { --_content-opacity: 40%; }
+  :root[data-ov-content-opacity='41'] { --_content-opacity: 41%; }
+  :root[data-ov-content-opacity='42'] { --_content-opacity: 42%; }
+  :root[data-ov-content-opacity='43'] { --_content-opacity: 43%; }
+  :root[data-ov-content-opacity='44'] { --_content-opacity: 44%; }
+  :root[data-ov-content-opacity='45'] { --_content-opacity: 45%; }
+  :root[data-ov-content-opacity='46'] { --_content-opacity: 46%; }
+  :root[data-ov-content-opacity='47'] { --_content-opacity: 47%; }
+  :root[data-ov-content-opacity='48'] { --_content-opacity: 48%; }
+  :root[data-ov-content-opacity='49'] { --_content-opacity: 49%; }
+  :root[data-ov-content-opacity='50'] { --_content-opacity: 50%; }
+  :root[data-ov-content-opacity='51'] { --_content-opacity: 51%; }
+  :root[data-ov-content-opacity='52'] { --_content-opacity: 52%; }
+  :root[data-ov-content-opacity='53'] { --_content-opacity: 53%; }
+  :root[data-ov-content-opacity='54'] { --_content-opacity: 54%; }
+  :root[data-ov-content-opacity='55'] { --_content-opacity: 55%; }
+  :root[data-ov-content-opacity='56'] { --_content-opacity: 56%; }
+  :root[data-ov-content-opacity='57'] { --_content-opacity: 57%; }
+  :root[data-ov-content-opacity='58'] { --_content-opacity: 58%; }
+  :root[data-ov-content-opacity='59'] { --_content-opacity: 59%; }
+  :root[data-ov-content-opacity='60'] { --_content-opacity: 60%; }
+  :root[data-ov-content-opacity='61'] { --_content-opacity: 61%; }
+  :root[data-ov-content-opacity='62'] { --_content-opacity: 62%; }
+  :root[data-ov-content-opacity='63'] { --_content-opacity: 63%; }
+  :root[data-ov-content-opacity='64'] { --_content-opacity: 64%; }
+  :root[data-ov-content-opacity='65'] { --_content-opacity: 65%; }
+  :root[data-ov-content-opacity='66'] { --_content-opacity: 66%; }
+  :root[data-ov-content-opacity='67'] { --_content-opacity: 67%; }
+  :root[data-ov-content-opacity='68'] { --_content-opacity: 68%; }
+  :root[data-ov-content-opacity='69'] { --_content-opacity: 69%; }
+  :root[data-ov-content-opacity='70'] { --_content-opacity: 70%; }
+  :root[data-ov-content-opacity='71'] { --_content-opacity: 71%; }
+  :root[data-ov-content-opacity='72'] { --_content-opacity: 72%; }
+  :root[data-ov-content-opacity='73'] { --_content-opacity: 73%; }
+  :root[data-ov-content-opacity='74'] { --_content-opacity: 74%; }
+  :root[data-ov-content-opacity='75'] { --_content-opacity: 75%; }
+  :root[data-ov-content-opacity='76'] { --_content-opacity: 76%; }
+  :root[data-ov-content-opacity='77'] { --_content-opacity: 77%; }
+  :root[data-ov-content-opacity='78'] { --_content-opacity: 78%; }
+  :root[data-ov-content-opacity='79'] { --_content-opacity: 79%; }
+  :root[data-ov-content-opacity='80'] { --_content-opacity: 80%; }
+  :root[data-ov-content-opacity='81'] { --_content-opacity: 81%; }
+  :root[data-ov-content-opacity='82'] { --_content-opacity: 82%; }
+  :root[data-ov-content-opacity='83'] { --_content-opacity: 83%; }
+  :root[data-ov-content-opacity='84'] { --_content-opacity: 84%; }
+  :root[data-ov-content-opacity='85'] { --_content-opacity: 85%; }
+  :root[data-ov-content-opacity='86'] { --_content-opacity: 86%; }
+  :root[data-ov-content-opacity='87'] { --_content-opacity: 87%; }
+  :root[data-ov-content-opacity='88'] { --_content-opacity: 88%; }
+  :root[data-ov-content-opacity='89'] { --_content-opacity: 89%; }
+  :root[data-ov-content-opacity='90'] { --_content-opacity: 90%; }
+  :root[data-ov-content-opacity='91'] { --_content-opacity: 91%; }
+  :root[data-ov-content-opacity='92'] { --_content-opacity: 92%; }
+  :root[data-ov-content-opacity='93'] { --_content-opacity: 93%; }
+  :root[data-ov-content-opacity='94'] { --_content-opacity: 94%; }
+  :root[data-ov-content-opacity='95'] { --_content-opacity: 95%; }
+  :root[data-ov-content-opacity='96'] { --_content-opacity: 96%; }
+  :root[data-ov-content-opacity='97'] { --_content-opacity: 97%; }
+  :root[data-ov-content-opacity='98'] { --_content-opacity: 98%; }
+  :root[data-ov-content-opacity='99'] { --_content-opacity: 99%; }
+  :root[data-ov-menu-opacity='0'] { --_menu-opacity: 0%; }
+  :root[data-ov-menu-opacity='1'] { --_menu-opacity: 1%; }
+  :root[data-ov-menu-opacity='2'] { --_menu-opacity: 2%; }
+  :root[data-ov-menu-opacity='3'] { --_menu-opacity: 3%; }
+  :root[data-ov-menu-opacity='4'] { --_menu-opacity: 4%; }
+  :root[data-ov-menu-opacity='5'] { --_menu-opacity: 5%; }
+  :root[data-ov-menu-opacity='6'] { --_menu-opacity: 6%; }
+  :root[data-ov-menu-opacity='7'] { --_menu-opacity: 7%; }
+  :root[data-ov-menu-opacity='8'] { --_menu-opacity: 8%; }
+  :root[data-ov-menu-opacity='9'] { --_menu-opacity: 9%; }
+  :root[data-ov-menu-opacity='10'] { --_menu-opacity: 10%; }
+  :root[data-ov-menu-opacity='11'] { --_menu-opacity: 11%; }
+  :root[data-ov-menu-opacity='12'] { --_menu-opacity: 12%; }
+  :root[data-ov-menu-opacity='13'] { --_menu-opacity: 13%; }
+  :root[data-ov-menu-opacity='14'] { --_menu-opacity: 14%; }
+  :root[data-ov-menu-opacity='15'] { --_menu-opacity: 15%; }
+  :root[data-ov-menu-opacity='16'] { --_menu-opacity: 16%; }
+  :root[data-ov-menu-opacity='17'] { --_menu-opacity: 17%; }
+  :root[data-ov-menu-opacity='18'] { --_menu-opacity: 18%; }
+  :root[data-ov-menu-opacity='19'] { --_menu-opacity: 19%; }
+  :root[data-ov-menu-opacity='20'] { --_menu-opacity: 20%; }
+  :root[data-ov-menu-opacity='21'] { --_menu-opacity: 21%; }
+  :root[data-ov-menu-opacity='22'] { --_menu-opacity: 22%; }
+  :root[data-ov-menu-opacity='23'] { --_menu-opacity: 23%; }
+  :root[data-ov-menu-opacity='24'] { --_menu-opacity: 24%; }
+  :root[data-ov-menu-opacity='25'] { --_menu-opacity: 25%; }
+  :root[data-ov-menu-opacity='26'] { --_menu-opacity: 26%; }
+  :root[data-ov-menu-opacity='27'] { --_menu-opacity: 27%; }
+  :root[data-ov-menu-opacity='28'] { --_menu-opacity: 28%; }
+  :root[data-ov-menu-opacity='29'] { --_menu-opacity: 29%; }
+  :root[data-ov-menu-opacity='30'] { --_menu-opacity: 30%; }
+  :root[data-ov-menu-opacity='31'] { --_menu-opacity: 31%; }
+  :root[data-ov-menu-opacity='32'] { --_menu-opacity: 32%; }
+  :root[data-ov-menu-opacity='33'] { --_menu-opacity: 33%; }
+  :root[data-ov-menu-opacity='34'] { --_menu-opacity: 34%; }
+  :root[data-ov-menu-opacity='35'] { --_menu-opacity: 35%; }
+  :root[data-ov-menu-opacity='36'] { --_menu-opacity: 36%; }
+  :root[data-ov-menu-opacity='37'] { --_menu-opacity: 37%; }
+  :root[data-ov-menu-opacity='38'] { --_menu-opacity: 38%; }
+  :root[data-ov-menu-opacity='39'] { --_menu-opacity: 39%; }
+  :root[data-ov-menu-opacity='40'] { --_menu-opacity: 40%; }
+  :root[data-ov-menu-opacity='41'] { --_menu-opacity: 41%; }
+  :root[data-ov-menu-opacity='42'] { --_menu-opacity: 42%; }
+  :root[data-ov-menu-opacity='43'] { --_menu-opacity: 43%; }
+  :root[data-ov-menu-opacity='44'] { --_menu-opacity: 44%; }
+  :root[data-ov-menu-opacity='45'] { --_menu-opacity: 45%; }
+  :root[data-ov-menu-opacity='46'] { --_menu-opacity: 46%; }
+  :root[data-ov-menu-opacity='47'] { --_menu-opacity: 47%; }
+  :root[data-ov-menu-opacity='48'] { --_menu-opacity: 48%; }
+  :root[data-ov-menu-opacity='49'] { --_menu-opacity: 49%; }
+  :root[data-ov-menu-opacity='50'] { --_menu-opacity: 50%; }
+  :root[data-ov-menu-opacity='51'] { --_menu-opacity: 51%; }
+  :root[data-ov-menu-opacity='52'] { --_menu-opacity: 52%; }
+  :root[data-ov-menu-opacity='53'] { --_menu-opacity: 53%; }
+  :root[data-ov-menu-opacity='54'] { --_menu-opacity: 54%; }
+  :root[data-ov-menu-opacity='55'] { --_menu-opacity: 55%; }
+  :root[data-ov-menu-opacity='56'] { --_menu-opacity: 56%; }
+  :root[data-ov-menu-opacity='57'] { --_menu-opacity: 57%; }
+  :root[data-ov-menu-opacity='58'] { --_menu-opacity: 58%; }
+  :root[data-ov-menu-opacity='59'] { --_menu-opacity: 59%; }
+  :root[data-ov-menu-opacity='60'] { --_menu-opacity: 60%; }
+  :root[data-ov-menu-opacity='61'] { --_menu-opacity: 61%; }
+  :root[data-ov-menu-opacity='62'] { --_menu-opacity: 62%; }
+  :root[data-ov-menu-opacity='63'] { --_menu-opacity: 63%; }
+  :root[data-ov-menu-opacity='64'] { --_menu-opacity: 64%; }
+  :root[data-ov-menu-opacity='65'] { --_menu-opacity: 65%; }
+  :root[data-ov-menu-opacity='66'] { --_menu-opacity: 66%; }
+  :root[data-ov-menu-opacity='67'] { --_menu-opacity: 67%; }
+  :root[data-ov-menu-opacity='68'] { --_menu-opacity: 68%; }
+  :root[data-ov-menu-opacity='69'] { --_menu-opacity: 69%; }
+  :root[data-ov-menu-opacity='70'] { --_menu-opacity: 70%; }
+  :root[data-ov-menu-opacity='71'] { --_menu-opacity: 71%; }
+  :root[data-ov-menu-opacity='72'] { --_menu-opacity: 72%; }
+  :root[data-ov-menu-opacity='73'] { --_menu-opacity: 73%; }
+  :root[data-ov-menu-opacity='74'] { --_menu-opacity: 74%; }
+  :root[data-ov-menu-opacity='75'] { --_menu-opacity: 75%; }
+  :root[data-ov-menu-opacity='76'] { --_menu-opacity: 76%; }
+  :root[data-ov-menu-opacity='77'] { --_menu-opacity: 77%; }
+  :root[data-ov-menu-opacity='78'] { --_menu-opacity: 78%; }
+  :root[data-ov-menu-opacity='79'] { --_menu-opacity: 79%; }
+  :root[data-ov-menu-opacity='80'] { --_menu-opacity: 80%; }
+  :root[data-ov-menu-opacity='81'] { --_menu-opacity: 81%; }
+  :root[data-ov-menu-opacity='82'] { --_menu-opacity: 82%; }
+  :root[data-ov-menu-opacity='83'] { --_menu-opacity: 83%; }
+  :root[data-ov-menu-opacity='84'] { --_menu-opacity: 84%; }
+  :root[data-ov-menu-opacity='85'] { --_menu-opacity: 85%; }
+  :root[data-ov-menu-opacity='86'] { --_menu-opacity: 86%; }
+  :root[data-ov-menu-opacity='87'] { --_menu-opacity: 87%; }
+  :root[data-ov-menu-opacity='88'] { --_menu-opacity: 88%; }
+  :root[data-ov-menu-opacity='89'] { --_menu-opacity: 89%; }
+  :root[data-ov-menu-opacity='90'] { --_menu-opacity: 90%; }
+  :root[data-ov-menu-opacity='91'] { --_menu-opacity: 91%; }
+  :root[data-ov-menu-opacity='92'] { --_menu-opacity: 92%; }
+  :root[data-ov-menu-opacity='93'] { --_menu-opacity: 93%; }
+  :root[data-ov-menu-opacity='94'] { --_menu-opacity: 94%; }
+  :root[data-ov-menu-opacity='95'] { --_menu-opacity: 95%; }
+  :root[data-ov-menu-opacity='96'] { --_menu-opacity: 96%; }
+  :root[data-ov-menu-opacity='97'] { --_menu-opacity: 97%; }
+  :root[data-ov-menu-opacity='98'] { --_menu-opacity: 98%; }
+  :root[data-ov-menu-opacity='99'] { --_menu-opacity: 99%; }
+  :root[data-ov-sheet-opacity='0'] { --_sheet-opacity: 0%; }
+  :root[data-ov-sheet-opacity='1'] { --_sheet-opacity: 1%; }
+  :root[data-ov-sheet-opacity='2'] { --_sheet-opacity: 2%; }
+  :root[data-ov-sheet-opacity='3'] { --_sheet-opacity: 3%; }
+  :root[data-ov-sheet-opacity='4'] { --_sheet-opacity: 4%; }
+  :root[data-ov-sheet-opacity='5'] { --_sheet-opacity: 5%; }
+  :root[data-ov-sheet-opacity='6'] { --_sheet-opacity: 6%; }
+  :root[data-ov-sheet-opacity='7'] { --_sheet-opacity: 7%; }
+  :root[data-ov-sheet-opacity='8'] { --_sheet-opacity: 8%; }
+  :root[data-ov-sheet-opacity='9'] { --_sheet-opacity: 9%; }
+  :root[data-ov-sheet-opacity='10'] { --_sheet-opacity: 10%; }
+  :root[data-ov-sheet-opacity='11'] { --_sheet-opacity: 11%; }
+  :root[data-ov-sheet-opacity='12'] { --_sheet-opacity: 12%; }
+  :root[data-ov-sheet-opacity='13'] { --_sheet-opacity: 13%; }
+  :root[data-ov-sheet-opacity='14'] { --_sheet-opacity: 14%; }
+  :root[data-ov-sheet-opacity='15'] { --_sheet-opacity: 15%; }
+  :root[data-ov-sheet-opacity='16'] { --_sheet-opacity: 16%; }
+  :root[data-ov-sheet-opacity='17'] { --_sheet-opacity: 17%; }
+  :root[data-ov-sheet-opacity='18'] { --_sheet-opacity: 18%; }
+  :root[data-ov-sheet-opacity='19'] { --_sheet-opacity: 19%; }
+  :root[data-ov-sheet-opacity='20'] { --_sheet-opacity: 20%; }
+  :root[data-ov-sheet-opacity='21'] { --_sheet-opacity: 21%; }
+  :root[data-ov-sheet-opacity='22'] { --_sheet-opacity: 22%; }
+  :root[data-ov-sheet-opacity='23'] { --_sheet-opacity: 23%; }
+  :root[data-ov-sheet-opacity='24'] { --_sheet-opacity: 24%; }
+  :root[data-ov-sheet-opacity='25'] { --_sheet-opacity: 25%; }
+  :root[data-ov-sheet-opacity='26'] { --_sheet-opacity: 26%; }
+  :root[data-ov-sheet-opacity='27'] { --_sheet-opacity: 27%; }
+  :root[data-ov-sheet-opacity='28'] { --_sheet-opacity: 28%; }
+  :root[data-ov-sheet-opacity='29'] { --_sheet-opacity: 29%; }
+  :root[data-ov-sheet-opacity='30'] { --_sheet-opacity: 30%; }
+  :root[data-ov-sheet-opacity='31'] { --_sheet-opacity: 31%; }
+  :root[data-ov-sheet-opacity='32'] { --_sheet-opacity: 32%; }
+  :root[data-ov-sheet-opacity='33'] { --_sheet-opacity: 33%; }
+  :root[data-ov-sheet-opacity='34'] { --_sheet-opacity: 34%; }
+  :root[data-ov-sheet-opacity='35'] { --_sheet-opacity: 35%; }
+  :root[data-ov-sheet-opacity='36'] { --_sheet-opacity: 36%; }
+  :root[data-ov-sheet-opacity='37'] { --_sheet-opacity: 37%; }
+  :root[data-ov-sheet-opacity='38'] { --_sheet-opacity: 38%; }
+  :root[data-ov-sheet-opacity='39'] { --_sheet-opacity: 39%; }
+  :root[data-ov-sheet-opacity='40'] { --_sheet-opacity: 40%; }
+  :root[data-ov-sheet-opacity='41'] { --_sheet-opacity: 41%; }
+  :root[data-ov-sheet-opacity='42'] { --_sheet-opacity: 42%; }
+  :root[data-ov-sheet-opacity='43'] { --_sheet-opacity: 43%; }
+  :root[data-ov-sheet-opacity='44'] { --_sheet-opacity: 44%; }
+  :root[data-ov-sheet-opacity='45'] { --_sheet-opacity: 45%; }
+  :root[data-ov-sheet-opacity='46'] { --_sheet-opacity: 46%; }
+  :root[data-ov-sheet-opacity='47'] { --_sheet-opacity: 47%; }
+  :root[data-ov-sheet-opacity='48'] { --_sheet-opacity: 48%; }
+  :root[data-ov-sheet-opacity='49'] { --_sheet-opacity: 49%; }
+  :root[data-ov-sheet-opacity='50'] { --_sheet-opacity: 50%; }
+  :root[data-ov-sheet-opacity='51'] { --_sheet-opacity: 51%; }
+  :root[data-ov-sheet-opacity='52'] { --_sheet-opacity: 52%; }
+  :root[data-ov-sheet-opacity='53'] { --_sheet-opacity: 53%; }
+  :root[data-ov-sheet-opacity='54'] { --_sheet-opacity: 54%; }
+  :root[data-ov-sheet-opacity='55'] { --_sheet-opacity: 55%; }
+  :root[data-ov-sheet-opacity='56'] { --_sheet-opacity: 56%; }
+  :root[data-ov-sheet-opacity='57'] { --_sheet-opacity: 57%; }
+  :root[data-ov-sheet-opacity='58'] { --_sheet-opacity: 58%; }
+  :root[data-ov-sheet-opacity='59'] { --_sheet-opacity: 59%; }
+  :root[data-ov-sheet-opacity='60'] { --_sheet-opacity: 60%; }
+  :root[data-ov-sheet-opacity='61'] { --_sheet-opacity: 61%; }
+  :root[data-ov-sheet-opacity='62'] { --_sheet-opacity: 62%; }
+  :root[data-ov-sheet-opacity='63'] { --_sheet-opacity: 63%; }
+  :root[data-ov-sheet-opacity='64'] { --_sheet-opacity: 64%; }
+  :root[data-ov-sheet-opacity='65'] { --_sheet-opacity: 65%; }
+  :root[data-ov-sheet-opacity='66'] { --_sheet-opacity: 66%; }
+  :root[data-ov-sheet-opacity='67'] { --_sheet-opacity: 67%; }
+  :root[data-ov-sheet-opacity='68'] { --_sheet-opacity: 68%; }
+  :root[data-ov-sheet-opacity='69'] { --_sheet-opacity: 69%; }
+  :root[data-ov-sheet-opacity='70'] { --_sheet-opacity: 70%; }
+  :root[data-ov-sheet-opacity='71'] { --_sheet-opacity: 71%; }
+  :root[data-ov-sheet-opacity='72'] { --_sheet-opacity: 72%; }
+  :root[data-ov-sheet-opacity='73'] { --_sheet-opacity: 73%; }
+  :root[data-ov-sheet-opacity='74'] { --_sheet-opacity: 74%; }
+  :root[data-ov-sheet-opacity='75'] { --_sheet-opacity: 75%; }
+  :root[data-ov-sheet-opacity='76'] { --_sheet-opacity: 76%; }
+  :root[data-ov-sheet-opacity='77'] { --_sheet-opacity: 77%; }
+  :root[data-ov-sheet-opacity='78'] { --_sheet-opacity: 78%; }
+  :root[data-ov-sheet-opacity='79'] { --_sheet-opacity: 79%; }
+  :root[data-ov-sheet-opacity='80'] { --_sheet-opacity: 80%; }
+  :root[data-ov-sheet-opacity='81'] { --_sheet-opacity: 81%; }
+  :root[data-ov-sheet-opacity='82'] { --_sheet-opacity: 82%; }
+  :root[data-ov-sheet-opacity='83'] { --_sheet-opacity: 83%; }
+  :root[data-ov-sheet-opacity='84'] { --_sheet-opacity: 84%; }
+  :root[data-ov-sheet-opacity='85'] { --_sheet-opacity: 85%; }
+  :root[data-ov-sheet-opacity='86'] { --_sheet-opacity: 86%; }
+  :root[data-ov-sheet-opacity='87'] { --_sheet-opacity: 87%; }
+  :root[data-ov-sheet-opacity='88'] { --_sheet-opacity: 88%; }
+  :root[data-ov-sheet-opacity='89'] { --_sheet-opacity: 89%; }
+  :root[data-ov-sheet-opacity='90'] { --_sheet-opacity: 90%; }
+  :root[data-ov-sheet-opacity='91'] { --_sheet-opacity: 91%; }
+  :root[data-ov-sheet-opacity='92'] { --_sheet-opacity: 92%; }
+  :root[data-ov-sheet-opacity='93'] { --_sheet-opacity: 93%; }
+  :root[data-ov-sheet-opacity='94'] { --_sheet-opacity: 94%; }
+  :root[data-ov-sheet-opacity='95'] { --_sheet-opacity: 95%; }
+  :root[data-ov-sheet-opacity='96'] { --_sheet-opacity: 96%; }
+  :root[data-ov-sheet-opacity='97'] { --_sheet-opacity: 97%; }
+  :root[data-ov-sheet-opacity='98'] { --_sheet-opacity: 98%; }
+  :root[data-ov-sheet-opacity='99'] { --_sheet-opacity: 99%; }
+  [data-ov-theme^="high-contrast-"] {
+    --_material-floor: 100%;
+    --ov-surface-backdrop: var(--ov-bg-window);
+  }
+  @media (prefers-reduced-transparency: reduce), (prefers-contrast: more), (forced-colors: active) {
+    :root {
+      --_material-floor: 100%;
+      --ov-surface-backdrop: var(--ov-bg-window);
+    }
   }
 }

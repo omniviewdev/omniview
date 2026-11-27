@@ -544,7 +544,12 @@ async function geometry(ctx) {
       const el = document.querySelector(selector);
       if (el === null) return null;
       const computed = getComputedStyle(el);
-      return Object.fromEntries(props.map((prop) => [prop, computed.getPropertyValue(prop)]));
+      const values = Object.fromEntries(props.map((prop) => [prop, computed.getPropertyValue(prop)]));
+      // The status lane borrows the panel's fill; compare the plane actually visible behind it.
+      for (let parent = el.parentElement; values['background-color'] === 'rgba(0, 0, 0, 0)' && parent !== null; parent = parent.parentElement) {
+        values['background-color'] = getComputedStyle(parent).backgroundColor;
+      }
+      return values;
     };
     return {
       screen: css('[data-shell-part="terminalScreen"]', ['background-color', 'outline-width', 'outline-style', 'outline-color', 'outline-offset']),

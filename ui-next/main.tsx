@@ -8,6 +8,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { lazy, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
+import { WindowAppearance } from './appearance';
 import { TooltipStress } from './parts/TooltipStress';
 import { PluginHostScreen } from './plugins';
 import { createQueryClient } from './queryClient';
@@ -43,20 +44,20 @@ function Screen() {
 
   if (screen === 'settings-window') {
     return (
-      <ThemeProvider>
+      <WindowAppearance>
         <Suspense fallback={null}>
           <SettingsWindow />
         </Suspense>
-      </ThemeProvider>
+      </WindowAppearance>
     );
   }
 
   return (
-    <ThemeProvider>
+    <WindowAppearance>
       <WindowKindScreen native={isNativeWindow()} resolve={windowKind} settings={<SettingsWindow />}>
         <PluginHostScreen />
       </WindowKindScreen>
-    </ThemeProvider>
+    </WindowAppearance>
   );
 }
 

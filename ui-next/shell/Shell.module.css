@@ -13,7 +13,7 @@
     block-size: 100vh;
     /* A window never scrolls: `clip`, unlike `hidden`, makes it no scroll container, so a focus() cannot shift the whole window. */
     overflow: clip;
-    background-color: var(--ov-bg-window);
+    background-color: var(--ov-surface-chrome);
     color: var(--ov-fg);
     font-family: var(--ov-font-ui);
     font-size: var(--ov-fs-13);
@@ -51,7 +51,12 @@
     min-block-size: 0;
     overflow: hidden;
     border-radius: var(--ov-radius-island);
-    background-color: var(--ov-bg-island);
+    background-color: var(--ov-surface-content);
+  }
+
+  /* Each pane of a split page paints its own island. The gap between them exposes the same chrome as the outer gutters. */
+  .island[data-split] {
+    background-color: transparent;
   }
 
   /* The mock draws no ring on the island (frame__island:focus-visible { outline: 0 }): the page inside is what the focus is for. */

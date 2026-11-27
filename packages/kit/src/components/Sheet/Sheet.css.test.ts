@@ -89,7 +89,7 @@ describe('the Sheet stylesheet', () => {
       overflow: 'hidden',
       border: '1px solid var(--ov-border-popup)',
       'border-radius': 'var(--ov-radius-popup)',
-      'background-color': 'var(--ov-bg-dialog)',
+      'background-color': 'var(--ov-surface-sheet)',
       'box-shadow': 'var(--ov-shadow-popup)',
       color: 'var(--ov-fg)',
       'font-family': 'var(--ov-font-ui)',

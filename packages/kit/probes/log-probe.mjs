@@ -290,6 +290,9 @@ function installLib() {
     });
     const stat = p.strip.querySelector('span:not([class*="state"])');
     const stripText = stat?.textContent ?? p.strip.textContent;
+    const stripStyle = style(p.strip, [...STYLE, 'height']);
+    // The strip shares the viewer's background; compare the visible paint to the mock, including any paint on the strip itself.
+    if (stripStyle.backgroundColor === 'rgba(0, 0, 0, 0)') stripStyle.backgroundColor = getComputedStyle(p.strip.parentElement).backgroundColor;
     return {
       tool: [r2(o.width), r2(o.height)],
       regions: { filters: rel(p.filters, o), scroll: rel(p.grid, o), status: rel(p.strip, o) },
@@ -302,7 +305,7 @@ function installLib() {
         last: rows.at(-1) ? rel(rows.at(-1), o) : null,
         headBottom: r2(headBottom - o.y),
       },
-      strip: { rect: rel(p.strip, o), text: stripText.trim(), style: style(p.strip, [...STYLE, 'height']), statRect: rel(stat, o), statTextRect: stat === null ? null : textRect(stat, o), statStyle: style(stat, ['fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'color', 'fontVariantNumeric', 'textAlign']) },
+      strip: { rect: rel(p.strip, o), text: stripText.trim(), style: stripStyle, statRect: rel(stat, o), statTextRect: stat === null ? null : textRect(stat, o), statStyle: style(stat, ['fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'color', 'fontVariantNumeric', 'textAlign']) },
       filters: controls(o),
       following: p.strip.textContent.includes('Following'),
     };

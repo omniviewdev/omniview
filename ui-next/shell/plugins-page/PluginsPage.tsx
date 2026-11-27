@@ -95,6 +95,7 @@ export function createPluginsPage(deps: PluginsPageDeps): HostPageDefinition {
     id: PLUGINS_PAGE,
     title: 'Plugins',
     icon: 'puzzle',
+    layout: 'split',
     Page: (props) => <PluginsPageView {...props} deps={deps} />,
   };
 }

@@ -44,6 +44,7 @@ export * from './components/SectionCard';
 export * from './components/SegmentedControl';
 export * from './components/Select';
 export * from './components/Sheet';
+export * from './components/Slider';
 export * from './components/Stack';
 export * from './components/Status';
 export * from './components/StatusSummary';

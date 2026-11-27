@@ -39,6 +39,12 @@ export const GENERAL = category('general', 'General', 'General settings for the 
 ]);
 
 export const APPEARANCE = category('appearance', 'Appearance', 'Customize the look and feel of the application', 'LuPaintbrush', [
+  setting('windowMaterial', 'text', 'Material', '', 'opaque', { options: opts(['opaque', 'Opaque'], ['translucent', 'Translucent'], ['glass', 'Liquid Glass']) }),
+  setting('glassStyle', 'text', 'Glass style', '', 'regular', { options: opts(['regular', 'Regular'], ['clear', 'Clear']) }),
+  setting('chromeOpacity', 'integer', 'Window chrome', '', 62),
+  setting('contentOpacity', 'integer', 'Content', '', 94),
+  setting('menuOpacity', 'integer', 'In-app menus', '', 90),
+  setting('sheetOpacity', 'integer', 'Sheets and dialogs', '', 96),
   setting('theme', 'text', 'Theme', 'The color theme for the application UI', 'void'),
   setting('density', 'text', 'UI Density', 'Choose comfortable spacing or a compact layout.', 'comfortable', { options: opts(['comfortable', 'Comfortable'], ['compact', 'Compact']) }),
   setting('textSize', 'text', 'UI Text Size', 'Scale interface text independently of density. Terminal and code editor fonts stay unchanged.', '100', {
@@ -268,6 +274,7 @@ export function fakeSession(dispose: () => void = () => undefined): SettingsSess
     subscribe: () => () => undefined,
     load: () => undefined,
     refresh: () => undefined,
+    resetMaterial: async () => false,
     elsewhere: { getSnapshot: () => ({}), subscribe: () => () => undefined },
     announcements: { getSnapshot: () => ({ text: '', serial: 0 }), subscribe: () => () => undefined },
     dispose,

@@ -84,6 +84,7 @@ type Service struct {
 	plugins      Plugins
 	apply        func(string, map[string]any) error
 	changed      func(Scope)
+	appearance   *appearanceProjection
 }
 
 func prepareCategories(sourceCategories []pkgsettings.Category) ([]pkgsettings.Category, error) {

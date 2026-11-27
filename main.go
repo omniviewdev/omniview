@@ -62,6 +62,7 @@ import (
 	"github.com/omniviewdev/omniview/internal/telemetry"
 	"github.com/omniviewdev/omniview/internal/uiinspection"
 	"github.com/omniviewdev/omniview/internal/version"
+	"github.com/omniviewdev/omniview/internal/windowmaterial"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	sdkactivity "github.com/omniviewdev/plugin-sdk/pkg/activity"
 	sdkprofiling "github.com/omniviewdev/plugin-sdk/pkg/profiling"
@@ -868,6 +869,7 @@ func main() {
 			WebviewPreferences: macWebviewPreferences(),
 		},
 	}
+	windowmaterial.Configure(app, coreSettings, &windowTemplate)
 
 	// Create the main window
 	mainWindowOptions := windowTemplate

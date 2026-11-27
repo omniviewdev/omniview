@@ -99,6 +99,7 @@ const MARK = (rootSelector) => {
   return {
     names: stops.map((element) => (element.getAttribute('aria-label') ?? element.labels?.[0]?.textContent ?? element.textContent ?? element.tagName).replace(/\s+/g, ' ').trim().slice(0, 40)),
     rows: stops.map((element) => element.closest('[data-settings-row]')?.getAttribute('data-settings-row') ?? null),
+    reset: stops.findIndex((element) => element.matches('[data-settings-part="reset-material"]')),
     // The controls each row has, which must all be among the stops: the steppers of a number field are not, by design (the field is one stop and the arrows step it, as the mock's `oneStop`); they are read apart and must stay out.
     rowControls: [...root.querySelectorAll('[data-settings-row]')].map((row) => ({
       id: row.getAttribute('data-settings-row'),
@@ -121,10 +122,13 @@ async function reachPart(env, container) {
       const here_ = `${where} ${entry.id}`;
       const mark = await page.evaluate(MARK, root);
       check(mark.names[0] === 'Close' && mark.names[1] === entry.title, here_, 'keys.reach', `the first Tab stops are ${JSON.stringify(mark.names.slice(0, 2))}, wanted Close and ${entry.title}`);
-      // Every row's controls are stops, in the order of the rows, and every stop after the page on screen is some row's.
+      // The only page action outside a setting row is the material group's reset, between its sliders and Interface.
       const missing = mark.rowControls.filter((row) => row.controls.length === 0 || row.controls.includes(-1));
       check(missing.length === 0, here_, 'keys.reach', `the rows ${missing.map((row) => row.id).join(', ')} have a control that is not a Tab stop`);
-      const orphans = mark.rows.slice(2).filter((id) => id === null);
+      if (entry.id === 'appearance') {
+        check(mark.reset > 1 && mark.rows[mark.reset - 1] === 'appearance.sheetOpacity' && mark.rows[mark.reset + 1] === 'appearance.density', here_, 'keys.reach', 'Reset material settings is not a Tab stop between Surface opacity and Interface');
+      }
+      const orphans = mark.rows.slice(2).filter((id, index) => id === null && (entry.id !== 'appearance' || mark.reset !== index + 2));
       check(orphans.length === 0, here_, 'keys.reach', `${orphans.length} Tab stops belong to no row`);
       check(mark.steppers.every((isStop) => !isStop), here_, 'keys.reach', 'a stepper of a number field is a Tab stop of its own: the field is one stop and the arrows step it');
       const order = mark.rowControls.flatMap((row) => row.controls);

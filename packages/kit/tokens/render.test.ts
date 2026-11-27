@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import postcss from 'postcss';
 import { describe, expect, it } from 'vitest';
 import { TOKEN_NAMES } from '../src/generated/tokenNames.ts';
-import { COLOR_ROLES, SPACING } from './manifest.ts';
+import { COLOR_ROLES, SPACING, SURFACE_FILLS } from './manifest.ts';
 import { renderTokenNames, renderTokensCss, tokenNames } from './render.ts';
 import { DEFAULT_THEME_ID, THEME_DEFINITIONS } from './themes.ts';
 
@@ -39,8 +39,47 @@ describe('the generated token files', () => {
       });
       expect(blocks, theme.id).toHaveLength(1);
       const names = (blocks[0]?.nodes ?? []).filter((node): node is postcss.Declaration => node.type === 'decl').map((decl) => decl.prop);
-      expect(names.filter((prop) => prop.startsWith('--ov-')).sort(), theme.id).toEqual(COLOR_ROLES.map((role) => `--ov-${role}`).sort());
+      const expected = [...COLOR_ROLES, 'surface-backdrop', ...Object.keys(SURFACE_FILLS).map((role) => `surface-${role}`)];
+      expect(names.filter((prop) => prop.startsWith('--ov-')).sort(), theme.id).toEqual(expected.map((role) => `--ov-${role}`).sort());
       expect(names).toContain('color-scheme');
+    }
+  });
+
+  it('derives each material fill from its own theme without changing the solid palette', () => {
+    const css = renderTokensCss(THEME_DEFINITIONS, DEFAULT_THEME_ID);
+    for (const theme of THEME_DEFINITIONS) {
+      const block = css.split(`[data-ov-theme='${theme.id}'] {`)[1]?.split('}')[0];
+      for (const [role, { colour, opacity }] of Object.entries(SURFACE_FILLS)) {
+        const hex = theme.colors[colour];
+        expect(hex, `${theme.id} ${colour}`).toMatch(/^#[a-f0-9]{6}$/i);
+        const rgb = [1, 3, 5].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16)).join(' ');
+        expect(block).toContain(`--ov-${colour}: ${hex};`);
+        expect(block).toContain(`--ov-surface-${role}: rgb(${rgb} / max(var(--_material-floor, 100%), var(--_${opacity}-opacity, 100%)));`);
+      }
+    }
+  });
+
+  it('accepts whole percentages only; unselected values, including 100, use the solid default', () => {
+    const css = renderTokensCss(THEME_DEFINITIONS, DEFAULT_THEME_ID);
+    for (const role of ['chrome', 'content', 'menu', 'sheet']) {
+      const matches = [...css.matchAll(new RegExp(`:root\\[data-ov-${role}-opacity='([^']+)'\\] \\{ --_${role}-opacity: ([^;]+); \\}`, 'g'))];
+      expect(matches.map((match) => [match[1], match[2]])).toEqual(Array.from({ length: 100 }, (_, value) => [String(value), `${value}%`]));
+    }
+  });
+
+  it('makes the backing and every material fill opaque on system accessibility overrides', () => {
+    const stylesheet = postcss.parse(renderTokensCss(THEME_DEFINITIONS, DEFAULT_THEME_ID));
+    const overrides = new Map<string, Record<string, string>>();
+    stylesheet.walkAtRules('media', (media) => {
+      media.walkRules(':root', (rule) => {
+        const declarations = Object.fromEntries(rule.nodes.filter((n): n is postcss.Declaration => n.type === 'decl').map((d) => [d.prop, d.value]));
+        for (const query of media.params.split(', ')) {
+          overrides.set(query, declarations);
+        }
+      });
+    });
+    for (const query of ['(forced-colors: active)', '(prefers-contrast: more)', '(prefers-reduced-transparency: reduce)']) {
+      expect(overrides.get(query), query).toMatchObject({ '--_material-floor': '100%', '--ov-surface-backdrop': 'var(--ov-bg-window)' });
     }
   });
 

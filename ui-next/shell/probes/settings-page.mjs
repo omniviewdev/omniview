@@ -170,7 +170,7 @@ const READ_ROWS = () => {
     const slot = row.querySelector('[data-ov-part="trailing"]');
     const control = row.querySelector('[data-ov-part="control"]');
     const shadow = getComputedStyle(row);
-    return { id: row.getAttribute('data-settings-row'), row: rect(row), help: rect(help), lane: rect(lane), slot: rect(slot), control: rect(control), shadow: shadow.boxShadow, border: shadow.borderTopWidth };
+    return { id: row.getAttribute('data-settings-row'), group: row.closest('[data-settings-group]')?.getAttribute('data-settings-group') ?? null, row: rect(row), help: rect(help), lane: rect(lane), slot: rect(slot), control: rect(control), shadow: shadow.boxShadow, border: shadow.borderTopWidth };
   });
 };
 
@@ -199,17 +199,27 @@ async function listPart(env) {
       const here_ = `${where} ${entry.id}`;
       check(rows.length > 0, here_, 'page.rows.order', 'the page draws no rows');
       const ids = rows.map((row) => row.id);
-      const sorted = [...ids].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-      check(JSON.stringify(ids) === JSON.stringify(sorted), here_, 'page.rows.order', `the rows are ${ids.slice(0, 4).join(', ')}..., not in the host's order (by id)`);
+      const grouped = entry.id === 'appearance';
+      const order = grouped
+        ? ['windowMaterial', 'glassStyle', 'chromeOpacity', 'contentOpacity', 'menuOpacity', 'sheetOpacity', 'density', 'textSize', 'motion'].map((key) => `appearance.${key}`)
+        : [...ids].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+      check(JSON.stringify(ids) === JSON.stringify(order), here_, 'page.rows.order', `the rows are ${ids.join(', ')}, wanted ${order.join(', ')}`);
+      if (grouped) {
+        const groups = rows.map((row) => row.group);
+        const expected = ['Window material', 'Window material', 'Surface opacity', 'Surface opacity', 'Surface opacity', 'Surface opacity', 'Interface', 'Interface', 'Interface'];
+        check(JSON.stringify(groups) === JSON.stringify(expected), here_, 'page.rows.order', `unexpected row groups: ${JSON.stringify(groups)}`);
+      }
       rows.forEach((row, index) => {
         const lines = row.help === null ? 0 : Math.min(32, row.help[3]);
-        const want = 6 + 16 + lines + 16 + 6;
-        check(row.lane !== null && near(row.lane[3], 16), here_, 'page.rows.height', `${row.id} has no 16 px lane reserved (${JSON.stringify(row.lane)})`);
-        check(near(row.row[3], want), here_, 'page.rows.height', `${row.id} is ${row.row[3]} px high, its content makes it ${want} (6 + 16 + ${lines} + 16 + 6)`);
-        if (index > 0) check(near(row.row[1], rows[index - 1].row[1] + rows[index - 1].row[3]), here_, 'page.rows.pitch', `${row.id} starts ${round(row.row[1] - rows[index - 1].row[1] - rows[index - 1].row[3])} px under the row above it, wanted none`);
+        const first = index === 0 || row.group !== rows[index - 1].group;
+        const want = grouped ? Math.max(40, row.control[3] + 12) : 6 + 16 + lines + 16 + 6;
+        if (grouped) check(row.help === null && (row.lane === null || row.lane[3] <= 1), here_, 'page.rows.height', `${row.id} displays a description or status lane at rest`);
+        else check(row.lane !== null && near(row.lane[3], 16), here_, 'page.rows.height', `${row.id} has no 16 px lane reserved (${JSON.stringify(row.lane)})`);
+        check(near(row.row[3], want), here_, 'page.rows.height', `${row.id} is ${row.row[3]} px high, its content makes it ${want}`);
+        if (!first) check(near(row.row[1], rows[index - 1].row[1] + rows[index - 1].row[3]), here_, 'page.rows.pitch', `${row.id} starts ${round(row.row[1] - rows[index - 1].row[1] - rows[index - 1].row[3])} px under the row above it, wanted none`);
         check(row.slot !== null && near(row.slot[2], 24) && near(row.slot[3], 24), here_, 'page.rows.column', `${row.id} has a slot of ${JSON.stringify(row.slot?.slice(2))} for its Reset, wanted 24 x 24 in every row`);
         check(row.slot !== null && near(row.slot[0] + row.slot[2], row.row[0] + row.row[2], 1.01), here_, 'page.rows.column', `${row.id}'s slot ends at ${row.slot === null ? '?' : round(row.slot[0] + row.slot[2])}, not at the row's end ${round(row.row[0] + row.row[2])}`);
-        if (index === 0) {
+        if (first) {
           check(row.shadow === wantFirst && row.border === '0px', here_, 'page.rows.separator', `the first row draws a separator (${row.shadow}, border ${row.border}), the mock's ${wantFirst}`);
         } else {
           check(row.shadow === wantSeparator, here_, 'page.rows.separator', `${row.id}'s separator is ${row.shadow}, the mock's ${wantSeparator}`);
@@ -301,7 +311,7 @@ async function scrollPart(env) {
     await goToPage(page, 'appearance');
     await sleep(120);
     const short = await read();
-    check(short.scrollHeight <= short.clientHeight, where, 'page.scroll.fits', `Appearance has three rows and scrolls (${short.scrollHeight} in ${short.clientHeight})`);
+    check(short.scrollHeight <= short.clientHeight, where, 'page.scroll.fits', `Appearance scrolls at the default viewport (${short.scrollHeight} in ${short.clientHeight})`);
   } finally {
     await context.close();
   }

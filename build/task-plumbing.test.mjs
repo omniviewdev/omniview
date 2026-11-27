@@ -11,7 +11,7 @@ function dryRun(environment, ...args) {
     encoding: 'utf8',
     env: {
       ...process.env, GOWORK: 'off', GOFLAGS: '', GO_MODFILE: '', SDK_SOURCE: '',
-      DEV: '', SERVER: '', RELEASE: '', WAILS_MCP: '', EXTRA_TAGS: '', BUILD_FLAGS: '',
+      DEV: '', SERVER: '', RELEASE: '', WAILS_MCP: '', EXTRA_TAGS: '', BUILD_FLAGS: '', OMNIVIEW_UI: 'current',
       ...environment,
     },
   });
@@ -21,7 +21,7 @@ function dryRun(environment, ...args) {
   return output;
 }
 function tags(flags) {
-  const match = flags.match(/-tags (?:'([^']*)'|"([^"]*)"|([^\s'"]+))/);
+  const match = [...flags.matchAll(/--?tags(?:=| )(?:'([^']*)'|"([^"]*)"|([^\s'"]+))/g)].at(-1);
   return (match?.[1] ?? match?.[2] ?? match?.[3] ?? '').split(',').filter(Boolean).sort();
 }
 function backendCommand(output) {
@@ -49,3 +49,17 @@ test('explicit release bindings exclude ambient and caller-supplied control/MCP 
   }, 'bindings', 'RELEASE=true', 'DEV=true', 'BUILD_FLAGS=-tags mcp,devcontrol');
   assert.deepEqual(tags(bindingFlags(output)), ['production']);
 });
+
+for (const [task, dev, extra, expected] of [
+  ['build', 'true', [], ['ui_next']],
+  ['build', 'false', ['BUILD_FLAGS=-tags production -trimpath'], ['production', 'ui_next']],
+  ['build', 'false', ['BUILD_FLAGS=-tags="devcontrol production" -trimpath'], ['devcontrol', 'production', 'ui_next']],
+  ['build:server', 'false', [], ['production', 'server', 'ui_next']],
+  ['package', 'false', ['BUILD_FLAGS=-tags devcontrol,mcp'], ['production', 'ui_next']],
+]) {
+  test(`next ${task} carries only its selected host tags (${dev}, ${extra})`, () => {
+    const output = dryRun({ OMNIVIEW_UI: 'next', DEV: dev }, task, ...extra);
+    assert.deepEqual(tags(backendCommand(output)), expected);
+    assert.deepEqual(tags(bindingFlags(output)), expected);
+  });
+}

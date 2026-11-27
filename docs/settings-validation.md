@@ -332,8 +332,8 @@ A missing store permits core startup with defaults but rejects public saves.
 Host live effects run in commit order; a later commit cannot be overwritten by
 an older telemetry effect.
 
-The public binding exposes only `GetSnapshot`, `Validate`, and `Commit`, with an
-explicit `{ kind: "host" }` or `{ kind: "plugin", pluginId }` scope.
+`GetSnapshot`, `Validate`, and `Commit` take an explicit `{ kind: "host" }` or
+`{ kind: "plugin", pluginId }` scope. `Commit` is the only settings writer.
 Host setting IDs use `category.setting`; plugin setting IDs remain opaque,
 including dots. Snapshots include category metadata, saved values, and each
 setting's `requiresRestart` and `pendingRestart` flags.
@@ -343,6 +343,13 @@ ID), whether it holds a value now; it is computed at snapshot time and carries
 no other function of the value. The plugin scope leaves it empty. Unknown plugin schema
 fails closed. Replacement clients invalidate old schema before hydration;
 snapshot projection fences schema classification against concurrent reloads.
+
+The next shell reads `GetAppearance()` for its own window. This read-only
+projection separates the saved material, glass style, surface percentages and
+theme axes from the material that window can actually display. Only next builds
+register the six material settings. `appearance/changed` carries a revision,
+not values; clients subscribe before reading and read again on reconnect or
+show. Accessibility overrides and platform fallbacks do not modify preferences.
 
 A rejected commit means preferences were not saved. A successful response is
 durable even when `applied` is false or `uncertain` is true; `message` contains

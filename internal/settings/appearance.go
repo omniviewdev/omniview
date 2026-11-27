@@ -21,7 +21,7 @@ var Appearance = settings.Category{
 	Label:       "Appearance",
 	Description: "Customize the look and feel of the application",
 	Icon:        "LuPaintbrush",
-	Settings: map[string]settings.Setting{
+	Settings: withWindowMaterials(map[string]settings.Setting{
 		settingTheme: {
 			ID:          settingTheme,
 			Type:        settings.Text,
@@ -70,7 +70,7 @@ var Appearance = settings.Category{
 			},
 			Validator: validateAppearanceChoice("system", "normal", "reduced"),
 		},
-	},
+	}),
 }
 
 func validateAppearanceChoice(choices ...string) func(any) settings.ValidationResult {

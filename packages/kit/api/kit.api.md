@@ -1204,6 +1204,24 @@ export type SheetProps = {
 // @public
 export type SheetSize = 'narrow' | 'standard' | 'wide' | 'settings';
 
+// @public
+export function Slider(input: SliderProps): JSX.Element;
+
+// @public
+export type SliderProps = {
+    readonly value: number;
+    readonly onValueChange?: ((value: number) => void) | undefined;
+    readonly onCommit?: ((value: number) => void) | undefined;
+    readonly min?: number | undefined;
+    readonly max?: number | undefined;
+    readonly step?: number | undefined;
+    readonly unit?: string | undefined;
+    readonly label?: string | undefined;
+    readonly invalid?: boolean | undefined;
+    readonly readOnly?: boolean | undefined;
+    readonly disabledReason?: string | undefined;
+} & DataAttributes;
+
 // @public (undocumented)
 export type SpacingStep = 2 | 4 | 6 | 8 | 12 | 16 | 20 | 24;
 
@@ -1495,7 +1513,7 @@ export type ToggleProps = {
 } & DataAttributes;
 
 // @public (undocumented)
-export type TokenName = '--ov-font-ui' | '--ov-font-code' | '--ov-font-features' | '--ov-text-scale' | '--ov-fs-12' | '--ov-fs-13' | '--ov-fs-16' | '--ov-fs-18' | '--ov-lh-16' | '--ov-lh-18' | '--ov-lh-20' | '--ov-lh-24' | '--ov-spacing-2' | '--ov-spacing-4' | '--ov-spacing-6' | '--ov-spacing-8' | '--ov-spacing-12' | '--ov-spacing-16' | '--ov-spacing-20' | '--ov-spacing-24' | '--ov-radius-mark' | '--ov-radius-control' | '--ov-radius-tab' | '--ov-radius-popup' | '--ov-radius-island' | '--ov-control-height' | '--ov-shadow-tooltip' | '--ov-shadow-popup' | '--ov-row-height' | '--ov-row-pad' | '--ov-row-target' | '--ov-table-metadata-height' | '--ov-table-header-height' | '--ov-bg-window' | '--ov-bg-island' | '--ov-bg-editor' | '--ov-bg-dialog' | '--ov-bg-inline' | '--ov-bg-popup' | '--ov-bg-feedback' | '--ov-fg' | '--ov-fg-muted' | '--ov-fg-secondary' | '--ov-fg-disabled' | '--ov-fg-editor' | '--ov-fg-over-accent' | '--ov-fg-on-data' | '--ov-icon' | '--ov-icon-disabled' | '--ov-icon-active' | '--ov-border-subtle' | '--ov-border-popup' | '--ov-border-control' | '--ov-border-disabled' | '--ov-border-raised' | '--ov-accent' | '--ov-link' | '--ov-selection-active' | '--ov-selection-inactive' | '--ov-tab-bg' | '--ov-tab-border' | '--ov-tab-inactive-bg' | '--ov-tab-inactive-border' | '--ov-segment-bg' | '--ov-segment-border' | '--ov-segment-focused-bg' | '--ov-hover-row' | '--ov-hover-toolbar' | '--ov-pressed' | '--ov-success-fg' | '--ov-warning-fg' | '--ov-error-fg' | '--ov-info-bg' | '--ov-info-border' | '--ov-warning-bg' | '--ov-warning-border' | '--ov-error-bg' | '--ov-error-border' | '--ov-success-bg' | '--ov-success-border' | '--ov-error-control' | '--ov-error-control-inactive' | '--ov-warning-control' | '--ov-warning-control-inactive' | '--ov-progress-track' | '--ov-chart-purple' | '--ov-chart-teal' | '--ov-syntax-keyword' | '--ov-syntax-string' | '--ov-syntax-number' | '--ov-syntax-comment' | '--ov-syntax-function' | '--ov-syntax-key' | '--ov-syntax-type' | '--ov-syntax-variable' | '--ov-syntax-annotation' | '--ov-syntax-operator' | '--ov-icon-info' | '--ov-icon-success' | '--ov-icon-warning' | '--ov-icon-warning-mark' | '--ov-icon-error' | '--ov-icon-chevron' | '--ov-icon-help' | '--ov-brand-orange' | '--ov-brand-green' | '--ov-brand-blue' | '--ov-brand-purple' | '--ov-brand-pink' | '--ov-brand-red' | '--ov-brand-teal' | '--ov-tint-blue' | '--ov-tint-green' | '--ov-tint-amber' | '--ov-tint-red' | '--ov-tint-purple' | '--ov-tint-cyan' | '--ov-tint-gray';
+export type TokenName = '--ov-font-ui' | '--ov-font-code' | '--ov-font-features' | '--ov-text-scale' | '--ov-fs-12' | '--ov-fs-13' | '--ov-fs-16' | '--ov-fs-18' | '--ov-lh-16' | '--ov-lh-18' | '--ov-lh-20' | '--ov-lh-24' | '--ov-spacing-2' | '--ov-spacing-4' | '--ov-spacing-6' | '--ov-spacing-8' | '--ov-spacing-12' | '--ov-spacing-16' | '--ov-spacing-20' | '--ov-spacing-24' | '--ov-radius-mark' | '--ov-radius-control' | '--ov-radius-tab' | '--ov-radius-popup' | '--ov-radius-island' | '--ov-control-height' | '--ov-shadow-tooltip' | '--ov-shadow-popup' | '--ov-row-height' | '--ov-row-pad' | '--ov-row-target' | '--ov-table-metadata-height' | '--ov-table-header-height' | '--ov-bg-window' | '--ov-bg-island' | '--ov-bg-editor' | '--ov-bg-dialog' | '--ov-bg-inline' | '--ov-bg-popup' | '--ov-bg-feedback' | '--ov-fg' | '--ov-fg-muted' | '--ov-fg-secondary' | '--ov-fg-disabled' | '--ov-fg-editor' | '--ov-fg-over-accent' | '--ov-fg-on-data' | '--ov-icon' | '--ov-icon-disabled' | '--ov-icon-active' | '--ov-border-subtle' | '--ov-border-popup' | '--ov-border-control' | '--ov-border-disabled' | '--ov-border-raised' | '--ov-accent' | '--ov-link' | '--ov-selection-active' | '--ov-selection-inactive' | '--ov-tab-bg' | '--ov-tab-border' | '--ov-tab-inactive-bg' | '--ov-tab-inactive-border' | '--ov-segment-bg' | '--ov-segment-border' | '--ov-segment-focused-bg' | '--ov-hover-row' | '--ov-hover-toolbar' | '--ov-pressed' | '--ov-success-fg' | '--ov-warning-fg' | '--ov-error-fg' | '--ov-info-bg' | '--ov-info-border' | '--ov-warning-bg' | '--ov-warning-border' | '--ov-error-bg' | '--ov-error-border' | '--ov-success-bg' | '--ov-success-border' | '--ov-error-control' | '--ov-error-control-inactive' | '--ov-warning-control' | '--ov-warning-control-inactive' | '--ov-progress-track' | '--ov-chart-purple' | '--ov-chart-teal' | '--ov-syntax-keyword' | '--ov-syntax-string' | '--ov-syntax-number' | '--ov-syntax-comment' | '--ov-syntax-function' | '--ov-syntax-key' | '--ov-syntax-type' | '--ov-syntax-variable' | '--ov-syntax-annotation' | '--ov-syntax-operator' | '--ov-icon-info' | '--ov-icon-success' | '--ov-icon-warning' | '--ov-icon-warning-mark' | '--ov-icon-error' | '--ov-icon-chevron' | '--ov-icon-help' | '--ov-brand-orange' | '--ov-brand-green' | '--ov-brand-blue' | '--ov-brand-purple' | '--ov-brand-pink' | '--ov-brand-red' | '--ov-brand-teal' | '--ov-tint-blue' | '--ov-tint-green' | '--ov-tint-amber' | '--ov-tint-red' | '--ov-tint-purple' | '--ov-tint-cyan' | '--ov-tint-gray' | '--ov-surface-backdrop' | '--ov-surface-chrome' | '--ov-surface-content' | '--ov-surface-menu' | '--ov-surface-sheet' | '--ov-surface-sheet-raised';
 
 // @public
 export function tokenVar<Name extends TokenName>(name: Name): `var(${Name})`;

@@ -7,6 +7,7 @@ export { QueryLeaseObserver } from './resource/v2/query-observer';
 export type { ObserverAction, ObserverSnapshot } from './resource/v2/query-observer';
 export * as GraphClient from './resource/v2/graph-client';
 export * as SettingsService from './bindings/github.com/omniviewdev/omniview/backend/pkg/settings/binding';
+export type { AppearanceSnapshot } from './bindings/github.com/omniviewdev/omniview/backend/pkg/settings/models';
 export * as HostProfiling from './bindings/github.com/omniviewdev/omniview/internal/profiling/servicewrapper';
 export * as ProcessInventory from './bindings/github.com/omniviewdev/omniview/internal/processinfo/service';
 export type { Process as InventoryProcess } from './bindings/github.com/omniviewdev/omniview/internal/processinfo/models';

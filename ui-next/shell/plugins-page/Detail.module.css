@@ -10,7 +10,7 @@
     padding: var(--ov-spacing-12);
     overflow: auto;
     border-radius: var(--ov-radius-island);
-    background-color: var(--ov-bg-island);
+    background-color: var(--ov-surface-content);
     color: var(--ov-fg);
   }
 

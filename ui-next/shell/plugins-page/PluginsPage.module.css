@@ -15,7 +15,6 @@
     block-size: calc(100% + var(--ov-spacing-12));
     min-inline-size: 0;
     min-block-size: 0;
-    background-color: var(--ov-bg-window);
   }
 
   .page > :first-child {
