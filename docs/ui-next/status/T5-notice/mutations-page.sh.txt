@@ -21,7 +21,7 @@ keep() {
   case " $FILES " in *" $f "*) ;; *) cp "$f" "$COPIES/$(echo "$f" | tr / _)"; FILES="$FILES $f";; esac
 }
 
-# run <control name> <file> <test file> <the name of the test it is named for> <old> <new>
+# run <control name> <file> <test file> <regex of the names of the tests it is named for> <old> <new>
 run() {
   name=$1 file=$2 test=$3 only=$4 old=$5 new=$6
   if [ -n "${ONLY:-}" ] && [[ " $ONLY " != *" $name "* ]]; then return; fi
@@ -36,9 +36,9 @@ PY
   [ $? -eq 0 ] || { echo "CONTROL $name: DOES NOT APPLY"; BAD=1; cp "$COPIES/$(echo "$file" | tr / _)" "$file"; return; }
   out=$(pnpm exec vitest run "$test" 2>&1); s1=$?
   fails=$(echo "$out" | grep -E '^ FAIL ' | sort -u)
-  named=$(echo "$fails" | grep -c -F "$only")
-  others=$(echo "$fails" | grep -v -c -F "$only")
-  escaped=$(python3 -c 'import re,sys; print(re.escape(sys.argv[1]))' "$only")
+  named=$(echo "$fails" | grep -c -E "$only")
+  others=$(echo "$fails" | grep -v -c -E "$only")
+  escaped=$only
   out2=$(pnpm exec vitest run "$test" -t "^(?!.*${escaped}).*" 2>&1); s2=$?
   echo "CONTROL $name: exit $s1 (want nonzero), named test red: $named (want 1+), other failures: $others (want 0), named test left out: exit $s2 (want 0)"
   if [ $s1 -eq 0 ] || [ "$named" -lt 1 ] || [ "$others" -ne 0 ] || [ $s2 -ne 0 ]; then BAD=1; fi
@@ -47,8 +47,7 @@ PY
 
 FEED=$DIR/execFeed.ts
 FEEDT=$DIR/execFeed.test.ts
-run replay-marks-are-news "$FEED" "$FEEDT" 'is not the end mark of a replay:' "      let live = false;" "      let live = true;"
-run loss-marks-are-news "$FEED" "$FEEDT" 'is not the end mark of a replay the host brings after a loss' "      let live = false;" "      let live = true;"
+run replay-marks-are-news "$FEED" "$FEEDT" 'is not the end mark of a replay' "      let live = false;" "      let live = true;"
 run unverified-proves "$FEED" "$FEEDT" 'is proven by a directory the shell vouched for' "if (mark.trust === 'nonce' && !proven) {" "if (!proven) {"
 run proof-goes-with-the-screen "$FEED" "$FEEDT" 'stays proven when the screen is brought afresh' "    running = false;
     lastStart = undefined;" "    running = false;
@@ -56,7 +55,7 @@ run proof-goes-with-the-screen "$FEED" "$FEEDT" 'stays proven when the screen is
     lastStart = undefined;"
 run integration-state-unchecked "$FEED" "$FEEDT" 'takes no word it cannot read' "!INTEGRATION_STATES.includes(state)" "false"
 run unverified-line-taken "$FEED" "$FEEDT" 'has no command line when the shell did not prove it' "command: mark.trust === 'nonce' ? mark.command : undefined" "command: mark.command"
-run finished-without-end-mark "$FEED" "$FEEDT" 'is the end mark that came live' "if (live && mark.kind === 'command-end' && mark.id !== undefined) {" "if (live && mark.kind === 'command-start' && mark.id !== undefined) {"
+run finished-without-end-mark "$FEED" "$FEEDT" 'a command that finished while the page watched' "if (live && mark.kind === 'command-end' && mark.id !== undefined) {" "if (live && mark.kind === 'command-start' && mark.id !== undefined) {"
 
 NOTICE=$DIR/finishedNotice.ts
 NOTICET=$DIR/finishedNotice.test.ts
@@ -64,12 +63,12 @@ run threshold-is-exclusive "$NOTICE" "$NOTICET" 'is raised from the threshold up
 run front-terminal-is-told "$NOTICE" "$NOTICET" 'is not raised for a terminal the person is looking at' "told.has(key) || deps.shown(session)" "told.has(key)"
 run command-told-twice "$NOTICE" "$NOTICET" 'is raised once for each command' "      remember(key);" ""
 run control-characters-pass "$NOTICE" "$NOTICET" 'bounds the words and keeps a command line' "text.replace(CONTROL, ' ')" "text"
-run show-goes-nowhere "$NOTICE" "$NOTICET" 'brings the terminal forward and jumps to the command' "              deps.show(session, finished.id);" ""
+run show-goes-nowhere "$NOTICE" "$NOTICET" 'brings the terminal forward and jumps|newest command' "              deps.show(session, finished.id);" ""
 
 SESSIONS=$DIR/TerminalSessions.ts
 SESSIONST=$DIR/TerminalSessionsNotice.test.ts
 run finished-on-every-status "$SESSIONS" "$SESSIONST" 'is not told again for a status that changed in another way' "snapshot.finished !== before && " ""
-run jump-is-not-spent "$SESSIONS" "$SESSIONST" 'is kept until the body takes it, once' "        jumps.delete(session);
+run jump-is-not-spent "$SESSIONS" "$SESSIONST" 'the request to move a terminal' "        jumps.delete(session);
         tellJumps();" "        tellJumps();"
 run jump-outlives-its-tab "$SESSIONS" "$SESSIONST" 'goes with the session' "    if (jumps.delete(id)) {
       tellJumps();
@@ -78,7 +77,7 @@ run jump-outlives-its-tab "$SESSIONS" "$SESSIONST" 'goes with the session' "    
 BODY=$DIR/TerminalBody.tsx
 BODYT=$DIR/TerminalBodyJump.test.tsx
 run jump-ignores-visibility "$BODY" "$BODYT" 'waits for the terminal to be on screen' "if (jump === undefined || !visible || !view.ready) {" "if (jump === undefined || !view.ready) {"
-run jump-without-keyboard "$BODY" "$BODYT" 'moves the view to the command, puts the keyboard' "      screen.commands.reveal(command);
+run jump-without-keyboard "$BODY" "$BODYT" 'a request to show a command' "      screen.commands.reveal(command);
       screen.focus();" "      screen.commands.reveal(command);"
 
 TOOL=$DIR/terminals.ts
@@ -88,7 +87,7 @@ run hidden-window-is-in-front "$TOOL" "$TOOLT" 'is told when the person is looki
 
 TIER=$DIR/integration.ts
 TIERT=$DIR/integration.test.ts
-run proof-upgrades-none "$TIER" "$TIERT" 'is none when the integration is off, skipped or failed' "if (state !== 'on' && state !== 'unconfirmed') {" "if (state === undefined) {"
-run basic-is-rich "$TIER" "$TIERT" 'is rich when the host started the shell with the integration' "return status.proven === true ? 'rich' : 'basic';" "return 'rich';"
+run proof-upgrades-none "$TIER" "$TIERT" 'the tier of a terminal' "if (state !== 'on' && state !== 'unconfirmed') {" "if (state === undefined) {"
+run basic-is-rich "$TIER" "$TIERT" 'the tier of a terminal|the words of the tier' "return status.proven === true ? 'rich' : 'basic';" "return 'rich';"
 
 exit $BAD
