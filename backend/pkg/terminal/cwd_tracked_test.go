@@ -44,7 +44,7 @@ func cwdOf(t *testing.T, k *marked) Directory {
 func TestTheDirectoryIsTheOneTheShellProvedWhereTheSystemAgreesAndFollowsIt(t *testing.T) {
 	k := newMarked(t)
 	first, second := t.TempDir(), t.TempDir()
-	require.Equal(t, Directory{Path: k.f.home}, cwdOf(t, k), "before any mark the system's answer")
+	require.Equal(t, Directory{Path: physicalPath(t, k.f.home)}, cwdOf(t, k), "before any mark the system's answer")
 
 	goTo(t, k, first)
 	k.print(osc("633;P;Cwd=" + first + ";" + k.nonce))
@@ -67,7 +67,7 @@ func TestAProofThatTheSystemContradictsIsNotTheAnswer(t *testing.T) {
 	k.print(osc("633;P;Cwd=" + stale + ";" + k.nonce))
 	goTo(t, k, now)
 	guarded(t, "stale-proof", func() {
-		assert.Equal(t, Directory{Path: now}, cwdOf(t, k), "the shell moved with no word: the system says where it is")
+		assert.Equal(t, Directory{Path: physicalPath(t, now)}, cwdOf(t, k), "the shell moved with no word: the system says where it is")
 	})
 }
 
@@ -91,7 +91,7 @@ func TestADirectoryNoNonceVouchedForIsNeverTheAnswer(t *testing.T) {
 	wrong := strings.Repeat("f", len(k.nonce))
 	k.print(osc("633;P;Cwd="+other+";"+wrong) + osc("633;P;Cwd="+other) + osc("7;file://host"+other))
 	guarded(t, "forged-ignored", func() {
-		assert.Equal(t, Directory{Path: elsewhere}, cwdOf(t, k), "a wrong nonce, no nonce and OSC 7 change nothing")
+		assert.Equal(t, Directory{Path: physicalPath(t, elsewhere)}, cwdOf(t, k), "a wrong nonce, no nonce and OSC 7 change nothing")
 	})
 }
 
@@ -106,7 +106,7 @@ func TestAProvedDirectoryThatIsNotADirectoryHereFallsBackToTheSystemsAnswer(t *t
 	} {
 		k.print(osc("633;P;Cwd=" + claimed + ";" + k.nonce))
 		guarded(t, "fallback-"+strings.ReplaceAll(name, " ", "-"), func() {
-			assert.Equal(t, Directory{Path: k.f.home}, cwdOf(t, k), "%s: a terminal cannot start there (an ssh session names a remote path)", name)
+			assert.Equal(t, Directory{Path: physicalPath(t, k.f.home)}, cwdOf(t, k), "%s: a terminal cannot start there (an ssh session names a remote path)", name)
 		})
 	}
 }
@@ -129,8 +129,16 @@ func TestATerminalWithoutIntegrationAnswersWithTheSystemsDirectory(t *testing.T)
 	got, cwdErr := off.m.ChannelCwd(info.Cap)
 	require.NoError(t, cwdErr)
 	guarded(t, "no-integration", func() {
-		assert.Equal(t, Directory{Path: off.home}, got, "no scanner reads a terminal without the integration")
+		assert.Equal(t, Directory{Path: physicalPath(t, off.home)}, got, "no scanner reads a terminal without the integration")
 	})
+}
+
+// physicalPath is where the system says a directory is: the one the symlinks of its path lead to (on darwin the temporary root is reached through /var -> /private/var). A claim the shell proved keeps the shell's spelling; an answer from the system is this.
+func physicalPath(t *testing.T, path string) string {
+	t.Helper()
+	resolved, err := filepath.EvalSymlinks(path)
+	require.NoError(t, err)
+	return resolved
 }
 
 // The events lane (a terminal with no channel, asked by its id) gives the same answer from the same record.
@@ -146,6 +154,7 @@ func TestTheEventsLanesDirectoryFollowsTheSameRule(t *testing.T) {
 	nonce := s.nonce.Reveal()
 	require.NotEmpty(t, nonce)
 	tracked, elsewhere := t.TempDir(), t.TempDir()
+	// The system's answer is the physical path (on darwin the temporary root is reached through /var -> /private/var); only the proved claim keeps the shell's spelling.
 
 	send := func(line string) {
 		t.Helper()
@@ -172,7 +181,7 @@ func TestTheEventsLanesDirectoryFollowsTheSameRule(t *testing.T) {
 	say(osc("633;P;Cwd=" + tracked + ";" + strings.Repeat("f", len(nonce))))
 	got, err := f.m.Cwd(info.ID)
 	require.NoError(t, err)
-	assert.Equal(t, Directory{Path: tracked}, got, "a wrong nonce changes nothing: the system says so")
+	assert.Equal(t, Directory{Path: physicalPath(t, tracked)}, got, "a wrong nonce changes nothing: the system says so")
 	say(osc("633;P;Cwd=" + tracked + ";" + nonce))
 	got, err = f.m.Cwd(info.ID)
 	require.NoError(t, err)
@@ -183,6 +192,6 @@ func TestTheEventsLanesDirectoryFollowsTheSameRule(t *testing.T) {
 	got, err = f.m.Cwd(info.ID)
 	require.NoError(t, err)
 	guarded(t, "events-stale-proof", func() {
-		assert.Equal(t, Directory{Path: elsewhere}, got, "the proof names a directory the shell left")
+		assert.Equal(t, Directory{Path: physicalPath(t, elsewhere)}, got, "the proof names a directory the shell left")
 	})
 }
