@@ -22,7 +22,7 @@
 //   j  the command palette (C1b, host providers): the chord opens it from a control of the page and the focus is in its input; typing the name of a page the plugin's sidebar opens finds it; the footer says the
 //      four open keys the tab model has and none for a window (Shift Enter is refused, with the reason); Enter opens the page in the tab on screen (smart open: the same plugin), Option Enter opens it here (the tab
 //      on screen goes to another plugin's page), Command or Control Enter opens a background tab, Command Shift Enter a new tab on screen; Escape gives the focus back to the control that had it, and so does the Search
-//      control of the top row; the homes of the plugins that did not load say Degraded; the host's commands are exactly the ones it can run (the tab commands, Toggle panel in a browser tab),
+//      control of the top row; the homes of the plugins that did not load say Degraded; the host's commands are exactly the ones it can run (the tab commands, Toggle maximized panel and Toggle panel in a browser tab),
 //      each with the chord it is bound to; a kind with no provider (Settings) says Nothing to show yet. SHOTS=<dir> writes `host-<engine>-<state>.png` of the palette in those states
 //   k  a plugin's unload and the Logs sessions (P1b-3c, A21): the fixture plugin's interface is unloaded while two Logs sessions follow its item, one that failed on its own and one that streams (the window's plugin
 //      store, reached through React's hooks, since nothing in the product unloads a ready plugin yet; the bundle's request is held so the plugin stays off): both tabs STAY, in the same view with the lines they had
@@ -1562,7 +1562,7 @@ async function checkPalette(page, base, engine) {
   assert.ok(tabLabels.includes(`Command: Next tab, Tabs, ${mac ? '⌃⌥→' : 'Ctrl+Alt+→'}`) && tabLabels.includes(`Command: Previous tab, Tabs, ${mac ? '⌃⌥←' : 'Ctrl+Alt+←'}`), `${engine}: Next and Previous tab carry the chord of a browser tab`);
   assert.deepEqual(
     labels.filter((label) => !tabLabels.includes(label)),
-    // Written out, not imported: `commandsOf` (plugins/host/palette.ts) is not exported, and shell/panel/words.ts, which says the chords, imports a directory (`../core/panel`) that node does not resolve.
+    // Written out, not derived: this list is the oracle. Read from `commandsOf` (plugins/host/palette.ts) it would compare the palette with its own source and could never fail; a new command is added here by the pull request that adds it (rule 39: run the seam before the push).
     [`Command: Toggle maximized panel, Panel, ${mac ? '⌃⌥⇧J' : 'Ctrl+Alt+Shift+J'}`, `Command: Toggle panel, Panel, ${mac ? '⌃⌥J' : 'Ctrl+Alt+J'}`, 'Command: New terminal, Panel', 'Command: Terminal: Toggle Screen Reader Mode, Panel', `Command: Settings, Window, ${mac ? '⌃⌥,' : 'Ctrl+Alt+,'}`, 'Command: Plugins, Window', 'Command: Home, Window'],
     `${engine}: the other commands are the host's, and only those`,
   );
