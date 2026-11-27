@@ -83,7 +83,8 @@ func (d *deliveringSink) ReportsDelivery() {}
 
 func (d *deliveringSink) Output(id string, data []byte) {
 	d.chunkSink.Output(id, data)
-	go d.m.Delivered(id, len(data))
+	credit := d.m.DeliveryCredit(id)
+	go credit.Delivered(len(data))
 }
 
 // The credit has two sources, one at a time: what the transport took, until the client acknowledges for the
@@ -193,7 +194,7 @@ func TestTheHostStopsReadingAtTheHighMarkWhenTheTransportTakesNothingAndGoesOnWh
 	time.Sleep(500 * time.Millisecond)
 	assert.Equal(t, stalled, sink.size(), "nothing is read while the transport takes nothing")
 
-	m.Delivered(info.ID, stalled)
+	m.DeliveryCredit(info.ID).Delivered(stalled)
 	require.Eventually(t, func() bool { return sink.size() > stalled }, 20*time.Second, 5*time.Millisecond, "reading resumed")
 
 	// A client that stopped taking its output still can close the session, and gets its CLOSE.
@@ -295,8 +296,8 @@ func TestShutdownEndsEverySessionAndRefusesNewOnes(t *testing.T) {
 
 func TestACreditReportAfterTheSessionEndedChangesNothing(t *testing.T) {
 	m, _ := newTestManager(t)
-	m.Delivered("no-such-session", 1<<20)
-	m.Delivered("", -5)
+	m.DeliveryCredit("no-such-session").Delivered(1 << 20)
+	m.DeliveryCredit("").Delivered(-5)
 }
 
 // The watchdog keeps a terminal alive when the transport's credit does not come, within a ceiling: it
@@ -371,6 +372,6 @@ func TestATransportThatNeverCreditsTricklesAndIsBoundedByTheCeiling(t *testing.T
 	assert.LessOrEqual(t, plateau, bound, "the high mark plus the ceiling, and one read")
 	assert.Greater(t, plateau, FlowHighBytes+FlowStallCeilingBytes-2*FlowStepBytes, "it used the ceiling")
 
-	m.Delivered(info.ID, plateau)
+	m.DeliveryCredit(info.ID).Delivered(plateau)
 	require.Eventually(t, func() bool { return sink.size() > plateau }, 20*time.Second, 5*time.Millisecond, "real credit set it going again")
 }

@@ -92,9 +92,11 @@ func (s localSink) OutputAt(sessionID string, offset uint64, data []byte) {
 }
 
 func (s localSink) emitOutput(event, sessionID string, offset uint64, positioned bool, data []byte) {
+	// Bound to the session whose output this is, now: the report comes later, and the id may belong to another session then.
+	credit := s.c.terminalManager.DeliveryCredit(sessionID)
 	out := &terminalOutput{
 		data: data, offset: offset, positioned: positioned,
-		delivered: func() { s.c.terminalManager.Delivered(sessionID, len(data)) }, once: sync.Once{},
+		delivered: func() { credit.Delivered(len(data)) }, once: sync.Once{},
 	}
 	if s.c.events == nil {
 		s.c.logger.Errorw(context.Background(), "event emitter is nil, cannot dispatch output")

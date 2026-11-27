@@ -1001,16 +1001,32 @@ func (m *Manager) newCredit(id string) *flowControl {
 	})
 }
 
+// Credit is the right to credit the output of one session: the one that was running under the id when the sink
+// asked for it. It is bound to that session itself, not to its id, so a late report of a session that ended
+// never reaches a new session that took the id. The zero Credit credits nothing.
+type Credit struct{ flow *flowControl }
+
 // Delivered tells the host that the transport has taken n bytes of the session's output on their way to the
-// client. A sink that implements DeliveryReporter calls it, possibly from another goroutine and later than
-// Output returned; it credits the session unless the client has taken over the credit (Ack).
-func (m *Manager) Delivered(sessionID string, n int) {
+// client. It may be called from another goroutine and later than Output returned, and after the session ended
+// (it then changes nothing); it credits the session unless the client has taken over the credit (Ack).
+func (c Credit) Delivered(n int) {
+	if c.flow != nil && n > 0 {
+		c.flow.delivered(n)
+	}
+}
+
+// DeliveryCredit is what a sink that implements DeliveryReporter asks for, from inside Output, to report the
+// delivery of what Output was handed: the Credit of the session that is running under sessionID now. Output is
+// called for a session before its Closed, and the id is free only after that, so inside Output the id is that of
+// the session whose output it is. A session that is not running has a Credit that credits nothing.
+func (m *Manager) DeliveryCredit(sessionID string) Credit {
 	m.mu.RLock()
 	s := m.sessions[sessionID]
 	m.mu.RUnlock()
-	if s != nil && n > 0 {
-		s.flow.delivered(n)
+	if s == nil {
+		return Credit{flow: nil}
 	}
+	return Credit{flow: s.flow}
 }
 
 // Busy says whether a program other than the shell holds the terminal's foreground: the foreground
