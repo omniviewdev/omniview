@@ -1,4 +1,4 @@
-import type { HostSnapshot, SettingsClient } from '../../settings/model/types';
+import { HOST_SCOPE, type HostSnapshot, type SettingsClient } from '../../settings/model/types';
 
 // The terminal's settings as the page reads them (#697 step 1, docs/ui-next/status/T6-settings.md). The host declares them and holds their bounds (`internal/settings/terminal.go`, category `terminal`); the page does not
 // decide a default or a bound of its own that the host does not state, and it still reads every value as one inside those bounds, because a snapshot may carry a value an older host or a file edited by hand let in.
@@ -136,7 +136,12 @@ export const DEFAULT_PREFERENCES_SOURCE: PreferencesSource = Object.freeze({
   settled: async () => Promise.resolve(),
 });
 
-export type PreferencesSourceOptions = Pick<SettingsClient, 'snapshot' | 'onChanged' | 'onReconnect'> & {
+export type PreferencesSourceOptions = {
+  /** The host's snapshot of its own settings. */
+  readonly snapshot: () => Promise<HostSnapshot>;
+  /** Listens for a change of the HOST's settings (a plugin's are not the terminal's). Answers the function that stops it. */
+  readonly onChanged: (listener: () => void) => () => void;
+  readonly onReconnect?: SettingsClient['onReconnect'];
   /** Where the page says what it could not do. Default: the console. */
   readonly warn?: ((message: string, error?: unknown) => void) | undefined;
 };
@@ -241,13 +246,17 @@ export function appTerminalPreferences(): PreferencesSource {
   };
 
   return createTerminalPreferences({
-    snapshot: async () => (await client()).snapshot(),
+    snapshot: async () => (await client()).snapshot(HOST_SCOPE),
     onChanged: (listener) => {
       let stop: (() => void) | undefined;
       let left = false;
       void client().then((settings) => {
         if (!left) {
-          stop = settings.onChanged(listener);
+          stop = settings.onChanged((scope) => {
+            if (scope.kind === 'host') {
+              listener();
+            }
+          });
           // The host does not replay a change made before this listener was registered: ask again now that it is.
           listener();
         }
