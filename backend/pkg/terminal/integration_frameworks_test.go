@@ -607,3 +607,36 @@ func TestFishGivesTheRightExitCodesOnEveryVersionUnderTest(t *testing.T) {
 		})
 	}
 }
+
+// bash-preexec with the shell options that make traps follow into functions (extdebug, set -T): the user's preexec runs exactly once
+// per command, every record has its own line, an empty line is no command, on every bash under test.
+func TestBashPreexecWithExtdebugOrFunctraceRecordsEachCommandOnceWithItsOwnLine(t *testing.T) {
+	modes := map[string]string{"plain": "", "extdebug": "shopt -s extdebug\n", "functrace": "set -T\n"}
+	for name, option := range modes {
+		for _, path := range testBashes(t) {
+			t.Run(name+"@"+bashLabel(t, path), func(t *testing.T) {
+				c := frameworkCase{home: "bash-preexec", shell: "bash", exit3: "sh -c 'exit 3'", hooksLeftOut: false, ownEnd: false, ownCwd: false, shellPath: path, statusLog: "framework-status"}
+				f := frameworkFixture(t, c, true)
+				// The option is set before bash-preexec is sourced, as a user's .bashrc would.
+				rc := filepath.Join(f.home, ".bashrc")
+				body, err := os.ReadFile(rc)
+				require.NoError(t, err)
+				require.NoError(t, os.WriteFile(rc, append([]byte(option), body...), 0o600))
+				info := f.started()
+				cmds := []string{"true", "false", c.exit3, "__bp_mine() { return 5; }; __bp_mine", "__bp_mine; echo x"}
+				for _, line := range cmds {
+					f.run(info.ID, line)
+				}
+				f.run(info.ID, "")
+				ran := f.ranRecords(info.ID, len(cmds))
+				var lines []string
+				for _, r := range ran {
+					lines = append(lines, r.CommandLine)
+				}
+				assert.Equal(t, cmds, lines, "each command's trusted line is its own, and an empty line makes no record")
+				assert.Equal(t, []int32{0, 1, 3, 5, 0}, exitCodes(ran))
+				assert.Equal(t, strings.Join(cmds, "\n")+"\n", f.homeFile("framework-preexec"), "the user's preexec ran once per command")
+			})
+		}
+	}
+}
