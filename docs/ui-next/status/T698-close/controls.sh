@@ -13,7 +13,6 @@ fi
 export GOWORK=off GOTOOLCHAIN=local
 pkg=./backend/pkg/terminal/
 scratch=$(mktemp -d)
-trap 'rm -rf "$scratch"' EXIT
 fail=0
 
 overlay() { # overlay <name> <real file> <scratch file> [<real file> <scratch file>]...
@@ -25,18 +24,18 @@ json.dump({"Replace": {pairs[i]: pairs[i + 1] for i in range(0, len(pairs), 2)}}
 PY
 }
 
-run() { # run <overlay json or -> <test regexp> -> output in $scratch/last, status in $?
+run() { # run <overlay json or -> <test regexp> [package] -> output in $scratch/last, status in $?
   local args=()
   [ "$1" != "-" ] && args=(-overlay="$1")
-  go test -count=1 "${args[@]}" -run "$2" "$pkg" >"$scratch/last" 2>&1
+  go test -count=1 "${args[@]}" -run "$2" "${3:-$pkg}" >"$scratch/last" 2>&1
 }
 
-expect_pass() { # expect_pass <label> <overlay> <regexp>
-  if run "$2" "$3"; then echo "ok    $1"; else echo "FAIL  $1 (expected pass)"; sed -n 1,25p "$scratch/last"; fail=1; fi
+expect_pass() { # expect_pass <label> <overlay> <regexp> [package]
+  if run "$2" "$3" "${4:-}"; then echo "ok    $1"; else echo "FAIL  $1 (expected pass)"; sed -n 1,25p "$scratch/last"; fail=1; fi
 }
 
-expect_trip() { # expect_trip <label> <overlay> <regexp> <assertion message that must be in the failure>
-  if run "$2" "$3"; then echo "FAIL  $1 (expected the fault to be detected)"; fail=1; return; fi
+expect_trip() { # expect_trip <label> <overlay> <regexp> <assertion message that must be in the failure> [package]
+  if run "$2" "$3" "${5:-}"; then echo "FAIL  $1 (expected the fault to be detected)"; fail=1; return; fi
   if grep -qF -- "$4" "$scratch/last"; then echo "ok    $1"; else echo "FAIL  $1 (failed, but not on: $4)"; sed -n 1,25p "$scratch/last"; fail=1; fi
 }
 
@@ -55,6 +54,38 @@ PY
 }
 
 mgr=$root/backend/pkg/terminal/manager.go
+# vitest controls mutate the tracked file in place and put it back (the trap restores it, whatever happens).
+restores=()
+restore_all() { local pair; for pair in "${restores[@]:-}"; do [ -n "$pair" ] && cp "${pair%%|*}" "${pair##*|}"; done; rm -rf "$scratch"; }
+trap restore_all EXIT
+
+vt_run() { # vt_run <test file> -> output in $scratch/last
+  pnpm exec vitest run "$1" >"$scratch/last" 2>&1
+}
+
+vt_expect_pass() { if vt_run "$2"; then echo "ok    $1"; else echo "FAIL  $1 (expected pass)"; grep -E "×|AssertionError|Error:" "$scratch/last" | head -8; fail=1; fi; }
+
+vt_expect_trip() { # vt_expect_trip <label> <test file> <assertion text in the failure>
+  if vt_run "$2"; then echo "FAIL  $1 (expected the fault to be detected)"; fail=1; return; fi
+  if grep -qF -- "$3" "$scratch/last"; then echo "ok    $1"; else echo "FAIL  $1 (failed, but not on: $3)"; grep -E "×|AssertionError|Error:" "$scratch/last" | head -8; fail=1; fi
+}
+
+vt_mutate() { # vt_mutate <file> <python expression on s>: keeps a copy, the trap puts it back
+  local file=$1 copy="$scratch/vt.$RANDOM"
+  cp "$file" "$copy"; restores+=("$copy|$file")
+  python3 - "$file" "$2" <<'PY'
+import sys
+path, expr = sys.argv[1:]
+s = open(path).read()
+env = {"s": s}
+exec(expr, env)
+if env["s"] == s:
+    sys.exit("mutation changed nothing: " + expr)
+open(path, "w").write(env["s"])
+PY
+  [ $? -eq 0 ] || { echo "FAIL  a mutation matched nothing: $2"; fail=1; }
+}
+
 echo "== baseline"
 expect_pass "baseline: the three items' tests pass on the tree" - 'TestACloseThatGaveUp|TestTheShellStartsInTheValidatedPath|TestAStartDirectoryThat|TestALateCredit'
 
@@ -84,6 +115,43 @@ t8=$root/backend/pkg/terminal/delivery_credit_test.go
 mutate "$t8" "$scratch/t8.go" 'import re; s = re.sub(r"\t\trequire\.Equal\(t, debt, owed[^\n]*\n", "\t\t_ = owed\n", s)'
 overlay c8b "$mgr" "$scratch/m8.go" "$t8" "$scratch/t8.go"
 expect_pass "item 8: the same fault passes undetected when the assertion is removed" "$scratch/c8b.json" 'TestALateCredit'
+
+echo "== item 7: PWD of a path with a dot-dot is left for bash to clean"
+env7=$root/backend/pkg/terminal/env.go
+mutate "$env7" "$scratch/e7.go" 's = s.replace("\"PWD=\"+workingDirectory(dir),", "\"PWD=\"+dir,")'
+overlay c7c "$env7" "$scratch/e7.go"
+expect_trip "item 7: a PWD that is the validated path as given is detected by the bash assertions" "$scratch/c7c.json" 'TestEveryShellStarted' "pwd -P after cd ."
+mutate "$root/backend/pkg/terminal/start_directory_test.go" "$scratch/t7c.go" 'import re; s = re.sub(r"\t\t\tassert\.Contains\(t, text, \"[abcd]-\"[^\n]*\n", "", s); s = s.replace("text := rec.waitFor(t, info.ID, \"end\")", "_, _ = data, rec.waitFor(t, info.ID, \"end\")")'
+overlay c7d "$env7" "$scratch/e7.go" "$root/backend/pkg/terminal/start_directory_test.go" "$scratch/t7c.go"
+expect_pass "item 7: the same fault passes undetected when the four assertions on where the shell is are removed" "$scratch/c7d.json" 'TestEveryShellStarted'
+
+echo "== item 8 (exec): the sink never credits what the transport took"
+ex=$root/backend/pkg/plugin/exec/terminal.go
+mutate "$ex" "$scratch/x8.go" 's = s.replace("delivered: func() { credit.Delivered(len(data)) }", "delivered: func() { _ = credit }")'
+overlay c8x "$ex" "$scratch/x8.go"
+expect_trip "exec: a sink that never credits is detected by the finished-shell assertion" "$scratch/c8x.json" 'TestTheLocalSinkCredits' "the shell never finished: the sink did not credit what the transport took" ./backend/pkg/plugin/exec/
+tx=$root/backend/pkg/plugin/exec/terminal_credit_test.go
+mutate "$tx" "$scratch/tx.go" 'import re; s = re.sub(r"\trequire\.Eventually\(.*?\n\t\t\"the shell never finished[^\n]*\n", "\t_, _, _, _ = assert.Equal, require.Eventually, client, info\n", s, flags=re.S); s = re.sub(r"\tgot, _ := client\.received[^\n]*\n\tassert\.Equal[^\n]*\n\tassert\.Greater[^\n]*\n", "", s)'
+sed -i 's|^\t"time"$||' "$scratch/tx.go"
+overlay c8y "$ex" "$scratch/x8.go" "$tx" "$scratch/tx.go"
+expect_pass "exec: the same fault passes undetected when the finished-shell assertions are removed" "$scratch/c8y.json" 'TestTheLocalSinkCredits' ./backend/pkg/plugin/exec/
+
+echo "== item 2 (page): a close-timeout is a close that rejects"
+ch=$root/ui-next/shell/panel/terminal/terminalChannel.ts
+cht=$root/ui-next/shell/panel/terminal/terminalChannel.test.ts
+vt_mutate "$ch" 's = s.replace("if (!isClosing(error)) {\n          throw error;\n        }", "throw error;")'
+vt_expect_trip "page: a close that rejects on close-timeout is detected by the resolves assertion" "ui-next/shell/panel/terminal/terminalChannel.test.ts" "promise rejected"
+vt_mutate "$cht" 's = s.replace("await expect(r.channels.close(\x27t1\x27)).resolves.toBeUndefined();", "await r.channels.close(\x27t1\x27).catch(() => undefined);")'
+vt_expect_pass "page: the same fault passes undetected when the resolves assertion is removed" "ui-next/shell/panel/terminal/terminalChannel.test.ts"
+cp "${restores[0]%%|*}" "$ch"; cp "${restores[1]%%|*}" "$cht"
+
+echo "== item 2 (legacy drawer): a close-timeout is logged as an error"
+pv=$root/ui/providers/BottomDrawer/provider.tsx
+pvt=$root/ui/providers/BottomDrawer/__tests__/provider.test.tsx
+vt_mutate "$pv" 's = s.replace("=> parseAppError(error).type === \x27omniview:terminal/close-timeout\x27", "=> false")'
+vt_expect_trip "legacy: a drawer that logs the timeout is detected by the not-logged assertion" "ui/providers/BottomDrawer/__tests__/provider.test.tsx" "expected \"vi.fn()\" to not be called at all"
+vt_mutate "$pvt" 'import re; s = re.sub(r"    expect\(log\.error\)\.not\.toHaveBeenCalled\(\);\n", "", s).replace("expect(log.error).toHaveBeenCalledTimes(1)", "expect(log.error).toHaveBeenCalled()")'
+vt_expect_pass "legacy: the same fault passes undetected when the not-logged assertion is removed" "ui/providers/BottomDrawer/__tests__/provider.test.tsx"
 
 [ $fail -eq 0 ] && echo "ALL CONTROLS BEHAVED" || echo "CONTROLS FAILED"
 exit $fail
