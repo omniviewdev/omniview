@@ -17,7 +17,7 @@ export GOWORK=off GOTOOLCHAIN=local
 export OMNIVIEW_TEST_BASHES
 WT=$(git rev-parse --show-toplevel) || exit 2
 PKG=./backend/pkg/terminal/
-RUN='^(TestAFrameworksUserStillGetsTheGenuineMarksTrustedWithTheRightExitCodes|TestWhatAFrameworkPrintsOnItsOwnIsAcceptedAtLowTrustAndNeverAsACommandLine|TestAPowerlevel10kUserGetsNoHooksFromTheIntegrationAndKeepsTheirOwnMarks|TestTheStatusAFrameworksHookSeesIsTheUsersAndEveryCommandReachesTheFramework|TestAFrameworksPromptTextIsUnchangedAndNothingIsPrintedOutsideTheMarks|TestTheFilesOfAFrameworksUserAreByteIdenticalAfterASession|TestTheZDOTDIROfZimAndZsh4humansIsTheUsersOwn|TestADirectoryWhoseNameHoldsAnEscapeByteNeitherEndsTheCwdMarkEarlyNorGivesAWrongPath|TestBashPreexecOnBash53RecordsEveryCommandWithItsOwnLine|TestAUsersCommandNamedLikeBashPreexecsIsStillRecorded)$'
+RUN='^(TestAFrameworksUserStillGetsTheGenuineMarksTrustedWithTheRightExitCodes|TestWhatAFrameworkPrintsOnItsOwnIsAcceptedAtLowTrustAndNeverAsACommandLine|TestAPowerlevel10kUserGetsNoHooksFromTheIntegrationAndKeepsTheirOwnMarks|TestTheStatusAFrameworksHookSeesIsTheUsersAndEveryCommandReachesTheFramework|TestAFrameworksPromptTextIsUnchangedAndNothingIsPrintedOutsideTheMarks|TestTheFilesOfAFrameworksUserAreByteIdenticalAfterASession|TestTheZDOTDIROfZimAndZsh4humansIsTheUsersOwn|TestADirectoryWhoseNameHoldsAnEscapeByteNeitherEndsTheCwdMarkEarlyNorGivesAWrongPath|TestBashPreexecOnBash53RecordsEveryCommandWithItsOwnLine|TestAUsersCommandNamedLikeBashPreexecsIsStillRecorded|TestFishGivesTheRightExitCodesOnEveryVersionUnderTest)$'
 M=$(mktemp -d "${TMPDIR:-/tmp}/t5fw-mut.XXXXXX") || { echo "no scratch directory" >&2; exit 2; }
 trap 'rm -rf -- "$M"' EXIT
 cd "$WT" || exit 2
@@ -66,6 +66,7 @@ T4=TestTheStatusAFrameworksHookSeesIsTheUsersAndEveryCommandReachesTheFramework
 T5=TestAFrameworksPromptTextIsUnchangedAndNothingIsPrintedOutsideTheMarks
 T6=TestTheFilesOfAFrameworksUserAreByteIdenticalAfterASession
 T7=TestTheZDOTDIROfZimAndZsh4humansIsTheUsersOwn
+TF=TestFishGivesTheRightExitCodesOnEveryVersionUnderTest
 T9=TestBashPreexecOnBash53RecordsEveryCommandWithItsOwnLine
 T8=TestADirectoryWhoseNameHoldsAnEscapeByteNeitherEndsTheCwdMarkEarlyNorGivesAWrongPath
 
@@ -90,6 +91,10 @@ run bash-status-clobbered "$B" '0,/^    return "$__omniview_status"$/s||    retu
 
 # zsh: the first precmd hook reads $? after a builtin: every exit code is 0.
 run zsh-status-read-late "$Z" 's|^    local __omniview_last=$?$|    setopt localoptions; local __omniview_last=$?|' "$T1"
+# fish 3.7 (no marks of its own): the end mark reads $status after `test`, which makes it 0. Run with OMNIVIEW_TEST_FISHES=<fish 3.7>
+# (a fish 4 prints its own D and does not see it; the control is then undetected: the script requires 3.7 on the list).
+run fish-status-read-after-test "$F" 's|printf .\\e\]133;D;%d\\a. $__omniview_last|printf '"'"'\\e]133;D;%d\\a'"'"' $status|; s|^            set -l __omniview_last $status$|            true|' "$TF"
+
 # fish: a builtin runs before the user's (starship's) fish_prompt, which then reads $status 0.
 run fish-status-clobbered "$F" 's|^                    __omniview_user_prompt $argv$|                    true; __omniview_user_prompt $argv|' "$T4"
 
