@@ -19,6 +19,8 @@
 - Show names the terminal of the session (`generation` = restarts of the session) and `reveal(id, epoch)` on the gutter uses it; a closed terminal says so in a notice.
 - `proven` is NOT reset: after `exec zsh` the card may still say Rich until the page is reloaded. Dropping it needs the host to say the prompt stopped carrying the nonce; not done.
 
+- After a restart and then a take-back the registry count stays 1 but the new screen counts from 0, so Show then says the command is gone (safe failure; not fixed).
+
 ## Known limits
 
 - A command that finished while the page was disconnected gets no notice. The card shows no directory.

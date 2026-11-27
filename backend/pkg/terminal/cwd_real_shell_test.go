@@ -31,11 +31,12 @@ func realDir(t *testing.T, base, name string) string {
 	return resolved
 }
 
+// The replacement's prompt is spelled so that the echo of the typed line cannot match it (`P''> ` is `P> ` only after the shell has parsed it): the wait is for the new shell's own prompt.
 // A shell that is replaced (`exec`) by one with no integration tells nothing from then on: the last proof names a directory it has left.
 func TestAReplacedShellWithNoIntegrationIsAnsweredByTheSystemNotByTheLastProof(t *testing.T) {
 	for _, tc := range []struct{ shell, replacement string }{
-		{"bash", "exec env PS1='" + integrationPrompt + "' bash --norc --noprofile"},
-		{"zsh", "exec env PS1='" + integrationPrompt + "' zsh -f"},
+		{"bash", "exec env PS1='P''> ' bash --norc --noprofile"},
+		{"zsh", "exec env PS1='P''> ' zsh -f"},
 	} {
 		t.Run(tc.shell, func(t *testing.T) {
 			f := newIntegrationFixture(t, tc.shell, integrationShell(t, tc.shell))
