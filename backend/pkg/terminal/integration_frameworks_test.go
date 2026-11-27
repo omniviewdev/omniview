@@ -593,7 +593,9 @@ func TestFishGivesTheRightExitCodesOnEveryVersionUnderTest(t *testing.T) {
 		t.Run("fish-"+strings.TrimSpace(strings.TrimPrefix(string(out), "fish, version ")), func(t *testing.T) {
 			f := newIntegrationFixture(t, "fish", path)
 			info := f.started()
-			require.Equal(t, IntegrationOn, info.Integration.State)
+			// fish 3.x builds its completions at the first start in a fresh home, which can take longer than the 500 ms the host waits for
+			// `ready`: the fact is then `unconfirmed` (the script still runs). The test is about the marks, so either is accepted.
+			assert.Contains(t, []IntegrationState{IntegrationOn, IntegrationUnconfirmed}, info.Integration.State)
 			for _, c := range []string{"true", "false", "sh -c 'exit 3'"} {
 				f.run(info.ID, c)
 			}
