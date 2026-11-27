@@ -1,0 +1,61 @@
+# Status: T5-step7-seam (the seam scenario r10, the shell integration, issue #694 step 7)
+
+- Agent: IntegrationSeam. Worktree `~/omniview/wt/t694-seam`. Branch `test/terminal-integration-seam`, on `origin/test/terminal-open-where-seam` (PR #802, r9; rebase onto `origin/main` once it lands). Epic #692, issue #694. No push, no PR.
+- Owned: `ui-next/plugins/e2e/seam.check.mjs` (scenario r10, `checkTerminalIntegration`, phase and control group `terminal-integration`, `INTEGRATION_CONTROLS`), `scripts/ci/seam-units.mjs`, `scripts/ci/seam-shards.mjs` (one table name) and its test. No product file. No probe change: every claim of the step is reachable by the seam (a probe has no real shell), so none was added.
+
+## What r10 proves
+
+Real host, real bash 5.3 and zsh 5.9 of this machine (the check STOPS with a message when the host lists either one missing: the CI image now holds both, #798), both engines, a real xterm in the page. For each shell, in a terminal the page made from the menu of the `+`:
+
+| Acceptance line of #694 step 7 | What the check does | Controls |
+|---|---|---|
+| exit codes, gutter | `true`, `false`, `(exit 3)`: the typed marks the host sent (`command-start` with its nonce-proven line, `command-end` with `exit`) and the host's record (`ChannelTerminalCommands`) say 0, 1, 3. A command whose end mark carries no status (what pwsh sends; a program prints `OSC 133;D`) has no `exit`. The gutter (the page's decorations, `[data-state]`, in view, top to bottom) is success, error, error, incomplete. | `integration-exit-true`, `-false`, `-three`, `integration-gutter-success`, `-error`, `-incomplete` |
+| Ctrl-C at an empty prompt | A window of the output of its own holds a prompt and an input start, no `command-start`, no `command-end`, no command that ran in the record. | `integration-ctrlc-none` |
+| a jump moves the viewport | After 100 lines of output no mark is in view; the terminal's chord (Control or Command + Up) says `Command N of N, Succeeded...: seq 1 100` in its live region and the one mark in view is that command's. | `integration-jump` |
+| Select output | The chord with Shift selects the output of the command before; the copy equals `SEL_1..SEL_4`, and equals the lines the host's record cuts out of the output bytes (`output_start`, `output_end`; zsh's `%` redraw trimmed). | `integration-select-output` |
+| forged marks | `cat` of a file with 133, 633;E, 633;P and OSC 7 marks, wrong nonce and none: no mark carries a command line or a directory other than the shell's, and the record has no such command. With the nonce (read by the check from `$__omniview_nonce` into a file only the check reads): the line `FORGED_RIGHT` is `trust: nonce` in the marks and the record, and the directory `/usr` is a `nonce` cwd mark. | `integration-forged-line`, `-forged-cwd`, `-trusted-line`, `-trusted-cwd` |
+| user files | `~/.zshrc`, `~/.zprofile`, `~/.bashrc`, `~/.bash_profile` of the seam host's HOME are seeded with content the shells run (the check asserts both shells ran them), hashed (sha256) before the first terminal and after both sessions. | `integration-file-zshrc`, `-zprofile`, `-bashrc`, `-bash-profile` |
+| opt-out | `terminal.shellIntegration` false through the host's settings (`Commit`), then a new terminal from the menu: the record and the stream's `ready` say `off`; the shell has no `__omniview*` function or parameter and no nonce variable, the environment none of `OMNIVIEW_*`, `__omniview*`, `ZDOTDIR=...omniview-integration`; no typed mark, no 133/633/7 in the output, no command in the record. The setting is put back (also on failure). | `integration-optout-fact`, `-optout-env`, `-optout-marks` |
+| reload | The page reloads (as r3); the gutter in view is as it was. | `integration-reload-gutter` |
+| canary | The session's nonce is in no DOM node (`outerHTML` and text), no host log line (the host's output and its state root's log files), no frame the page receives that is not an output frame (marks, `ready`, events socket), no record or answer of the host (`ChannelTerminalCommands`, `Busy`, `Cwd`, the list, every answer the page was given), no page error or console line. The nonce IS in the raw output (asserted: the search looked for something that exists). | `integration-canary-dom`, `-log`, `-frames`, `-records`, `-errors` |
+
+26 controls; 22 run in each shell (44) and the 4 file controls once: 48 `NEGATIVE CONTROL ... detected` lines per engine.
+
+## Decisions
+
+- **A forged end mark is how "incomplete" is made.** The bash and zsh scripts always send a status, so the incomplete state (no status, pwsh's) cannot come from them. A program prints `OSC 133;D` with no code (`printf '\033]133;D\007'`); the host's end mark has no `exit`, the gutter shows incomplete. It is a program's forged mark, honest as the state "ended with no status", not a real pwsh.
+- **A trusted command line needs a start at a prompt.** The host takes `633;E` only for the start of a command at a prompt (`log.start`: "a second start is not the shell's"). A forged file printed inside `cat` first fails: the real `cat` is the running command. So both files first print `133;D;0` (end the shell's command) then A, B, E, C. The right-nonce file is then trusted; the wrong-nonce and no-nonce start marks carry no line. This is the host's rule, written into the check, not a product change.
+- **Faults point the assertion at real data of the opposite event**, not at doctored values: the forged assertions are tried against the window of the right-nonce file (`forgedW = lineW`, `cwdW`), Ctrl-C against the window of `true`, the opt-out ones against the terminal that has the integration, a glyph's `data-state` swapped for the gutter and the reload, a nonce planted in a sink for the canary, the user's file appended for the files. The assertions with a single act and no fault of their own are premises (tried before the act): exit codes, jump, Select output, the two trusted ones.
+- Windows of the output are offsets (`mark.at`), so they hold across the reload (marks come again with the replay and are counted once).
+- The wait for the next prompt is the next `input-start` mark after the typed line, never a time. The first CI of webkit showed the jump's mark drawn a frame after the live words: the act waits for the mark in view.
+- Fish: not installed here (`command -v fish` empty), so no fish pass and no `config.fish` control (a control that cannot run on a machine fails the plan's check that every control was detected). NOT RUN. Add it when the CI image's fish is exercised.
+- The seam host's HOME is `<work>/home`; the check finds it from `host.logFile` and restores or removes the files it seeded in `finally`.
+- `scripts/ci/seam-shards.test.mjs` hard-coded 4 shards; the table's seconds now plan 5 (1646 s), so the numbers (8 reports, `--shards 4`) are 10 and 5. The unit seconds are ESTIMATES (40 s phase, 70 s controls) from the laptop.
+
+## Shas
+
+See `git log` of the branch: the scenario, units and shard tables are one commit (`test(seam): r10 ...`), the waits that the first WebKit run needed are the next, this file the last.
+
+## Checks run
+
+Linux amd64, Go 1.27.4 toolchain, Node 26, bash 5.3.0, zsh 5.9. Load average 1 to 6 (`uptime`).
+
+- `task local:seam -- terminal-integration,controls-terminal-integration` (env -i, `SEAM_SHELL=/bin/bash`): after the wait fix exit 0; phase 24.1 s (WebKit) and 25.5 s (Chromium); 48 of 48 controls detected in each engine, bash and zsh both exercised.
+  Before the fix the first run failed in WebKit only: `a jump moves the viewport to the previous command's line: it says "Command 7 of 7, ..." and the marks in view are []` (the page drew the mark a frame after it said where it went); Chromium 48 of 48.
+- Controls with their assertion removed (`SEAM_CONTROL=<c> SEAM_REMOVE=<c>`, all 26, both engines, 52 runs, 3 at a time): every run exit 0 and printed `NOT DETECTED ... with its assertion removed, as it must be` once for each of its shell passes (2 for the 22 per-shell controls, 1 for the 4 file controls); none was detected.
+- `node scripts/ci/seam-shards.mjs check`: ok (31 phases, 255 controls, 25 units). `node --test scripts/ci/seam-shards.test.mjs`: 35 of 35.
+
+## Not verified
+
+- macOS, Windows, a real WKWebView; fish; pwsh.
+- The CI image run (zsh and fish there since #798): the nightly sets the seconds.
+- `SEAM_REMOVE` passes by construction for a control whose act has one assertion (nothing else sees the fault); r9 says the same.
+- The `SEAM_CONTROL` run in CI is the one table (`terminal-integration`).
+
+## Dev tools
+
+- `SEAM_TERMINAL_ONLY=r10`, `SEAM_PHASES=terminal-integration`, `SEAM_CONTROL=terminal-integration|<control>`, `SEAM_REMOVE=<control>`.
+
+## Backend catalog
+
+- Nothing for the host or the SDK. A product observation, not a bug: a program that prints the right nonce can make a command line trusted only at a prompt (see the decision above); `cwd` from `633;P` with the nonce is trusted anywhere, by design.

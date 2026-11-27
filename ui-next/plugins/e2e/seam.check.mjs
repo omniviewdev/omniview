@@ -12466,6 +12466,7 @@ async function checkTerminalIntegration(page, host, engine) {
       note(`${name} marks`, 'true 0, false 1, (exit 3) 3, a mark with no status, and Ctrl-C at an empty prompt (no command): the host\'s marks and record agree');
 
       // 2. The gutter: success, error and incomplete, and none for Ctrl-C.
+      await waitUntil('the emulator to draw the marks of the five commands', async () => (await gutter()).length === 5, 20_000);
       const gutterNow = await gutter();
       const wasGlyph = {};
       const swapped = async (at, to) => { wasGlyph[at] = await setGlyph(at, to); };
@@ -12508,6 +12509,7 @@ async function checkTerminalIntegration(page, host, engine) {
         async () => {
           await page.keyboard.press(`${MOD}+ArrowUp`);
           await waitUntil('the jump to say where it went', async () => /^Command \d+ of/.test(await words()), 15_000);
+          await waitUntil('the emulator to draw the mark of the command the jump went to', async () => (await gutter()).length === 1, 15_000);
         },
         [
           'integration-jump',
