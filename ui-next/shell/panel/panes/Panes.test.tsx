@@ -284,6 +284,21 @@ describe('the sash\'s drag', () => {
     expect(ratios(h)[0] * EXTENT).toBeCloseTo(80, 6);
   });
 
+  it('reads the deck again when it is released: a window that changed while the pointer was down gives the length the minimum is held against', () => {
+    let deckWidth = DECK;
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function (this: HTMLElement) {
+      return this.getAttribute('data-shell-part') === 'panelDeck' ? deckWidth : 0;
+    });
+    const h = mount();
+    split(h, 2);
+    const sash = sashAt(0);
+    fireEvent.pointerDown(sash, { button: 0, isPrimary: true, pointerId: 1, clientX: 400 });
+    fireEvent.pointerMove(sash, { pointerId: 1, clientX: 100 });
+    deckWidth = 300;
+    fireEvent.pointerUp(sash, { pointerId: 1, clientX: -500 });
+    expect((h.store.getSnapshot().panes.terminal?.ratios[0] ?? 0) * (300 - SASH)).toBeGreaterThanOrEqual(80 - 1e-6);
+  });
+
   it('puts the shares back on Escape and on a cancelled pointer, and tells the model nothing', () => {
     const h = mount();
     split(h, 2);
