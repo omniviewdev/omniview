@@ -1,6 +1,6 @@
 import { normaliseRoute } from '../tabs/route';
 import { effectiveSession, identifier, isLive, own, patch, refuse, sessionVisible, settle, unchanged, visibleSessions, type Context, type Step } from './state';
-import { LIMITS, type CloseResult, type OpenResult, type PanelResult, type PanelState, type Route, type Session, type SessionId, type SessionInput, type SessionState } from './types';
+import { LIMITS, type PaneGroup, type CloseResult, type OpenResult, type PanelResult, type PanelState, type Route, type Session, type SessionId, type SessionInput, type SessionState } from './types';
 
 // The sessions of the panel: opening one, what it is doing, closing it. A session is a record of what the user is looking at (a log stream, a shell), owned by the plugin that opened it; its
 // output and its connection live where the owner keeps them, and the record says no more than a tab and a card need.
@@ -184,6 +184,11 @@ export function closeSession(state: PanelState, id: SessionId): Step<CloseResult
     return refuse(state, 'missing', `There is no session ${id}.`);
   }
 
+  const group = own(state.panes, session.tool);
+  if (group?.panes.some((pane) => pane.session === id) === true) {
+    return closePane(state, session, group);
+  }
+
   const strip = visibleSessions(state, session.tool).map((one) => one.id);
   const at = strip.indexOf(id);
   const onScreen = effectiveSession(state, session.tool) === id;
@@ -200,4 +205,38 @@ export function closeSession(state: PanelState, id: SessionId): Step<CloseResult
   const next = patch(state, { sessions: Object.freeze(sessions), order: Object.freeze(state.order.filter((one) => one !== id)), active: Object.freeze(active), mounted: Object.freeze(state.mounted.filter((one) => one !== id)) });
   const settledState = settle(next);
   return { state: settledState, result: { status: 'done', closed: id, active: effectiveSession(settledState, session.tool) } };
+}
+
+/**
+ * Closes a session that is in a pane of a group: its pane goes with it and its share passes to the others in proportion. When it was the active pane the focus passes to the pane after it, else the one before; when
+ * one pane is left the group is dissolved and that pane's session is the tool's, as before the split. A session that is in no pane is closed as any other.
+ */
+function closePane(state: PanelState, session: Session, group: PaneGroup): Step<CloseResult> {
+  const at = group.panes.findIndex((pane) => pane.session === session.id);
+  const panes = group.panes.filter((_, index) => index !== at);
+  const others = group.ratios.filter((_, index) => index !== at);
+  const total = others.reduce((sum, ratio) => sum + ratio, 0);
+  const shows = (pane: { readonly session: SessionId }): boolean => {
+    const held = own(state.sessions, pane.session);
+    return held !== undefined && sessionVisible(state, held);
+  };
+
+  // The focus passes to the next VISIBLE pane, else the previous visible one (a hidden pane cannot be shown, and the tool would fall back to a session outside its group); with none visible, the neighbour.
+  const active =
+    group.panes[at]?.id === group.active ? (panes.slice(at).find(shows) ?? panes.slice(0, at).reverse().find(shows) ?? panes[at] ?? panes[at - 1]) : panes.find((pane) => pane.id === group.active);
+  if (active === undefined) {
+    throw new Error('a group of panes has two panes or more');
+  }
+
+  const { [session.tool]: _group, ...otherGroups } = state.panes;
+  const { [session.id]: _closed, ...sessions } = state.sessions;
+  const next = patch(state, {
+    sessions: Object.freeze(sessions),
+    order: Object.freeze(state.order.filter((one) => one !== session.id)),
+    mounted: Object.freeze(state.mounted.filter((one) => one !== session.id)),
+    active: Object.freeze({ ...state.active, [session.tool]: active.session }),
+    panes: Object.freeze(panes.length < 2 ? otherGroups : { ...otherGroups, [session.tool]: Object.freeze({ ...group, panes: Object.freeze(panes), ratios: Object.freeze(others.map((ratio) => ratio / total)), active: active.id }) }),
+  });
+  const settledState = settle(next);
+  return { state: settledState, result: { status: 'done', closed: session.id, active: effectiveSession(settledState, session.tool) } };
 }

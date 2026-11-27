@@ -1,4 +1,5 @@
-import { HOST, PANEL_VERSION, type Noop, type PanelState, type Refused, type RefusedReason, type Session, type SessionId, type Shown, type Tool, type ToolId } from './types';
+import { RATIO_EPSILON } from './ratios';
+import { HOST, PANEL_VERSION, type Noop, type PaneGroup, type PanelState, type Refused, type RefusedReason, type Session, type SessionId, type Shown, type Tool, type ToolId } from './types';
 
 // The state's shape and the helpers every operation uses. An operation is a function from a state to a new state and a result: it returns the same state object when it changed
 // nothing, so the store has nobody to notify (docs/ui-next/optimisations.md HLT-39, HSH-24), and everything it makes is frozen.
@@ -43,6 +44,7 @@ export function emptyPanel(): PanelState {
     sessions: Object.freeze({}),
     order: Object.freeze([]),
     mounted: Object.freeze([]),
+    panes: Object.freeze({}),
     live: Object.freeze([]),
     registered: 0,
   });
@@ -128,13 +130,113 @@ const sameIds = (a: readonly SessionId[], b: readonly SessionId[]): boolean => a
  * when it is first shown and stays until its session closes or its plugin leaves; the panel hiding unmounts nothing (HLT-32).
  */
 export function settle(state: PanelState): PanelState {
-  const keep = state.mounted.filter((id) => {
-    const session = own(state.sessions, id);
-    return session !== undefined && sessionVisible(state, session);
+  const reconciled = reconcilePanes(state);
+  const keep = reconciled.mounted.filter((id) => {
+    const session = own(reconciled.sessions, id);
+    return session !== undefined && sessionVisible(reconciled, session);
   });
-  const shown = shownOf(state);
-  const next = shown?.session !== null && shown?.session !== undefined && !keep.includes(shown.session) ? [...keep, shown.session] : keep;
-  return sameIds(next, state.mounted) ? state : patch(state, { mounted: Object.freeze(next) });
+  const shown = shownOf(reconciled);
+  // What is on screen is mounted: the tool's session, and every visible pane of its group.
+  const group = shown === null ? undefined : own(reconciled.panes, shown.tool);
+  const onScreen: SessionId[] = shown?.session === null || shown?.session === undefined ? [] : [shown.session];
+  for (const pane of group?.panes ?? []) {
+    const session = own(reconciled.sessions, pane.session);
+    if (session !== undefined && sessionVisible(reconciled, session) && !onScreen.includes(pane.session)) {
+      onScreen.push(pane.session);
+    }
+  }
+
+  const next = onScreen.every((id) => keep.includes(id)) ? keep : [...keep, ...onScreen.filter((id) => !keep.includes(id))];
+  return sameIds(next, reconciled.mounted) ? reconciled : patch(reconciled, { mounted: Object.freeze(next) });
+}
+
+/**
+ * A tool with panes keeps its active session in its active pane. The session a tool has chosen (`active`) is the one the user just acted on: when it is in a pane, that pane is the active one; when it is in none
+ * (a session opened in the tool, a tab chosen that no pane shows) it takes the active pane, and the session that pane had stays a tab of the tool, in no pane. A session the tool has not chosen yet, or one that is hidden, changes nothing.
+ */
+function reconcilePanes(state: PanelState): PanelState {
+  let panes: Record<string, PaneGroup> | undefined;
+  for (const [tool, group] of Object.entries(state.panes)) {
+    const chosen = own(state.active, tool);
+    const session = chosen === undefined ? undefined : own(state.sessions, chosen);
+    if (chosen === undefined || session?.tool !== tool || !sessionVisible(state, session)) {
+      continue;
+    }
+
+    const holding = group.panes.find((pane) => pane.session === chosen);
+    let fixed: PaneGroup | undefined;
+    if (holding === undefined) {
+      fixed = { ...group, panes: group.panes.map((pane) => (pane.id === group.active ? { id: pane.id, session: chosen } : pane)) };
+    } else if (holding.id !== group.active) {
+      fixed = { ...group, active: holding.id };
+    }
+
+    if (fixed !== undefined) {
+      panes ??= { ...state.panes };
+      panes[tool] = Object.freeze({ ...fixed, panes: Object.freeze(fixed.panes) });
+    }
+  }
+
+  return panes === undefined ? state : patch(state, { panes: Object.freeze(panes) });
+}
+
+/** The rules of the panes, as sentences. Written plainly, one group at a time, for the fuzz and the invariants test to apply. */
+function paneProblems(state: PanelState): string[] {
+  const problems: string[] = [];
+  const heldBy = new Set<SessionId>();
+  for (const [tool, group] of Object.entries(state.panes)) {
+    if (group.axis !== 'row' && group.axis !== 'column') {
+      problems.push(`the group of ${tool} has an axis that is neither row nor column`);
+    }
+
+    if (group.panes.length < 2) {
+      problems.push(`the panes of ${tool} are fewer than two`);
+    }
+
+    const slots = new Set<string>();
+    for (const pane of group.panes) {
+      if (slots.has(pane.id)) {
+        problems.push(`${tool} has two panes called ${pane.id}`);
+      }
+
+      slots.add(pane.id);
+      if (own(state.sessions, pane.session)?.tool !== tool) {
+        problems.push(`the pane ${pane.id} of ${tool} holds ${pane.session}, which is not a session of ${tool}`);
+      }
+
+      if (heldBy.has(pane.session)) {
+        problems.push(`the session ${pane.session} is in two panes`);
+      }
+
+      heldBy.add(pane.session);
+    }
+
+    if (group.ratios.length !== group.panes.length) {
+      problems.push(`${tool} has ${String(group.ratios.length)} ratios for ${String(group.panes.length)} panes`);
+    }
+
+    if (group.ratios.some((ratio) => !(Number.isFinite(ratio) && ratio > 0))) {
+      problems.push(`a ratio of ${tool} is not above zero`);
+    }
+
+    const total = group.ratios.reduce((sum, ratio) => sum + ratio, 0);
+    if (!(Math.abs(total - 1) <= RATIO_EPSILON)) {
+      problems.push(`the ratios of ${tool} sum to ${String(total)}, not 1`);
+    }
+
+    const active = group.panes.find((pane) => pane.id === group.active);
+    if (active === undefined) {
+      problems.push(`the active pane of ${tool} is not one of its panes`);
+    }
+
+    const chosen = own(state.active, tool);
+    const chosenSession = chosen === undefined ? undefined : own(state.sessions, chosen);
+    if (active !== undefined && chosen !== undefined && chosenSession?.tool === tool && sessionVisible(state, chosenSession) && active.session !== chosen) {
+      problems.push(`the active session of ${tool} is not the session of its active pane`);
+    }
+  }
+
+  return problems;
 }
 
 /** The rules a sound state keeps, as sentences; an empty list means it is sound. The fuzz test applies it after every operation. */
@@ -215,6 +317,8 @@ export function checkInvariants(state: PanelState): string[] {
   if (state.live.includes(HOST)) {
     problems.push('the host is listed as a live plugin: it always is');
   }
+
+  problems.push(...paneProblems(state));
 
   return problems;
 }
