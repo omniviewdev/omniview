@@ -1152,8 +1152,9 @@ func (m *Manager) DetachSession(sessionID string) (*sdkexec.Session, error) {
 	return s.snapshot(), nil
 }
 
-// CloseSession ends a session at its caller's request. When it returns the session is gone: the shell
-// is reaped, no event follows the CLOSE and the id is free.
+// CloseSession ends a session at its caller's request. When it returns nil the session is gone: the shell
+// is reaped, no event follows the CLOSE and the id is free. When the wait for that ended first (a sink that
+// holds the last output) it answers CLOSE_TIMEOUT: the session is still ending, and its CLOSE may still come.
 func (m *Manager) CloseSession(sessionID string) error {
 	s, err := m.live(sessionID)
 	if err != nil {
@@ -1164,7 +1165,9 @@ func (m *Manager) CloseSession(sessionID string) error {
 		return err
 	}
 	s.beginClose(ClosedByRequest)
-	m.awaitGone([]*session{s})
+	if m.awaitGone([]*session{s}) != nil {
+		return closeTimeoutError(sessionID, m.closeWait)
+	}
 	return nil
 }
 
@@ -1227,8 +1230,9 @@ func (m *Manager) shutdownWhenDone() {
 	m.Shutdown()
 }
 
-// awaitGone waits, for at most closeWait in all, until the sessions are gone.
-func (m *Manager) awaitGone(sessions []*session) {
+// awaitGone waits, for at most closeWait in all, until the sessions are gone. It returns the first session that
+// was not gone when the wait ended, or nil when all were.
+func (m *Manager) awaitGone(sessions []*session) *session {
 	deadline := time.NewTimer(m.closeWait)
 	defer deadline.Stop()
 	for _, s := range sessions {
@@ -1236,9 +1240,10 @@ func (m *Manager) awaitGone(sessions []*session) {
 		case <-s.done:
 		case <-deadline.C:
 			m.log.Warnw(m.ctx, "a terminal session was still ending after a close", "session", s.id)
-			return
+			return s
 		}
 	}
+	return nil
 }
 
 // forwardSignals listens for host-process signals once and forwards them to all active terminal child

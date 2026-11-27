@@ -3,6 +3,7 @@ package exec
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
 
 	"github.com/google/uuid"
@@ -340,7 +341,11 @@ func (c *controller) ServeTerminalChannel(ch terminal.Channel) { c.terminalManag
 func (c *controller) CloseChannelTerminal(capability string) (err error) {
 	_, span := tracer.Start(context.Background(), "exec.CloseChannelTerminal")
 	defer finishOp(span, &err)
-	return c.terminalManager.CloseChannel(capability)
+	err = c.terminalManager.CloseChannel(capability)
+	if errors.Is(err, terminal.ErrCloseTimeout) {
+		c.logger.Warnw(context.Background(), "a channel terminal was still ending when its close stopped waiting")
+	}
+	return err
 }
 
 // ChannelTerminalBusy says whether something other than the shell holds the foreground of a channel terminal.

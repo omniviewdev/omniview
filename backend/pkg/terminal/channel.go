@@ -357,7 +357,9 @@ func (m *Manager) CloseChannel(presented string) error {
 		return ChannelNotFound()
 	}
 	s.startClose()
-	m.awaitGone([]*session{s})
+	if m.awaitGone([]*session{s}) != nil {
+		return closeTimeoutError(s.id, m.closeWait)
+	}
 	return nil
 }
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/internal/shellenv"
@@ -30,6 +31,9 @@ const (
 	TypeShellUnsupported = "omniview:terminal/shell-unsupported"
 	// TypeStartFailed (code START_FAILED, 500): the pty or the process could not start.
 	TypeStartFailed = "omniview:terminal/start-failed"
+	// TypeCloseTimeout (code CLOSE_TIMEOUT, 504): the close was ordered and the session was not gone when the wait for it
+	// ended (a sink that holds the last output): the session is still ending and its CLOSE may still come.
+	TypeCloseTimeout = "omniview:terminal/close-timeout"
 	// TypeUnsupported (code UNSUPPORTED, 501): this build cannot run local terminals (Windows).
 	TypeUnsupported = "omniview:terminal/unsupported"
 	// TypeNotReattachable (code NOT_REATTACHABLE, 409): the terminal was opened without a page key, so it ends with
@@ -42,6 +46,7 @@ var (
 	ErrInputBacklog  = errors.New("terminal input backlog is full")
 	ErrSequenceStale = errors.New("terminal input sequence number is stale")
 	ErrSequenceAhead = errors.New("terminal input sequence number is too far ahead")
+	ErrCloseTimeout  = errors.New("terminal session was still ending when the close stopped waiting")
 	ErrUnsupported   = errors.New("terminal sessions are not supported on this platform")
 	ErrIDInUse       = errors.New("terminal session id is in use")
 	ErrInvalid       = errors.New("invalid terminal option")
@@ -79,6 +84,14 @@ func aheadError(seq, next uint64) error {
 func invalidError(detail string) error {
 	return coded(apperror.WrapWithDetail(ErrInvalid, apperror.TypeValidation, http.StatusBadRequest, "Invalid terminal option", detail),
 		"INVALID_REQUEST")
+}
+
+// closeTimeoutError is the answer of a close whose session was not gone when the wait ended.
+func closeTimeoutError(id string, waited time.Duration) error {
+	return coded(apperror.WrapWithDetail(ErrCloseTimeout, TypeCloseTimeout, http.StatusGatewayTimeout,
+		"Terminal close timed out",
+		fmt.Sprintf("Terminal %q was ordered to close and was still ending after %s. It is ending: its CLOSE may still come.", id, waited)),
+		"CLOSE_TIMEOUT")
 }
 
 // IDInUse is the refusal of a session id that a session already has.
