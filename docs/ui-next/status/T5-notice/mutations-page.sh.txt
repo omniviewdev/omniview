@@ -49,7 +49,7 @@ PY
 
 FEED=$DIR/execFeed.ts
 FEEDT=$DIR/execFeed.test.ts
-run replay-marks-are-news "$FEED" "$FEEDT" 'is not the end mark of a replay' "      let live = false;" "      let live = true;"
+run historical-marks-are-news "$FEED" "$FEEDT" 'is not the end mark of the bytes a reconnect continues' "!(mark.end > historicalFrom && mark.end <= historicalEnd) && " ""
 run unverified-proves "$FEED" "$FEEDT" 'is proven by a directory the shell vouched for' "if (mark.trust === 'nonce' && !proven) {" "if (!proven) {"
 run proof-goes-with-the-screen "$FEED" "$FEEDT" 'stays proven when the screen is brought afresh' "    running = false;
     lastStart = undefined;" "    running = false;
@@ -57,7 +57,7 @@ run proof-goes-with-the-screen "$FEED" "$FEEDT" 'stays proven when the screen is
     lastStart = undefined;"
 run integration-state-unchecked "$FEED" "$FEEDT" 'takes no word it cannot read' "!INTEGRATION_STATES.includes(state)" "false"
 run unverified-line-taken "$FEED" "$FEEDT" 'has no command line when the shell did not prove it' "command: mark.trust === 'nonce' ? mark.command : undefined" "command: mark.command"
-run finished-without-end-mark "$FEED" "$FEEDT" 'finished while the page watched|a shell that proved itself' "if (live && mark.kind === 'command-end' && mark.id !== undefined) {" "if (live && mark.kind === 'command-start' && mark.id !== undefined) {"
+run finished-without-end-mark "$FEED" "$FEEDT" 'finished while the page watched|a shell that proved itself' "if (live && !(mark.end > historicalFrom && mark.end <= historicalEnd) && mark.kind === 'command-end' && mark.id !== undefined) {" "if (live && !(mark.end > historicalFrom && mark.end <= historicalEnd) && mark.kind === 'command-start' && mark.id !== undefined) {"
 
 NOTICE=$DIR/finishedNotice.ts
 NOTICET=$DIR/finishedNotice.test.ts
