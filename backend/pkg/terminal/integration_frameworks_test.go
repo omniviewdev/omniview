@@ -3,6 +3,7 @@
 package terminal
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -251,6 +252,9 @@ func TestAFrameworksUserStillGetsTheGenuineMarksTrustedWithTheRightExitCodes(t *
 // them: for navigation, with no command line and no trusted directory.
 func TestWhatAFrameworkPrintsOnItsOwnIsAcceptedAtLowTrustAndNeverAsACommandLine(t *testing.T) {
 	eachFramework(t, func(c frameworkCase) bool { return c.ownEnd || c.ownCwd }, func(t *testing.T, c frameworkCase) {
+		if c.shell == "fish" && fishMajor(t, c.shellBinary(t)) < 4 {
+			t.Skip("NOT RUN: fish before 4 prints no marks of its own, so there is nothing of the framework's to accept")
+		}
 		f := frameworkFixture(t, c, false)
 		info := f.started()
 		require.Equal(t, IntegrationOff, info.Integration.State, "the control runs with the setting off, so every mark is the framework's")
@@ -514,12 +518,8 @@ func fishPrintsTheName(t *testing.T, name string) bool {
 	info := off.started()
 	off.run(info.ID, "cd esc*")
 	off.run(info.ID, "true")
-	for _, r := range off.scanned(info.ID).Records() {
-		if r.HasExitCode && r.ExitCode == 9 {
-			return true
-		}
-	}
-	return false
+	// The bytes, not the records: with no marks of its own (fish 3.x) no record is open for the name's end mark to close.
+	return bytes.Contains(off.sink.output(info.ID), []byte("\x1b]133;D;9"))
 }
 
 // bash-preexec 0.7.0 takes another way on bash 5.3 (PS0, not the DEBUG trap): this test is the one that runs on it. It is NOT RUN, by
