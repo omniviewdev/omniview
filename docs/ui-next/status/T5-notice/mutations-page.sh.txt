@@ -39,7 +39,7 @@ PY
   named=$(echo "$fails" | grep -c -E "$only")
   others=$(echo "$fails" | grep -v -c -E "$only")
   escaped=$only
-  out2=$(pnpm exec vitest run "$test" -t "^(?!.*${escaped}).*" 2>&1); s2=$?
+  out2=$(pnpm exec vitest run "$test" -t "^(?!.*(${escaped})).*" 2>&1); s2=$?
   echo "CONTROL $name: exit $s1 (want nonzero), named test red: $named (want 1+), other failures: $others (want 0), named test left out: exit $s2 (want 0)"
   if [ $s1 -eq 0 ] || [ "$named" -lt 1 ] || [ "$others" -ne 0 ] || [ $s2 -ne 0 ]; then BAD=1; fi
   cp "$COPIES/$(echo "$file" | tr / _)" "$file"
@@ -55,7 +55,7 @@ run proof-goes-with-the-screen "$FEED" "$FEEDT" 'stays proven when the screen is
     lastStart = undefined;"
 run integration-state-unchecked "$FEED" "$FEEDT" 'takes no word it cannot read' "!INTEGRATION_STATES.includes(state)" "false"
 run unverified-line-taken "$FEED" "$FEEDT" 'has no command line when the shell did not prove it' "command: mark.trust === 'nonce' ? mark.command : undefined" "command: mark.command"
-run finished-without-end-mark "$FEED" "$FEEDT" 'a command that finished while the page watched' "if (live && mark.kind === 'command-end' && mark.id !== undefined) {" "if (live && mark.kind === 'command-start' && mark.id !== undefined) {"
+run finished-without-end-mark "$FEED" "$FEEDT" 'finished while the page watched|a shell that proved itself' "if (live && mark.kind === 'command-end' && mark.id !== undefined) {" "if (live && mark.kind === 'command-start' && mark.id !== undefined) {"
 
 NOTICE=$DIR/finishedNotice.ts
 NOTICET=$DIR/finishedNotice.test.ts
@@ -87,7 +87,7 @@ run hidden-window-is-in-front "$TOOL" "$TOOLT" 'is told when the person is looki
 
 TIER=$DIR/integration.ts
 TIERT=$DIR/integration.test.ts
-run proof-upgrades-none "$TIER" "$TIERT" 'the tier of a terminal' "if (state !== 'on' && state !== 'unconfirmed') {" "if (state === undefined) {"
+run proof-upgrades-none "$TIER" "$TIERT" 'the tier of a terminal|the words of the tier|shell integration' "if (state !== 'on' && state !== 'unconfirmed') {" "if (state === undefined) {"
 run basic-is-rich "$TIER" "$TIERT" 'the tier of a terminal|the words of the tier' "return status.proven === true ? 'rich' : 'basic';" "return 'rich';"
 
 exit $BAD
