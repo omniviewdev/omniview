@@ -551,3 +551,22 @@ func TestBashPreexecOnBash53RecordsEveryCommandWithItsOwnLine(t *testing.T) {
 		})
 	}
 }
+
+// A command of the user's whose name begins like bash-preexec's (`__bp_`) is the user's: it is recorded, with its status. Only
+// bash-preexec's own commands are none of the user's.
+func TestAUsersCommandNamedLikeBashPreexecsIsStillRecorded(t *testing.T) {
+	eachFramework(t, func(c frameworkCase) bool { return c.home == "bash-preexec" }, func(t *testing.T, c frameworkCase) {
+		f := frameworkFixture(t, c, true)
+		info := f.started()
+		f.run(info.ID, "__bp_mine() { return 5; }")
+		f.run(info.ID, "__bp_mine")
+		f.run(info.ID, "__bp_mine; echo x")
+		ran := f.ranRecords(info.ID, 3)
+		var lines []string
+		for _, r := range ran {
+			lines = append(lines, r.CommandLine)
+		}
+		assert.Equal(t, []string{"__bp_mine() { return 5; }", "__bp_mine", "__bp_mine; echo x"}, lines)
+		assert.Equal(t, []int32{0, 5, 0}, exitCodes(ran))
+	})
+}
