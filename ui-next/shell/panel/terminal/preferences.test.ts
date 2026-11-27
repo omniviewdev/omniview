@@ -42,10 +42,10 @@ describe('what the page reads of the snapshot', () => {
 
   it('is every value the host holds, and cursorBlink is read from the new tool\'s own key, never from the legacy one', () => {
     const read = preferencesOf(
-      snapshotOf({ fontFamily: '"Fira Code", monospace', fontSize: 15, lineHeight: 1.2, scrollback: 20_000, cursorStyle: 'bar', cursorBlink: true, cursorBlinkNext: false, macOptionIsMeta: 'on', bell: 'off', gpuAcceleration: 'off', copyOnSelect: true, multiLinePasteWarning: 'always' }),
+      snapshotOf({ fontFamily: '"Fira Code", monospace', fontSize: 15, lineHeight: 1.2, scrollback: 20_000, cursorStyle: 'bar', cursorBlink: true, blinkingCursor: false, macOptionIsMeta: 'on', bell: 'off', gpuAcceleration: 'off', copyOnSelect: true, multiLinePasteWarning: 'always' }),
     );
     expect(read).toEqual({ fontFamily: '"Fira Code", monospace', fontSize: 15, lineHeight: 1.2, scrollback: 20_000, cursorStyle: 'bar', cursorBlink: false, macOptionIsMeta: 'on', bell: 'off', gpuAcceleration: 'off', copyOnSelect: true, multiLinePasteWarning: 'always' });
-    expect(preferencesOf(snapshotOf({ cursorBlink: false, cursorBlinkNext: true })).cursorBlink).toBe(true);
+    expect(preferencesOf(snapshotOf({ cursorBlink: false, blinkingCursor: true })).cursorBlink).toBe(true);
   });
 
   it('holds a value to the producer\'s bounds even when the host sent one outside them (a file edited by hand, an older host)', () => {
@@ -64,14 +64,34 @@ describe('what the page reads of the snapshot', () => {
     expect(preferencesOf(snapshotOf({ scrollback: Number.POSITIVE_INFINITY })).scrollback).toBe(5000);
   });
 
+  it('writes every name that is not a generic family in quotes: a name that is not a CSS identifier (0xProto, 3270 Nerd Font) is no font unquoted, and the font load throws a SyntaxError', () => {
+    expect(sanitiseFontFamily('0xProto')).toBe('"0xProto"');
+    expect(sanitiseFontFamily('3270 Nerd Font, monospace')).toBe('"3270 Nerd Font", monospace');
+    expect(sanitiseFontFamily('Menlo, 0xProto, ui-monospace')).toBe('"Menlo", "0xProto", ui-monospace');
+    // What the browser makes of it: the list is a font the canvas takes.
+    const context = document.createElement('canvas').getContext('2d');
+    if (context !== null) {
+      for (const text of ['0xProto', '3270 Nerd Font', 'Fira Code, monospace']) {
+        expect(CSS.supports('font-family', sanitiseFontFamily(text))).toBe(true);
+      }
+    }
+  });
+
+  it('refuses the CSS-wide keywords and default, bare or quoted, in any case: unquoted they make the whole font list invalid', () => {
+    for (const word of ['inherit', 'initial', 'unset', 'revert', 'revert-layer', 'default', 'Inherit', '"initial"', 'Menlo, inherit']) {
+      expect(sanitiseFontFamily(word), word).toBe('');
+    }
+  });
+
   it('never lets a font family carry anything but names: a semicolon, a url(), a brace or a line break is the theme\'s face', () => {
     for (const bad of ['a; color: red', 'url(https://evil.example/f.woff2)', 'Menlo, url(x)', 'a{b}', '"unterminated', 'a\nb', 'a\\b', 'x'.repeat(257), 'a,,b']) {
       expect(sanitiseFontFamily(bad), bad).toBe('');
       expect(preferencesOf(snapshotOf({ fontFamily: bad })).fontFamily, bad).toBe('');
     }
 
-    expect(sanitiseFontFamily('  JetBrains Mono ,  Menlo ')).toBe('JetBrains Mono, Menlo');
+    expect(sanitiseFontFamily('  JetBrains Mono ,  Menlo ')).toBe('"JetBrains Mono", "Menlo"');
     expect(sanitiseFontFamily('"Fira Code", monospace')).toBe('"Fira Code", monospace');
+    expect(sanitiseFontFamily('\'Fira Code\', Monospace')).toBe('"Fira Code", monospace');
     expect(sanitiseFontFamily(42)).toBe('');
   });
 });
@@ -218,8 +238,26 @@ describe('the store the screens read', () => {
     expect(snapshot).toHaveBeenCalledTimes(1);
     await waiting;
     expect(settled).toBe(true);
-    expect(preferences.getSnapshot()).toMatchObject({ fontSize: 22, fontFamily: 'Menlo' });
-    // Asking again is not asking the host again.
+    expect(preferences.getSnapshot()).toMatchObject({ fontSize: 22, fontFamily: '"Menlo"' });
+  });
+
+  it('asks the host again for the next terminal when the last one was closed: the host replays nothing, so what is held is stale (a scrollback and a font changed meanwhile)', async () => {
+    const { preferences, snapshot, set } = rig({ scrollback: 5000, fontFamily: 'Menlo' });
+    const stop = preferences.subscribe(vi.fn());
+    await preferences.settled();
+    expect(preferences.getSnapshot()).toMatchObject({ scrollback: 5000, fontFamily: '"Menlo"' });
+    stop();
+
+    set({ scrollback: 20_000, fontFamily: 'Courier New' });
+    await preferences.settled();
+    expect(preferences.getSnapshot()).toMatchObject({ scrollback: 20_000, fontFamily: '"Courier New"' });
+    expect(snapshot).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not ask again for a terminal made while another lives: the host\'s events keep the snapshot current', async () => {
+    const { preferences, snapshot } = rig({ fontSize: 22 });
+    preferences.subscribe(vi.fn());
+    await preferences.settled();
     await preferences.settled();
     expect(snapshot).toHaveBeenCalledTimes(1);
   });

@@ -29,7 +29,7 @@ export type TerminalPreferences = {
   readonly multiLinePasteWarning: PasteWarning;
 };
 
-/** The defaults the host declares, which a terminal is made with until the host has answered (and when it cannot). `cursorBlink` is the new tool's: the host declares `cursorBlinkNext` off, and the legacy `cursorBlink` stays on. */
+/** The defaults the host declares, which a terminal is made with until the host has answered (and when it cannot). `cursorBlink` is the new tool's: the host declares `blinkingCursor` off, and the legacy `cursorBlink` stays on. */
 export const DEFAULT_PREFERENCES: TerminalPreferences = Object.freeze({
   fontFamily: '',
   fontSize: 12,
@@ -47,10 +47,17 @@ export const DEFAULT_PREFERENCES: TerminalPreferences = Object.freeze({
 /** The host's bounds (`internal/settings/terminal.go`). */
 const BOUNDS = Object.freeze({ fontSize: { min: 6, max: 72 }, lineHeight: { min: 1, max: 2 }, scrollback: { min: 0, max: 100_000 }, fontFamily: 256 });
 
+/** The generic families of CSS: written bare, as the keyword is. Every other name is written in quotes. */
+const GENERIC_FAMILIES = ['serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui', 'ui-serif', 'ui-sans-serif', 'ui-monospace', 'ui-rounded', 'emoji', 'math', 'fangsong'];
+
+/** The words CSS reserves in a font list: unquoted they are not a family (`inherit` makes the whole declaration invalid, and the canvas keeps the old font), and the host refuses them (`reservedFontWords`). */
+const RESERVED_WORDS = ['inherit', 'initial', 'unset', 'revert', 'revert-layer', 'default'];
+
 /**
  * A list of font names, or nothing when it is anything else. The value reaches the font string of the emulator's canvas, so it is names and nothing more: each is letters, digits, spaces, dots, hyphens and underscores, in one
- * pair of quotes or none, with commas between; no semicolon, no function (`url(...)`), no brace, no backslash, no line break. The same rule as the host's (`validateTerminalFontFamily`). It answers the list in a plain form
- * (a space around a comma is one space).
+ * pair of quotes or none, with commas between; no semicolon, no function (`url(...)`), no brace, no backslash, no line break; no CSS-wide keyword. The same rule as the host's (`validateTerminalFontFamily`). It answers
+ * the list in the form CSS reads whatever the person typed: every name that is not a generic family in double quotes (`0xProto` and `3270 Nerd Font` are not identifiers, and unquoted they are no font at all, and the
+ * font load throws), a space around a comma gone.
  */
 export function sanitiseFontFamily(value: unknown): string {
   if (typeof value !== 'string' || value.length > BOUNDS.fontFamily || value.trim() === '') {
@@ -61,12 +68,12 @@ export function sanitiseFontFamily(value: unknown): string {
   for (const part of value.split(',')) {
     const name = part.trim();
     const quote = name.at(0);
-    const bare = name.length >= 2 && (quote === '"' || quote === '\'') && name.endsWith(quote) ? name.slice(1, -1) : name;
-    if (bare.trim() === '' || !/^[\p{L}\p{N} ._-]+$/u.test(bare)) {
+    const bare = (name.length >= 2 && (quote === '"' || quote === '\'') && name.endsWith(quote) ? name.slice(1, -1) : name).trim();
+    if (bare === '' || !/^[\p{L}\p{N} ._-]+$/u.test(bare) || RESERVED_WORDS.includes(bare.toLowerCase())) {
       return '';
     }
 
-    names.push(name);
+    names.push(GENERIC_FAMILIES.includes(bare.toLowerCase()) && name === bare ? bare.toLowerCase() : `"${bare}"`);
   }
 
   return names.join(', ');
@@ -95,7 +102,7 @@ export function preferencesOf(snapshot: HostSnapshot | undefined): TerminalPrefe
     lineHeight: inRange(read('lineHeight'), BOUNDS.lineHeight.min, BOUNDS.lineHeight.max, defaults.lineHeight),
     scrollback: whole(read('scrollback'), BOUNDS.scrollback.min, BOUNDS.scrollback.max, defaults.scrollback),
     cursorStyle: oneOf(read('cursorStyle'), ['block', 'underline', 'bar'], defaults.cursorStyle),
-    cursorBlink: read('cursorBlinkNext') === true,
+    cursorBlink: read('blinkingCursor') === true,
     macOptionIsMeta: oneOf(read('macOptionIsMeta'), ['auto', 'on', 'off'], defaults.macOptionIsMeta),
     bell: oneOf(read('bell'), ['off', 'visual'], defaults.bell),
     gpuAcceleration: oneOf(read('gpuAcceleration'), ['auto', 'on', 'off'], defaults.gpuAcceleration),
@@ -146,17 +153,13 @@ export function createTerminalPreferences(client: PreferencesSourceOptions): Pre
   let asked = 0;
   let stopChanged: (() => void) | undefined;
   let stopReconnect: (() => void) | undefined;
-  let answered!: () => void;
-  const first = new Promise<void>((resolve) => {
-    answered = resolve;
-  });
-  let askedOnce = false;
+  /** The question on its way, if any, and the promise of its end (an answer, or the host's failure). */
+  let inflight: Promise<void> | undefined;
 
-  const ask = (): void => {
+  const ask = async (): Promise<void> => {
     asked += 1;
     const mine = asked;
-    askedOnce = true;
-    client.snapshot().then(
+    const done = client.snapshot().then(
       (snapshot) => {
         if (mine !== asked) {
           return;
@@ -171,16 +174,20 @@ export function createTerminalPreferences(client: PreferencesSourceOptions): Pre
             }
           }
         }
-
-        answered();
       },
       (error: unknown) => {
         if (mine === asked) {
           warn('[terminal] the terminal settings could not be read', error);
-          answered();
         }
       },
     );
+    const mineDone = done.then(() => {
+      if (inflight === mineDone) {
+        inflight = undefined;
+      }
+    });
+    inflight = mineDone;
+    return mineDone;
   };
 
   return {
@@ -189,7 +196,10 @@ export function createTerminalPreferences(client: PreferencesSourceOptions): Pre
       if (listeners.size === 1) {
         stopChanged = client.onChanged(ask);
         stopReconnect = client.onReconnect?.(ask);
-        ask();
+        // A question already on its way (a terminal waiting to be made asked it) is the answer this listener needs.
+        if (inflight === undefined) {
+          void ask();
+        }
       }
 
       return () => {
@@ -199,24 +209,21 @@ export function createTerminalPreferences(client: PreferencesSourceOptions): Pre
           stopChanged = undefined;
           stopReconnect?.();
           stopReconnect = undefined;
-          // The host replays nothing: what is held may be stale by the next listener, who asks again. An answer still on its way is no longer wanted.
-          asked += 1;
         }
       };
     },
     getSnapshot: () => current,
     settled: async () => {
-      if (!askedOnce) {
-        ask();
-      }
-
+      // With someone listening the snapshot is kept current by the host's events and the question of the first listener has been answered or is on its way. With nobody listening (the last terminal was closed) what is held may be stale,
+      // because the host replays nothing: the next terminal asks again and waits for the answer.
+      const answer = listeners.size === 0 ? ask() : (inflight ?? Promise.resolve());
       // A host that does not answer does not hold the terminal: the settings are the defaults until it does (an answer that comes later is taken as any other).
       let timer: ReturnType<typeof setTimeout> | undefined;
       const late = new Promise<void>((resolve) => {
         timer = setTimeout(resolve, SETTLE_MS);
       });
       try {
-        await Promise.race([first, late]);
+        await Promise.race([answer, late]);
       } finally {
         clearTimeout(timer);
       }

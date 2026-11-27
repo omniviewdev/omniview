@@ -31,7 +31,7 @@ func TestTheTerminalDeclaresTheSettingsOfIssue697(t *testing.T) {
 		"lineHeight":            {settings.Float, 1.5},
 		"scrollback":            {settings.Integer, 5000},
 		"cursorStyle":           {settings.Text, "block"},
-		"cursorBlink":           {settings.Toggle, true}, // the legacy UI's default: the new tool reads "cursorBlinkNext"
+		"cursorBlink":           {settings.Toggle, true}, // the legacy UI's default: the new tool reads "blinkingCursor"
 		"macOptionIsMeta":       {settings.Text, "auto"},
 		"bell":                  {settings.Text, "visual"},
 		"gpuAcceleration":       {settings.Text, "auto"},
@@ -61,8 +61,8 @@ func TestTheTerminalRefusesAValueOutsideTheProducersBounds(t *testing.T) {
 		{"bell", []any{"off", "visual"}, []any{"", "audible", "on"}},
 		{"gpuAcceleration", []any{"auto", "on", "off"}, []any{"", "webgl", "true"}},
 		{"multiLinePasteWarning", []any{"auto", "always", "never"}, []any{"", "ask", "sometimes"}},
-		{"fontFamily", []any{"", "Menlo", "JetBrains Mono", `"Fira Code", monospace`, "SF Mono, Menlo, monospace", "Noto Sans Mono CJK-JP"}, []any{
-			"a; color: red", "Menlo;monospace", "Menlo; monospace", "url(https://evil.example/f.woff2)", "Menlo, url(x)", "a{b}", `"unterminated`, "a\nb", "a\\b", "x<y>", strings.Repeat("a", 257), "a,,b", ", a", "a, ",
+		{"fontFamily", []any{"", "Menlo", "JetBrains Mono", `"Fira Code", monospace`, "SF Mono, Menlo, monospace", "Noto Sans Mono CJK-JP", "0xProto", "3270 Nerd Font", "monospace", "Menlo, 0xProto, monospace"}, []any{
+			"a; color: red", "Menlo;monospace", "Menlo; monospace", "url(https://evil.example/f.woff2)", "Menlo, url(x)", "a{b}", `"unterminated`, "a\nb", "a\\b", "x<y>", strings.Repeat("a", 257), "a,,b", ", a", "a, ", "inherit", "Menlo, inherit", `"initial"`, "Unset", "REVERT-LAYER", "revert", "default",
 		}},
 	}
 	for _, tc := range cases {
@@ -94,7 +94,7 @@ func TestTheTerminalRefusesAValueOfAnotherTypeAtTheCommit(t *testing.T) {
 
 func TestTheLegacyCursorBlinkDefaultIsUnchangedAndTheNewToolHasItsOwnKey(t *testing.T) {
 	assert.Equal(t, true, terminalSetting(t, "cursorBlink").Default, "the legacy UI's declared default stays true")
-	next := terminalSetting(t, "cursorBlinkNext")
+	next := terminalSetting(t, "blinkingCursor")
 	assert.Equal(t, settings.Toggle, next.Type)
 	assert.Equal(t, false, next.Default, "idle is zero timers in the new tool")
 }

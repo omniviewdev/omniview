@@ -14,7 +14,7 @@ Typed, validated, with the producer's own bounds. A value outside them is refuse
 | `scrollback` | integer | 5000 | 0 to 100000 |
 | `cursorStyle` (kept) | text | `block` | `block`, `underline`, `bar` (a validator now) |
 | `cursorBlink` (kept, legacy) | toggle | **true**, unchanged | |
-| `cursorBlinkNext` (new) | toggle | false | the new tool's own key, see the decision below |
+| `blinkingCursor` (new) | toggle | false | the new tool's own key, see the decision below |
 | `macOptionIsMeta` | text | `auto` | `auto`, `on`, `off`. `auto` is "true for US and US International, else false" and is the page's later step (2), not this one |
 | `bell` | text | `visual` | `off`, `visual` |
 | `gpuAcceleration` | text | `auto` | `auto`, `on`, `off` |
@@ -25,19 +25,19 @@ No bound Go call was added (the category is data): `internal/auditgate/policy.js
 
 ## The cursorBlink decision
 
-The new tool reads a NEW key, `cursorBlinkNext` (label "Blinking Cursor (new terminal)", default false). The legacy `cursorBlink` keeps its declared default (true) and is not read by the new tool at all.
+The new tool reads a NEW key, `blinkingCursor` (label "Blinking Cursor (new terminal)", default false). The legacy `cursorBlink` keeps its declared default (true) and is not read by the new tool at all.
 
 Why a new key and not the same one:
 
 - The same key cannot give the new tool "idle is zero timers" and the legacy UI "true" at once: a setting has one default, and the snapshot cannot tell "the person left it" from "the person chose true" (value equals default either way). Reading `cursorBlink` and treating "equals the default" as unset would turn every person who chose true into false.
 - Changing the declared default would change the legacy UI (the issue forbids it).
-- The cost is two toggles named alike on the Terminal page for as long as both UIs live. The label of the new one says "new terminal". When the legacy UI goes, `cursorBlink` goes and `cursorBlinkNext` can be renamed by a migration (`MigrateTerminalValues` is the place).
+- The cost is two toggles named alike on the Terminal page for as long as both UIs live. The label of the new one says "new terminal". When the legacy UI goes, `cursorBlink` goes and `blinkingCursor` can be renamed by a migration (`MigrateTerminalValues` is the place).
 
-This step does NOT apply the blink: `cursorBlinkNext` is read (`preferences.cursorBlink`) and `xtermEngine.ts` still fixes `cursorBlink: false`. Step 2 applies it.
+This step does NOT apply the blink: `blinkingCursor` is read (`preferences.cursorBlink`) and `xtermEngine.ts` still fixes `cursorBlink: false`. Step 2 applies it.
 
 ## What the page reads and what it applies live (exactly)
 
-Read (`preferences.ts`, one store over `SettingsService.GetSnapshot`, the event `settings/changed`): all eleven of the page's settings: `fontFamily`, `fontSize`, `lineHeight`, `scrollback`, `cursorStyle`, `cursorBlink` (from `cursorBlinkNext`), `macOptionIsMeta`, `bell`, `gpuAcceleration`, `copyOnSelect`, `multiLinePasteWarning`.
+Read (`preferences.ts`, one store over `SettingsService.GetSnapshot`, the event `settings/changed`): all eleven of the page's settings: `fontFamily`, `fontSize`, `lineHeight`, `scrollback`, `cursorStyle`, `cursorBlink` (from `blinkingCursor`), `macOptionIsMeta`, `bell`, `gpuAcceleration`, `copyOnSelect`, `multiLinePasteWarning`.
 
 APPLIED LIVE to every open terminal in this step, with no new emulator and no scrollback lost: `fontFamily`, `fontSize`, `lineHeight`, `cursorStyle`.
 
@@ -64,7 +64,7 @@ Proof in a REAL browser and the real emulator (DOM renderer, WebKit and Chromium
 
 ## Tests, first and seen red
 
-- Red commit `cd1369ca5` (tests only): in a clean checkout of it, `go test ./internal/settings -run 'TestTheTerminal|TestTheLegacy'` fails 4 tests by assertion (the settings are not declared, the bounds are not enforced, `cursorBlinkNext` is missing). The vitest files fail to load there (`preferences` does not exist yet); when they were written against the old code before the implementation, `xtermEngine.test.ts` failed by assertion (`cursorStyle` `block` against `bar`) and the seven new `screen.test.ts` tests failed by assertion (nothing applied, no listener).
+- Red commit `cd1369ca5` (tests only): in a clean checkout of it, `go test ./internal/settings -run 'TestTheTerminal|TestTheLegacy'` fails 4 tests by assertion (the settings are not declared, the bounds are not enforced, `blinkingCursor` is missing). The vitest files fail to load there (`preferences` does not exist yet); when they were written against the old code before the implementation, `xtermEngine.test.ts` failed by assertion (`cursorStyle` `block` against `bar`) and the seven new `screen.test.ts` tests failed by assertion (nothing applied, no listener).
 - Green commit `8241c2072` (declaration, store, look, application, wiring).
 - Emulator of each page test: `xtermEngine.test.ts` "the person's settings on a real emulator" is the REAL xterm (jsdom, no layout: it proves the options and the buffer, not the cell); `screen.test.ts` "the person's settings" is a FAKE engine (the order of the calls: first answer, font, hidden, disposal); `appearance.test.ts` reads swatches in jsdom; `preferences.test.ts` has no emulator. The real renderer's cell is the probe's (real xterm in WebKit and Chromium).
 - Drift: `TestTheUIsCopyOfTheTerminalCategoryHasEverySettingTheHostDeclares` ties `ui-next/shell/settings/model/testing.ts` to the declaration (its regex now takes a decimal default). Its control found a real mistake in my own fixture (an unescaped apostrophe in a description).
@@ -103,6 +103,12 @@ All on the final tree (branch head; commits `cd1369ca5` red tests, `8241c2072` i
 The first seam run found a real regression: the new toggle's label "Cursor Blink (new terminal)" matched the legacy toggle's accessible name by substring, so `getByRole('switch', { name: 'Cursor Blink' })` (seam `settings`, `seam.check.mjs` 6572) matched two switches. The label is "Blinking Cursor (new terminal)" now (commit `4d48e3638`).
 
 I looked at the Terminal page in the sheet (WebKit, 1440 x 900, `probe-sheet-over-shell.png`): the new settings draw as a select (Bell), switches (Copy on Select, both blinks) and text/number fields (Font Family, Font Size) with the generic rows, descriptions and Reset. The settings are listed in the field model's own order (by id), not grouped by what they do; grouping is the field model's (FM1) and was not changed here.
+
+## Review fixes (after `ec4fd1fbe`)
+
+- Stale settings for the next terminal: `settled()` asked the host only once for the life of the store, so a terminal opened after the last one was closed was made with the settings of the first (the host replays nothing while nobody listens). It now asks again, and waits for the answer, whenever nothing is listening; with a listener the host's events keep the snapshot current and it asks nothing. A question already on its way is shared, and the last listener leaving no longer drops an answer on its way. Red test: `preferences.test.ts` "asks the host again for the next terminal when the last one was closed" (`expected 5000 to be 20000` against the old code); control "page next terminal reads stale settings".
+- Font names: the validator accepted unquoted names CSS refuses (`0xProto`, `3270 Nerd Font`, `inherit`), which left the canvas on the old font and made `fonts.load` throw. Both sides now refuse `inherit`, `initial`, `unset`, `revert`, `revert-layer`, `default` (bare or quoted, any case), and the page writes every name that is not a generic family in double quotes (`"0xProto", monospace`). Tests in Go and in `preferences.test.ts` (`CSS.supports` on the result); controls "page font names not quoted", "page keywords accepted", "go keyword accepted".
+- `cursorBlinkNext` is renamed `blinkingCursor` (the id lasts after the legacy UI goes). Every setting only the new tool reads (`fontFamily`, `lineHeight`, `scrollback`, `blinkingCursor`, `macOptionIsMeta`, `bell`, `gpuAcceleration`, `copyOnSelect`, `multiLinePasteWarning`) says "Applies to the new Terminal tool." in its description. The legacy page (`ui/pages/settings/CoreSettingsPage.tsx`) draws every setting of the category and has no way to hide a key, so it shows them; its code is not changed. `fontSize` and `cursorStyle` are shared and say nothing.
 
 ## Not verified
 

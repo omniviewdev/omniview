@@ -77,7 +77,7 @@ describe('the font and the cursor with the person\'s settings (#697)', () => {
   });
 
   it('puts the person\'s font names before the theme\'s face, so a name that is not installed falls to the theme\'s and never to the browser\'s serif', () => {
-    expect(readAppearance(paint({}, THEME), { ...DEFAULT_PREFERENCES, fontFamily: 'JetBrains Mono, Menlo' }).fontFamily).toBe('JetBrains Mono, Menlo, "Int UI Mono", monospace');
+    expect(readAppearance(paint({}, THEME), { ...DEFAULT_PREFERENCES, fontFamily: 'JetBrains Mono, Menlo' }).fontFamily).toBe('"JetBrains Mono", "Menlo", "Int UI Mono", monospace');
     expect(readAppearance(paint({}, THEME), { ...DEFAULT_PREFERENCES, fontFamily: '' }).fontFamily).toBe('"Int UI Mono", monospace');
   });
 

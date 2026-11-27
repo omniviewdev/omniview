@@ -3,6 +3,7 @@ package categories
 import (
 	"math"
 	"os"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -36,7 +37,7 @@ const (
 // settingCursorBlinkNext is the new Terminal tool's own cursor blink. The key "cursorBlink" is the legacy UI's and its
 // declared default (true) stays: the new tool's rule is that an idle terminal holds zero timers, and a blinking cursor is a
 // timer for as long as the terminal has focus, so it reads this key, which is off by default.
-const settingCursorBlinkNext = "cursorBlinkNext"
+const settingCursorBlinkNext = "blinkingCursor"
 
 // The words the closed choices of the terminal's settings share.
 const (
@@ -101,6 +102,14 @@ func terminalChoice(code, message string, words ...string) func(any) settings.Va
 	}
 }
 
+// reservedFontWords are the words CSS reserves in a font list: unquoted they are no family (`inherit` makes the whole declaration invalid, so the page's canvas keeps the old font), and the page refuses them too.
+//
+// legacyDefaultWord is the theme sentinel the application once stored, and also a word CSS reserves in a font list.
+const legacyDefaultWord = "default"
+
+//nolint:gochecknoglobals // a constant table
+var reservedFontWords = []string{"inherit", "initial", "unset", "revert", "revert-layer", legacyDefaultWord}
+
 // validateTerminalFontFamily accepts a comma-separated list of font names, each a run of letters, digits, spaces, dots,
 // hyphens and underscores, optionally in one pair of quotes ("Fira Code", monospace). The value reaches a font string of the
 // page's canvas, so it is a list of names and nothing else: no semicolon, no function (url(...)), no brace, no backslash, no
@@ -124,7 +133,7 @@ func validateTerminalFontFamily(value any) settings.ValidationResult {
 		if len(name) >= 2 && (name[0] == '"' || name[0] == '\'') && name[len(name)-1] == name[0] {
 			name = name[1 : len(name)-1]
 		}
-		if strings.TrimSpace(name) == "" {
+		if strings.TrimSpace(name) == "" || slices.Contains(reservedFontWords, strings.ToLower(strings.TrimSpace(name))) {
 			return invalidTerminalValue("font_family", message)
 		}
 		for _, r := range name {
@@ -235,7 +244,7 @@ var Terminal = settings.Category{
 			Type:        settings.Text,
 			Label:       "Font Family",
 			Default:     "",
-			Description: "Font names for the terminal, separated by commas, tried in order before the theme's monospace face. Empty uses the theme's face.",
+			Description: "Font names for the terminal, separated by commas, tried in order before the theme's monospace face. Empty uses the theme's face. Applies to the new Terminal tool.",
 			Validator:   validateTerminalFontFamily,
 		},
 		settingLineHeight: {
@@ -243,7 +252,7 @@ var Terminal = settings.Category{
 			Type:        settings.Float,
 			Label:       "Line Height",
 			Default:     defaultTerminalLineHeight,
-			Description: "The height of a row as a multiple of the font size, from 1 to 2. A row is never shorter than the font's own line height.",
+			Description: "The height of a row as a multiple of the font size, from 1 to 2. A row is never shorter than the font's own line height. Applies to the new Terminal tool.",
 			Validator: func(value any) settings.ValidationResult {
 				number, ok := terminalNumber(value)
 				if !ok || number < minTerminalLineHeight || number > maxTerminalLineHeight {
@@ -258,7 +267,7 @@ var Terminal = settings.Category{
 			Type:        settings.Integer,
 			Label:       "Scrollback",
 			Default:     defaultTerminalScrollback,
-			Description: "Lines the terminal keeps above the screen, from 0 to 100000. A larger value uses more memory for each terminal.",
+			Description: "Lines the terminal keeps above the screen, from 0 to 100000. A larger value uses more memory for each terminal. Applies to the new Terminal tool.",
 			Validator:   terminalWholeNumber("scrollback", "Enter a whole number of lines from 0 to 100000.", 0, maxTerminalScrollback),
 		},
 		"cursorStyle": {
@@ -286,14 +295,14 @@ var Terminal = settings.Category{
 			Type:        settings.Toggle,
 			Label:       "Blinking Cursor (new terminal)",
 			Default:     false,
-			Description: "Whether the cursor blinks in the new terminal. A blinking cursor keeps a timer running while the terminal has the focus, so it is off unless you turn it on.",
+			Description: "Whether the cursor blinks in the new terminal. A blinking cursor keeps a timer running while the terminal has the focus, so it is off unless you turn it on. Applies to the new Terminal tool.",
 		},
 		"macOptionIsMeta": {
 			ID:          "macOptionIsMeta",
 			Type:        settings.Text,
 			Label:       "Option as Meta",
 			Default:     choiceAuto,
-			Description: "Whether the Option key acts as Meta (Alt+B moves back a word) instead of typing a character. Automatic turns it on for the US and US International layouts.",
+			Description: "Whether the Option key acts as Meta (Alt+B moves back a word) instead of typing a character. Automatic turns it on for the US and US International layouts. Applies to the new Terminal tool.",
 			Validator:   terminalChoice("option_as_meta", "Choose auto, on or off.", choiceAuto, choiceOn, choiceOff),
 			Options: []settings.SettingOption{
 				{Value: choiceAuto, Label: labelAutomatic, Description: ""},
@@ -306,7 +315,7 @@ var Terminal = settings.Category{
 			Type:        settings.Text,
 			Label:       "Bell",
 			Default:     "visual",
-			Description: "What the terminal does when a program rings the bell. The terminal never makes a sound.",
+			Description: "What the terminal does when a program rings the bell. The terminal never makes a sound. Applies to the new Terminal tool.",
 			Validator:   terminalChoice("bell", "Choose off or visual.", "off", "visual"),
 			Options: []settings.SettingOption{
 				{Value: choiceOff, Label: labelOff, Description: ""},
@@ -318,7 +327,7 @@ var Terminal = settings.Category{
 			Type:        settings.Text,
 			Label:       "GPU Acceleration",
 			Default:     choiceAuto,
-			Description: "Whether the terminal draws with the GPU. Automatic uses it while the terminal is shown and falls back to the slower renderer if it fails.",
+			Description: "Whether the terminal draws with the GPU. Automatic uses it while the terminal is shown and falls back to the slower renderer if it fails. Applies to the new Terminal tool.",
 			Validator:   terminalChoice("gpu_acceleration", "Choose auto, on or off.", choiceAuto, choiceOn, choiceOff),
 			Options: []settings.SettingOption{
 				{Value: choiceAuto, Label: labelAutomatic, Description: ""},
@@ -331,14 +340,14 @@ var Terminal = settings.Category{
 			Type:        settings.Toggle,
 			Label:       "Copy on Select",
 			Default:     false,
-			Description: "Copy the selected text to the clipboard when you finish selecting it with the mouse.",
+			Description: "Copy the selected text to the clipboard when you finish selecting it with the mouse. Applies to the new Terminal tool.",
 		},
 		"multiLinePasteWarning": {
 			ID:          "multiLinePasteWarning",
 			Type:        settings.Text,
 			Label:       "Multi-line Paste Warning",
 			Default:     choiceAuto,
-			Description: "Ask before pasting text of more than one line. Automatic asks only when the program has not asked for bracketed paste.",
+			Description: "Ask before pasting text of more than one line. Automatic asks only when the program has not asked for bracketed paste. Applies to the new Terminal tool.",
 			Validator:   terminalChoice("multi_line_paste", "Choose auto, always or never.", "auto", "always", "never"),
 			Options: []settings.SettingOption{
 				{Value: choiceAuto, Label: labelAutomatic, Description: ""},
@@ -356,7 +365,7 @@ func MigrateTerminalValues(values map[string]any) (map[string]any, bool) {
 		migrated[key] = value
 	}
 
-	if migrated[settingTheme] == "default" {
+	if migrated[settingTheme] == legacyDefaultWord {
 		migrated[settingTheme] = themeApplication
 		return migrated, true
 	}
