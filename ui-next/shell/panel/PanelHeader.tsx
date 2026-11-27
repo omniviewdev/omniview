@@ -47,7 +47,9 @@ export function PanelHeader({ prefix, controls, maximized, platform }: PanelHead
             pressed={maximized}
             variant="ghost"
             {...tip(`${maximized ? 'Restore panel size' : 'Maximize panel'}\n${maximizeChordText(platform)}`)}
-            onClick={() => togglePanelMaximized(store)}
+            onClick={() => {
+              togglePanelMaximized(store);
+            }}
           />
           <IconButton
             icon="chevron-down"

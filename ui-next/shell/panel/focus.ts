@@ -33,6 +33,10 @@ export function focusPage(): boolean {
 /** Opens the panel and moves the focus into it, once React has drawn it (the region is hidden until then, and a hidden element takes no focus). */
 export function showPanel(store: PanelStore, options?: ShowOptions): void {
   store.show(options);
+  focusAfterOpen();
+}
+
+function focusAfterOpen(): void {
   queueMicrotask(() => {
     if (!focusPanel()) {
       requestAnimationFrame(() => {
@@ -68,7 +72,7 @@ export function leaveHandle(): void {
 export function togglePanelMaximized(store: PanelStore): void {
   store.toggleMaximized();
   if (store.getSnapshot().maximized && !inPanel(document.activeElement)) {
-    queueMicrotask(focusPanel);
+    focusAfterOpen();
   }
 }
 

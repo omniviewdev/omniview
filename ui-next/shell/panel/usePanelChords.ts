@@ -24,7 +24,10 @@ export function usePanelChords(store: PanelStore | undefined): void {
 
       event.preventDefault();
       if (chord.action === 'maximize') {
-        if (!event.repeat) togglePanelMaximized(store);
+        if (!event.repeat) {
+          togglePanelMaximized(store);
+        }
+
         return;
       }
 

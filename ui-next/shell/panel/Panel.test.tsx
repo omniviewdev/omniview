@@ -74,7 +74,9 @@ describe('a shell with no panel', () => {
 
 it('maximizes from hidden and restores the chosen height without replacing the panel', async () => {
   const { user, store } = mount();
-  act(() => { store.resize({ size: 310 }); });
+  act(() => {
+    store.resize({ size: 310 });
+  });
   const original = region();
   await user.keyboard('{Control>}{Alt>}{Shift>}j{/Shift}{/Alt}{/Control}');
   const maximize = screen.getByRole('button', { name: 'Maximize panel', pressed: true });
