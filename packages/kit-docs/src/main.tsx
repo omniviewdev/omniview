@@ -466,7 +466,11 @@ function App() {
 
   return (
     <>
-      <a className="skip-link" href="#main">Skip to content</a>
+      <a className="skip-link" href="#main" onClick={(event) => {
+        event.preventDefault();
+        const target = document.getElementById('component-title') ?? document.getElementById('main');
+        target?.focus();
+      }}>Skip to content</a>
       <header className="site-header">
         <div className="shell header-inner">
           <a className="brand" href="./" aria-label="Omniview Kit home">
