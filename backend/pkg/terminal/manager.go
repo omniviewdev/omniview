@@ -509,7 +509,9 @@ func (m *Manager) reserve(requested string, owner Owner) (string, error) {
 }
 
 // startDirectory is where a shell starts: the directory the caller named, which has to be an absolute
-// path to a directory that exists, or the user's home.
+// path to a directory that exists, or the user's home. The path comes back as it was validated, byte for
+// byte: a cleaned form is another path when a component is a link (`/work/link/..` is the parent of what the
+// link points at, and its cleaned form is `/work`).
 func startDirectory(requested string) (string, error) {
 	if requested == "" {
 		home, err := os.UserHomeDir()
@@ -525,7 +527,7 @@ func startDirectory(requested string) (string, error) {
 	if err != nil || !info.IsDir() {
 		return "", invalidError("cwd must be a directory that exists; " + strconv.Quote(requested) + " is not one.")
 	}
-	return filepath.Clean(requested), nil
+	return requested, nil
 }
 
 // launch starts the process on a pty that already has its size.
