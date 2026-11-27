@@ -572,7 +572,8 @@ func TestAUsersCommandNamedLikeBashPreexecsIsStillRecorded(t *testing.T) {
 }
 
 // testFishes are the fish binaries under test, chosen explicitly: OMNIVIEW_TEST_FISHES is a colon-separated list of fish paths (the
-// CI image has 3.7, which prints no marks of its own; 4.x prints C and D itself). With none, the fish on PATH.
+// CI image has 3.7, which prints no marks of its own; 4.x prints C and D itself). One fish per run: each needs its own share directory
+// visible (an overlay mount, see T5-frameworks.md). With none, the fish on PATH.
 func testFishes(t *testing.T) []string {
 	t.Helper()
 	if list := os.Getenv("OMNIVIEW_TEST_FISHES"); list != "" {
@@ -593,9 +594,7 @@ func TestFishGivesTheRightExitCodesOnEveryVersionUnderTest(t *testing.T) {
 		t.Run("fish-"+strings.TrimSpace(strings.TrimPrefix(string(out), "fish, version ")), func(t *testing.T) {
 			f := newIntegrationFixture(t, "fish", path)
 			info := f.started()
-			// fish 3.x builds its completions at the first start in a fresh home, which can take longer than the 500 ms the host waits for
-			// `ready`: the fact is then `unconfirmed` (the script still runs). The test is about the marks, so either is accepted.
-			assert.Contains(t, []IntegrationState{IntegrationOn, IntegrationUnconfirmed}, info.Integration.State)
+			require.Equal(t, IntegrationOn, info.Integration.State)
 			for _, c := range []string{"true", "false", "sh -c 'exit 3'"} {
 				f.run(info.ID, c)
 			}
