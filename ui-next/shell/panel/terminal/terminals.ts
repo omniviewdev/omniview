@@ -1,5 +1,6 @@
 import { createElement, type ReactElement } from 'react';
 import { platformOf } from '../../core/chords';
+import type { NoticesStore } from '../../core/notices';
 import type { PanelStore, Session, SessionId } from '../../core/panel';
 import type { PanelCard, PanelEmpty, PanelNewSession } from '../host';
 import { focusTab } from '../focus';
@@ -97,6 +98,13 @@ export type TerminalsOptions = {
    * a link only when it was given one (`TerminalSessions.canOpenExternal`: no dead link), and gives it only http and https addresses; a way that throws or rejects is one warning on the console and nothing else. Absent: no link is drawn.
    */
   readonly openExternal?: ((url: string) => void | Promise<void>) | undefined;
+  /**
+   * The window's notices (the shell's `core/notices` store): the tool tells them of a command that ran long in a terminal that is not in front (`finishedNotice.ts`), once for each command, with a Show that brings the terminal forward and moves
+   * its view to the command. Absent: the window says nothing of a finished command.
+   */
+  readonly notices?: Pick<NoticesStore, 'notify'> | undefined;
+  /** Whether the window is shown to the person (not minimised, not on another desktop): a terminal in front of a window nobody looks at is not in front. Default: the document is visible. */
+  readonly windowShown?: (() => boolean) | undefined;
 };
 
 /** What the window restored of the tool's own state (`shell/session`). Nothing restored is the tool as it starts. */
