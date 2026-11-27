@@ -626,6 +626,8 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   /** The marks of the shell's integration taken so far, oldest first, the end offset of the last one, what a command start said runs (the producer's word), and the list the feed hands out until a mark comes. */
   let marks: TerminalMark[] = [];
   let markedEnd = -1;
+  let historicalFrom = 0;
+  let historicalEnd = 0;
   let running = false;
   let markList: readonly TerminalMark[] | undefined;
   /** What the host said of the shell integration; whether a mark the nonce vouched for has come (the shell proved itself: it stays so, the screen being brought afresh does not undo it); the last command that finished live; and the start whose line the shell proved, for the command the next end mark belongs to. */
@@ -1052,6 +1054,9 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
 
     readyEnded = ready.ended;
     resumeEnd = ready.end;
+    // What the host held when this stream opened: a command that finished in bytes up to here finished before the page was listening, whatever the reader has taken.
+    historicalFrom = cursor;
+    historicalEnd = ready.end;
     // A continuation is complete when the cursor reaches the end the host advertised (at once when there is nothing to bring); a replay when it is whole.
     complete = resumed && ready.end === ready.start;
     if (complete) {
@@ -1210,7 +1215,6 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     let taken = false;
     let placed = false;
     let provedNow = false;
-    let finishedNow = false;
     for (const mark of marksOf(frame)) {
       if (mark.end <= markedEnd) {
         continue;
@@ -1250,7 +1254,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       }
 
       // A command finished LIVE is news: the marks of a replay (a reload, a reconnect that lost bytes) are of commands that finished before the page came.
-      if (live && mark.kind === 'command-end' && mark.id !== undefined) {
+      if (live && !(mark.end > historicalFrom && mark.end <= historicalEnd) && mark.kind === 'command-end' && mark.id !== undefined) {
         const command = lastStart?.id === mark.id ? lastStart.command : undefined;
         lastFinished = {
           id: mark.id,
@@ -1259,7 +1263,8 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
           ...(command === undefined ? {} : { command }),
           ...(mark.timeMs === undefined ? {} : { timeMs: mark.timeMs }),
         };
-        finishedNow = true;
+        // One completion, one telling: a frame may carry several, and the window hears each.
+        tell();
       }
     }
 
@@ -1272,7 +1277,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     }
 
     // What the marks said of the shell and of the commands is told once, after all of them were taken.
-    if (provedNow || finishedNow) {
+    if (provedNow) {
       tell();
     }
 

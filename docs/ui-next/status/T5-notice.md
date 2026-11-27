@@ -32,4 +32,4 @@
 - Controls: `T5-notice/mutations.sh.txt` and `mutations-page.sh.txt`, each run whole: every control RED, every removal GREEN.
 - tsc (app, test, kit), eslint `ui-next` and `packages/kit`: clean. `pnpm run build` (stable), `node --test scripts/ui-flavour.test.mjs` 7/7; `node --test scripts/ci/*.test.mjs` fails only the 9 that fail on main here.
 - Seam `terminal-core,terminal-restart,terminal-channel,terminal-find` on `e9ec90f84`: exit 0, both engines.
-- NOT run: kit verify; no real-browser look at the card or the toast; the take-back count above.
+- NOT run: no real-browser look at the card or the toast; the take-back count above.

@@ -1,6 +1,6 @@
 import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PANEL_HOST, type TerminalsOptions } from '../../shell';
 import { fakeEngineLoader, fakeTerminalFeed, type FakeTerminalFeed } from '../../shell/panel/terminal/testing';
 import { acme } from '../testing';
@@ -19,9 +19,6 @@ dialog.showModal ??= function showModal(this: HTMLDialogElement) {
   this.setAttribute('open', '');
 };
 
-beforeEach(() => {
-  vi.spyOn(console, 'error').mockImplementation(() => undefined);
-});
 
 afterEach(() => {
   cleanup();

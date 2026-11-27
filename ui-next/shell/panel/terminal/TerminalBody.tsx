@@ -330,6 +330,7 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader, na
   }, [screen, sessions, session.id, visible, view.ready, running, takeKeyboard]);
   // A request to show a command (the finished-command notice's Show): once this body is on screen and its screen is there, the view moves to the command, and the keyboard goes in the terminal, which the person asked for by pressing Show,
   // wherever it was. The registry keeps the request until it is taken; a command the screen no longer holds is said, and the request is spent all the same.
+  const retries = useRef(0);
   const jump = useSyncExternalStore(sessions.subscribeJumps, () => sessions.pendingJump(session.id));
   useEffect(() => {
     if (jump === undefined || !visible || !view.ready) {
@@ -339,8 +340,20 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader, na
     const generation = sessions.jumpGeneration(session.id);
     const command = sessions.takeJump(session.id);
     if (command !== undefined) {
-      screen.commands.reveal(command, generation);
-      screen.focus();
+      const placed = screen.commands.reveal(command, generation);
+      if (retries.current === 0) {
+        screen.focus();
+      }
+
+      // The screen is ready before it has placed the marks it holds (that happens in its next frame): a command not found is asked for again, up to three times, once a frame has come (a command that is gone is said each time and then left).
+      if (!placed && retries.current < 3) {
+        retries.current += 1;
+        requestAnimationFrame(() => {
+          sessions.requestJump(session.id, command, generation);
+        });
+      } else {
+        retries.current = 0;
+      }
     }
   }, [screen, sessions, session.id, jump, visible, view.ready]);
   // The lane offers the way back for a terminal that this page lost and that nobody holds now.

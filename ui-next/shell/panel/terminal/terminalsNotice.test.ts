@@ -9,9 +9,6 @@ import { TERMINAL_TOOL } from './tool';
 // THE FINISHED-COMMAND NOTICE IN THE WINDOW (issue #694 step 6): the Terminal tool tells the window's notices of a command that ran long in a terminal that is not in front, and its Show brings that terminal forward and asks its
 // body to move to the command. Real panel model, real registry, the shell's real notices store; the feeds are fakes.
 
-beforeEach(() => {
-  vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-});
 
 afterEach(() => {
   vi.restoreAllMocks();

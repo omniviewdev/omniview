@@ -13,7 +13,9 @@ restore() {
   for f in $FILES; do cp "$COPIES/$(echo "$f" | tr / _)" "$f"; done
   rm -rf "$COPIES"
 }
-trap restore EXIT INT TERM
+trap restore EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 keep() {
   f=$1

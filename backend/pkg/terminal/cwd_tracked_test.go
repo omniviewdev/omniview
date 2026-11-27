@@ -164,7 +164,8 @@ func TestTheEventsLanesDirectoryFollowsTheSameRule(t *testing.T) {
 		send("cd:" + to)
 		require.Eventually(t, func() bool {
 			got, pullErr := processCwd(s.cmd.Process.Pid)
-			return pullErr == nil && got == to
+			want, evalErr := filepath.EvalSymlinks(to)
+			return pullErr == nil && evalErr == nil && got == want
 		}, settle, time.Millisecond)
 	}
 	moveTo(tracked)

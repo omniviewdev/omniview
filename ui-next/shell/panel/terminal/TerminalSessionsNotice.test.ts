@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createPanelStore, HOST } from '../../core/panel';
 import type { TerminalFinished } from './feed';
 import { fakeTerminalFeed } from './testing';
@@ -12,9 +12,6 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-beforeEach(() => {
-  vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-});
 
 const done = (id: string, extra: Partial<TerminalFinished> = {}): TerminalFinished => ({ id, exit: 0, durationMs: 20_000, timeMs: 1_000, ...extra });
 

@@ -37,7 +37,7 @@ PY
   if [ "$c1" != RED ] || [ "$c2" != GREEN ]; then BAD=1; fi
 }
 
-run no-tracking,tracked,follows,logical-spelling,events-tracked backend/pkg/terminal/manager.go 'tracked, ok := s.trackedDirectory()' 'tracked, ok := s.trackedDirectory(); ok = false'
+run no-tracking,tracked,follows,logical-spelling,events-tracked,real-logical,real-mac-shape backend/pkg/terminal/manager.go 'tracked, ok := s.trackedDirectory()' 'tracked, ok := s.trackedDirectory(); ok = false'
 run stale-proof,events-stale-proof,real-exec-stale backend/pkg/terminal/manager.go 'os.SameFile(trackedInfo, pulledInfo) {' 'os.SameFile(trackedInfo, pulledInfo) || true {'
 run logical-spelling,real-logical,real-mac-shape backend/pkg/terminal/manager.go 'os.SameFile(trackedInfo, pulledInfo) {
 		return tracked, ""' 'os.SameFile(trackedInfo, pulledInfo) {
