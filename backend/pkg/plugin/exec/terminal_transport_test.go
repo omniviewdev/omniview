@@ -255,11 +255,13 @@ func TestAStalledClientCanStillCloseItsTerminalAndGetsTheClose(t *testing.T) {
 			go func() { closed <- fx.ctrl.CloseSession(info.ID) }()
 			select {
 			case closeErr := <-closed:
+				require.NotErrorIs(t, closeErr, terminal.ErrCloseTimeout, "the close gave up waiting: the session was still ending")
 				require.NoError(t, closeErr, "closing a session whose client does not read")
 			case <-time.After(60 * time.Second):
 				require.FailNow(t, "closing a session whose client does not read hung")
 			}
 			assert.Empty(t, fx.ctrl.terminalManager.ListSessions())
+			assert.True(t, gone(info.PID), "the close returned with the shell gone: a dying shell is read to finish exiting while the client reads nothing")
 			client.unstall()
 			require.Eventually(t, func() bool { return len(client.endsOf(info.ID)) == 1 }, 20*time.Second, 5*time.Millisecond, "the CLOSE never reached the client")
 			assert.Equal(t, terminal.EndClosed, client.endsOf(info.ID)[0].Reason)
