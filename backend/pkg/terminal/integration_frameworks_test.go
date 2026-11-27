@@ -558,7 +558,7 @@ func TestAUsersCommandNamedLikeBashPreexecsIsStillRecorded(t *testing.T) {
 	eachFramework(t, func(c frameworkCase) bool { return c.home == "bash-preexec" }, func(t *testing.T, c frameworkCase) {
 		f := frameworkFixture(t, c, true)
 		info := f.started()
-		f.run(info.ID, "__bp_mine() { return 5; }")
+		f.run(info.ID, "eval '__bp_mine() { return 5; }'")
 		f.run(info.ID, "__bp_mine")
 		f.run(info.ID, "__bp_mine; echo x")
 		ran := f.ranRecords(info.ID, 3)
@@ -566,7 +566,7 @@ func TestAUsersCommandNamedLikeBashPreexecsIsStillRecorded(t *testing.T) {
 		for _, r := range ran {
 			lines = append(lines, r.CommandLine)
 		}
-		assert.Equal(t, []string{"__bp_mine() { return 5; }", "__bp_mine", "__bp_mine; echo x"}, lines)
+		assert.Equal(t, []string{"eval '__bp_mine() { return 5; }'", "__bp_mine", "__bp_mine; echo x"}, lines)
 		assert.Equal(t, []int32{0, 5, 0}, exitCodes(ran))
 	})
 }
