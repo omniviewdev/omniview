@@ -1,4 +1,4 @@
-/* The body of Settings, in either container: the pages on the left (the old window's 212 px) and the page on the right, which is the pane that scrolls. The frame, the header and the Close control are the kit's `Sheet`. */
+/* Shared by the browser sheet and the native window. A 5 px frame track separates the two rounded scroll panes, just as in the shell. */
 @layer ov.shell {
   .body {
     position: relative;
@@ -8,22 +8,67 @@
     block-size: 100%;
     min-block-size: 0;
     min-inline-size: 0;
+    container: settings-body / inline-size;
   }
 
   .layout {
     display: grid;
     flex: 1 1 auto;
-    grid-template-columns: 212px minmax(0, 1fr);
+    grid-template-columns: 5px min(244px, 30%) 5px minmax(0, 1fr) 5px;
+    grid-template-rows: minmax(0, 1fr) 5px;
     min-block-size: 0;
     min-inline-size: 0;
   }
 
+  /* The frame already paints the sheet surface, including its selected opacity. Paint only the chrome outside each island rather than stacking translucent backgrounds across both panes. */
+  .layout > * {
+    grid-row: 1;
+    border-radius: var(--ov-radius-island);
+    box-shadow: 0 0 0 var(--ov-spacing-16) var(--ov-surface-chrome);
+    clip-path: inset(0 -5px -5px);
+  }
+
+  .layout > nav {
+    grid-column: 2;
+    /* The content pane paints the shared gutter. */
+    clip-path: inset(0 0 -5px -5px);
+  }
+
+  .layout:dir(rtl) > nav {
+    clip-path: inset(0 -5px -5px 0);
+  }
+
   .content {
+    grid-column: 4;
+    container: settings-content / inline-size;
     min-block-size: 0;
     min-inline-size: 0;
     overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior: contain;
+  }
+
+  .content > .state {
+    min-block-size: 100%;
+  }
+
+  /* On phones a sidebar would take the room a control needs. Both panes keep their own scroll position and the caption remains in reach. */
+  @container settings-body (max-width: 580px) {
+    .layout {
+      grid-template-columns: 5px minmax(0, 1fr) 5px;
+      grid-template-rows: fit-content(30%) 5px minmax(0, 1fr) 5px;
+    }
+
+    .layout > nav,
+    .layout:dir(rtl) > nav {
+      clip-path: inset(0 -5px 0);
+    }
+
+    .content {
+      grid-column: 2;
+      grid-row: 3;
+      clip-path: inset(-5px);
+    }
   }
 
   /* Loading, could not load, nothing to show: one line in the middle of the body, under the header that never goes. */

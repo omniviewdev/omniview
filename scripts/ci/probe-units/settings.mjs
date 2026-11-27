@@ -1,6 +1,6 @@
 // Settings (ST1), the new UI's host settings in both containers: the page's content and the window's, over the real session, the real form model and the real kit parts with a host in memory (ui-next/shell/probes/settings-fixture.tsx),
 // compared in WebKit and Chromium with the design mock's settings page (ui-next/shell/probes/mock-settings.json, measured by mock-settings-measure.mjs) and the original application's window (old-settings.json, measured from its
-// pictures): the Settings window at 1060 x 640 and 960 x 600 (the host's own size and its minimum), the page (navigation, group, heading, rows, scroll, the loading, failed and empty states) at 1440 x 900 and 1280 x 800, the
+// pictures): the Settings window at its preferred and minimum sizes, the page (navigation, group, heading, rows, scroll, the loading, failed and empty states) at 1440 x 900 and 1280 x 800, the
 // sheet (frame, modal, Tab wrap, scrim, Escape and the focus given back), the keyboard (the pages follow the focus, every control reachable and operable, what a page change does to a draft), axe in both containers and the nine
 // themes, and what it costs in a production build (one commit and under two frames to open, a keystroke is one commit and one row, idle is no commit and no timer, closed is no node, no listener and no timer). It builds its own
 // fixture, so it does not read PROBE_DIST.

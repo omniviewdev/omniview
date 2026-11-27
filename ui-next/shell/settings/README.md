@@ -1,19 +1,19 @@
-# Settings (ST1, first slice)
+# Settings
 
-Settings is the host's own settings, drawn from the host's settings store (`backend/pkg/settings`): the snapshot it serves (`GetSnapshot`), the validation it owns (`Validate`) and the commit it applies (`Commit`), with the event it emits after every commit (`settings/changed`). Nothing here decides what a setting is, which values are legal or whether a secret is saved: the host says.
+Settings draws host and installed-plugin settings from the settings service (`backend/pkg/settings`). The service owns snapshots, validation and commits. Settings never infers a stored secret from its redacted value.
 
 Status, the legacy findings, the decisions and what is not done: `docs/ui-next/status/ST1.md` (the resume file).
 
 ## Two containers, one content
 
-The owner's ruling (2026-11-22): where the app has native windows, Settings is a **window of its own** (the original application's: kind `settings`, 1060 x 640 px, non-modal, one instance, hidden and kept, not destroyed); where there are none (a page served to a browser: server mode, development) it is the **same content as a modal sheet in the window**.
+Where the app has native windows, Settings is a **window of its own** (kind `settings`, non-modal, one instance, hidden rather than destroyed). In a browser it is the **same content as a modal sheet**. Both next-shell frames prefer 1280 × 800 px; the native window fits the screen's work area and the sheet leaves clearance around it in the viewport.
 
 | Container | Where | What draws it | Opens by |
 | --- | --- | --- | --- |
 | the window | native app | `window.tsx` (lazy chunk) -> `view/WindowSurface.tsx` | the host: the menu's Settings (Cmd+, is the menu's accelerator), the gear and the palette command ask `WindowClient.OpenSettings('')`; a second ask focuses the open window |
 | the sheet | browser | `surface.tsx` (lazy chunk) -> `view/Surface.tsx` (the kit's `Sheet`) | the gear, the palette command "Settings", Cmd/Ctrl+Comma (`chords.ts`, `useSettingsChords.ts`) |
 
-Both draw the one `view/Body.tsx`: the pages on the left (212 px, as the original) and a page on the right, or loading, or failed with Retry, or nothing to show. Their differences are the frame only: the sheet is a `dialog` with the kit's header; the window has a 41 px caption that moves the window (`--wails-draggable`), a Close that does not, no shell around it, Escape and the close chord (Cmd+W / Ctrl+W) that hide it.
+Both draw `view/Body.tsx`: a 244 px navigation pane and a separate page pane with a 5 px gutter. The form fills the page with 12 px insets on both sides. The panes stack on narrow screens. Search stays above the scrolling Core and Plugins tree. The page pane also holds loading, Retry and empty states. The browser sheet uses the kit's dialog header. The native window has a draggable 41 px caption with a Close button. Escape and Cmd+W / Ctrl+W hide it.
 
 ### How the entry decides
 
@@ -32,7 +32,9 @@ The window follows the host's window service (`backend/window/settings.go`): `Op
 
 Apply-on-change (S125): a switch, a select, a stepper or a text field commits when the field model says it does (a text field on Enter or blur), the host validates and either applies or answers with its own words (shown in the row's lane, the typed text kept), and a value that differs from the default offers Reset in the row's trailing slot. There is no Save and no unsaved question. A secret is drawn only for a sensitive setting the host says whether it holds (`Snapshot.Stored`): its value never reaches the page, the field says "Saved" or not, and clearing commits the empty string.
 
-In a next host, Appearance groups the declared settings under **Window material**, **Surface opacity** and **Interface**. The requested material stays selected when a platform cannot supply it; unsupported choices are unavailable. The four bounded sliders preview within the control. Only a completed gesture enters the form and commits its single integer percentage. Cancellation returns to the latest applied value, including an edit from another window. Reset material settings sends the six defaults from the host schema in one commit; interface settings and themes are not part of that patch.
+**Colors** offers the kit's nine built-in themes as radio cards. Each miniature window uses that theme's palette. The saved theme stays visible even if this build cannot render it. **Layout and text** uses segmented choices for density and motion and a five-stop text-size slider. The labels and stored scale values (80%, 90%, 100%, 110%, 125%, stored as strings without `%`) come from the host options. Choosing a card or segment applies that setting; a slider commits once per completed adjustment. Reset restores the host's declared default. A rejected write restores the applied choice and describes the error in the field.
+
+**Window material** and **Surface opacity** follow when the host declares those settings. Unsupported materials remain visible but unavailable. The four opacity sliders preview locally and commit integer percentages on release. Cancellation returns to the latest applied value, including an edit from another window. Reset material settings sends only the six material defaults in one commit.
 
 ## Staying true to the host
 
@@ -40,7 +42,7 @@ The session shows what the host holds and asks again when that may have changed:
 
 ## Not drawn yet (the next slices, with what each needs)
 
-`appearance.theme` and `terminal.nativeApplication` (pickers: a theme picker with the nine themes' swatches and the native-application chooser that lists what the host finds), developer-only settings, multi-select / colour / date-time types, general-purpose grouping and search, the Plugins group, AI Tools, Updates and Notifications pages, a setting to focus from a request (`setting=` in the target).
+`terminal.nativeApplication` (a native-application chooser listing what the host finds), developer-only settings, multi-select / colour / date-time types, general-purpose schema grouping, AI Tools, Updates and Notifications pages.
 
 ## Checks
 

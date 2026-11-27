@@ -87,6 +87,9 @@
      flashes one, and at once when the person asked for less motion. */
   .skeleton {
     min-width: 0;
+  }
+
+  :where(:root:not([data-ov-motion='reduced'])) .skeleton {
     visibility: hidden;
     animation: reveal 0s linear 250ms forwards;
   }
@@ -98,7 +101,7 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .skeleton {
+    :where(:root:not([data-ov-motion='normal'])) .skeleton {
       visibility: visible;
       animation: none;
     }

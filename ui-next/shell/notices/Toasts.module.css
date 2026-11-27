@@ -1,7 +1,7 @@
 /* The toast layer (ch16 S79, S83, S86, O6; the mock's `#feedback` (core.css), `.notify-host` and `.notify[data-surface='toast']` (shell-notify.css)). Host composition, so every rule sits in ov.shell, above the kit's parts.
    The shell's own metrics are the exceptions to the closed scales that the chapter names: the 420 px stack, 12 px from the right edge and above the 32 px status bar (O6), the 16 px glyph column, the 40 px least
    height of a toast, the z-index of `#feedback` (S11: 1100; no other z-index in shell code). Closed scales for everything else: spacing 4, 6, 8, 12; type 12 and 13 at weight 400 and 600; radius 8; --ov-* roles.
-   No geometry transition: the only motion is the 90 ms opacity fade of a toast that enters (none while `prefers-reduced-motion`), and the turn of the loader of work that runs. A toast that goes is removed at once, as the mock's
+   No geometry transition: the only motion is the 90 ms opacity fade of a toast that enters and the turn of the loader of work that runs, both disabled under reduced motion. A toast that goes is removed at once, as the mock's
    is. Logical properties throughout, so a right-to-left text truncates and aligns at its own end. */
 @layer ov.shell {
   /* The layer: the live region of the stack (S86), fixed at the bottom right above the status bar, one column of toasts newest at the bottom. It takes no pointer (the page under it keeps its own); a toast takes it back. */
@@ -72,6 +72,9 @@
     text-align: start;
     overflow-wrap: anywhere;
     pointer-events: auto;
+  }
+
+  :where(:root:not([data-ov-motion='reduced'])) .toast {
     animation: enter 90ms linear;
   }
 
@@ -110,6 +113,9 @@
 
   .glyph[data-busy='spin'] > svg {
     color: var(--ov-accent);
+  }
+
+  :where(:root:not([data-ov-motion='reduced'])) .glyph[data-busy='spin'] > svg {
     animation: spin 1.2s linear infinite;
   }
 
@@ -120,11 +126,8 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .toast {
-      animation: none;
-    }
-
-    .glyph[data-busy='spin'] > svg {
+    :where(:root:not([data-ov-motion='normal'])) .toast,
+    :where(:root:not([data-ov-motion='normal'])) .glyph[data-busy='spin'] > svg {
       animation: none;
     }
   }

@@ -1,8 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { SettingsScope } from '../../settings/model/types';
 
-const changedClient = vi.hoisted(() => ({ onChanged: vi.fn(), off: vi.fn(), list: vi.fn(async () => Promise.resolve([])) }));
-vi.mock('../../settings/runtime', () => ({ runtimeClient: () => ({ onChanged: (listener: () => void) => {
-  changedClient.onChanged(listener); return changedClient.off; 
+const changedClient = vi.hoisted(() => ({
+  onChanged: vi.fn<(listener: (scope: SettingsScope) => void) => void>(), off: vi.fn(), list: vi.fn(async () => Promise.resolve([])),
+}));
+vi.mock('../../settings/runtime', () => ({ runtimeClient: () => ({ onChanged: (listener: (scope: SettingsScope) => void) => {
+  changedClient.onChanged(listener); return changedClient.off;
 } }) }));
 vi.mock('@omniviewdev/runtime/api', () => ({ ExecClient: { ListTerminalShells: changedClient.list } }));
 import { appShellList, createShellList, launchOf, shellMenu, shellsOf, type ShellChoice } from './profiles';
@@ -204,6 +207,23 @@ describe('the list of the app', () => {
     expect(changedClient.onChanged).toHaveBeenCalledTimes(1);
     stop();
     expect(changedClient.off).toHaveBeenCalledTimes(1);
+  });
+
+  it('refreshes the terminal profiles for host changes, not plugin settings commits', async () => {
+    changedClient.onChanged.mockClear();
+    changedClient.list.mockClear();
+    const stop = appShellList().subscribe(() => undefined);
+    await vi.dynamicImportSettled();
+    await turns();
+    const change = changedClient.onChanged.mock.calls[0]![0];
+    changedClient.list.mockClear();
+    change({ kind: 'plugin', pluginId: 'terminal' });
+    await turns();
+    expect(changedClient.list).not.toHaveBeenCalled();
+    change({ kind: 'host' });
+    await turns();
+    expect(changedClient.list).toHaveBeenCalledTimes(1);
+    stop();
   });
 
   it('asks the host once more when it starts listening to the settings: a change made before that is not replayed', async () => {

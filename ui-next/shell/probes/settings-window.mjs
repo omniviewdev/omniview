@@ -1,9 +1,9 @@
 // Section `window` of the Settings probe: the content of the Settings WINDOW (the product's `window.tsx` over a host in memory, the page `?case=window` of the fixture, which is what a native window of kind `settings` and a browser's
 // `/?screen=settings-window` draw) against the original application's window, and what the host's window service makes of it.
 //
-//   old       the window at 1060 x 640 (the size the host makes it) against the numbers of the original application's window (old-settings.json, pinned from the study of docs/ui-next/status/ST1.md): each number the new window MATCHES
+//   old       the window at its preferred size against the numbers of the original application's window (old-settings.json, pinned from the study of docs/ui-next/status/ST1.md): each number the new window MATCHES
 //             (`window.old.match`) and each that DELIBERATELY DIFFERS (`window.old.decided`: the new value is pinned, with the decision that made it, so a change of it that nobody decided is a failure). The table is printed.
-//   bare      the window is Settings and nothing else: no shell, no dialog, one h1, a caption that is the window's one header, no scroll of the document, at 1060 x 640 and at the least the host lets it be, 960 x 600
+//   bare      the window is Settings and nothing else: no shell, no dialog, one h1, a caption that is the window's one header, no scroll of the document, at its preferred size and the native minimum
 //   drag      the caption moves the window and Close does not (`--wails-draggable`, what the Wails runtime reads), and nothing else in the window does
 //   keys      Escape and the platform's close chord hide the window (`HideSettings`), the other platform's chord and a key that something already used do not, Close hides it, and Escape in a field with a draft is the field's
 //   request   the host's requests: a window never asked to show draws nothing; a new request id with a category goes to that page, the same id does not move it, a target that names nothing leaves it; a hide lays out and paints
@@ -37,7 +37,7 @@ const READ_CONTAINER = () => {
   const window_ = q('[data-settings-part="window"]');
   const caption = q('[data-settings-part="caption"]');
   const nav = q('[data-settings-part="nav"]');
-  const items = nav === null ? [] : [...nav.querySelectorAll('button')];
+  const items = [...document.querySelectorAll('[data-settings-part="tree"] [role="treeitem"][data-settings-page]')];
   const page = q('[data-settings-part="page"]');
   const row = q('[data-settings-row]');
   const control = row === null ? null : q('[data-ov-part="control"]', row);
@@ -52,7 +52,6 @@ const READ_CONTAINER = () => {
     nav: rect(nav),
     items: items.map(rect),
     itemType: type(items[0]),
-    group: rect(q(':scope > [aria-hidden="true"]', nav ?? document)),
     content: rect(q('[data-settings-part="content"]')),
     page: rect(page),
     heading: rect(q('header > :first-child', page ?? document)),
@@ -61,15 +60,14 @@ const READ_CONTAINER = () => {
     text: rect(row === null ? null : q('[data-ov-part="text"]', row)),
     control: rect(control),
     widget: rect(row === null ? null : q('select, input, [role="switch"]', row)),
-    searches: document.querySelectorAll('input[type="search"], [role="searchbox"], [role="search"]').length,
+    searches: nav?.querySelectorAll('input[data-settings-part="search"]').length ?? 0,
     footers: document.querySelectorAll('footer, [role="contentinfo"]').length,
-    names: items.map((item) => item.textContent),
   };
 };
 
 /** The numbers of the original application's window that the new one matches, and the ones it differs from on purpose, each with its reason (docs/ui-next/status/ST1.md section 1 and 4, ch16 S124 to S126, the mock's `.sheet > .hd`). */
 function judgeOld(env, got) {
-  const where = `${env.engine}@1060x640`;
+  const where = `${env.engine}@${env.viewportName}`;
   const old = OLD[env.engine];
   const table = [];
   const match = (quantity, was, now, tolerance = 0.51) => {
@@ -82,26 +80,28 @@ function judgeOld(env, got) {
   };
   const type = (value) => (value === null ? 'none' : `${value.size}/${value.line} ${value.weight}`);
   // What the two have in common.
-  match('window width', old.viewport[0], got.window?.[2] ?? 0);
-  match('sidebar width', old.sidebar[2], got.nav?.[2] ?? 0);
-  match('content column x', old.content[0], got.content?.[0] ?? 0);
-  match('content column width', old.content[2], got.content?.[2] ?? 0);
   match('Close width', old.close[2], got.close?.[2] ?? 0);
   match('Close height', old.close[3], got.close?.[3] ?? 0);
-  match('Close x', old.close[0], got.close?.[0] ?? 0);
+  match('Close end inset', old.viewport[0] - old.close[0] - old.close[2], got.viewport[0] - (got.close?.[0] ?? 0) - (got.close?.[2] ?? 0));
+  match('page item x', old.navFirst[0], got.items[0]?.[0] ?? 0);
   match('page text size of a nav item', Number.parseFloat(old.type.navItem.fontSize), Number.parseFloat(got.itemType?.size ?? '0'));
   // What differs on purpose.
+  decided('window width', old.viewport[0], 1280, got.window?.[2] ?? 0, 'preferred next window width');
+  decided('window height', old.viewport[1], 800, got.window?.[3] ?? 0, 'preferred next window height');
+  decided('sidebar width', old.sidebar[2], 244, got.nav?.[2] ?? 0, 'the mock sidebar');
+  decided('content column x', old.content[0], 254, got.content?.[0] ?? 0, 'a 5 px outer track, the 244 px sidebar and the 5 px gutter');
+  decided('content column width', old.content[2], got.viewport[0] - 254 - 5, got.content?.[2] ?? 0, 'the remaining width up to the 5 px end track');
   decided('caption height', old.brand[3], 41, got.caption?.[3] ?? 0, 'the sheet\'s header, 41 px, as the mock\'s .sheet > .hd; the original had a 56 px brand row in the sidebar only');
   decided('Close y', old.close[1], 8.5, got.close?.[1] ?? 0, 'centred in the 41 px caption, (41 - 24) / 2; the original put it 8 px from the top');
   decided('title size', Number.parseFloat(old.type.brand.fontSize), 13, Number.parseFloat(got.titleType?.size ?? '0'), 'the sheet\'s title is 13/16 at 600, the original\'s brand 16/20');
   decided('sidebar top', old.sidebar[1], 41, got.nav?.[1] ?? 0, 'the caption spans both columns, so the sidebar starts under it');
   decided('page item height', old.navFirst[3], 24, got.items[0]?.[3] ?? 0, 'the mock\'s tree row is 24 px (S124); the original\'s rows were 34 px');
-  decided('page item x', old.navFirst[0], 6, got.items[0]?.[0] ?? 0, 'a 6 px inset on the spacing scale (the original 10 px, the mock 5 px, which is not on the scale)');
   decided('page item radius', Number.parseFloat(old.type.navItem.borderRadius), 4, Number.parseFloat(got.itemType?.radius ?? '0'), 'the mock\'s tree row radius');
-  decided('number of pages', old.navItemCount, 6, got.items.length, 'the host declares six pages that have something to draw; the original also listed AI Tools, Updates and a plugin');
-  decided('search field', 1, 0, got.searches, 'search is not built in slice 1 (the ST1 status file, section 4)');
+  decided('number of pages', old.navItemCount, 7, got.items.length, 'six Core pages and one installed plugin with settings; the original also listed AI Tools and Updates');
+  match('search field', 1, got.searches);
   decided('heading size', Number.parseFloat(old.type.heading.fontSize), 18, Number.parseFloat(got.headingType?.size ?? '0'), 'the page heading is 18/24 (S124), without the original\'s breadcrumb');
-  decided('heading x', old.heading[0], 236, got.heading?.[0] ?? 0, 'the content column (212) and a 24 px page inset; the original\'s was 22');
+  decided('heading x', old.heading[0], 266, got.heading?.[0] ?? 0, 'the mock content column and its 12 px inset');
+  decided('form width', old.row[2], got.content[2] - 24, got.row?.[2] ?? 0, 'equal 12 px insets');
   decided('row height', old.row[3], 60, got.row?.[3] ?? 0, 'S126: 6 + 16 title + 16 description + 16 lane + 6; the original\'s row held a key line and was 74 px');
   decided('control height', old.rowControl[3], 28, got.widget?.[3] ?? 0, 'the mock\'s control is 28 px high; the original\'s was 36 px');
   decided('control width', old.rowControl[2], 200, got.widget?.[2] ?? 0, 'a select is 200 px, a text field 280 px, as the mock\'s .settings-select and .settings-input; the original\'s controls were all 235 px');
@@ -110,10 +110,11 @@ function judgeOld(env, got) {
 }
 
 async function oldPart(env) {
-  const where = `${env.engine}@1060x640`;
-  const { page, context, errors } = await openFixture(env, GENERAL, { viewport: WINDOW_SIZES['1060x640'] });
+  const where = `${env.engine}@${env.viewportName}`;
+  const { page, context, errors } = await openFixture(env, `${GENERAL}&plugins=installed`);
   try {
     await page.waitForSelector('[data-settings-part="window"][data-visible="true"] [data-settings-row]', { timeout: 10_000 });
+    await page.locator('[data-settings-part="tree"] [data-settings-page="plugin/acme"]').waitFor();
     await plant(env, page);
     await sleep(200);
     const got = await page.evaluate(READ_CONTAINER);
@@ -127,8 +128,8 @@ async function oldPart(env) {
 
 /** The window is Settings alone, whole in the window, at the size the host makes it and at the least. */
 async function barePart(env) {
-  for (const [name, size] of Object.entries(WINDOW_SIZES)) {
-    const where = `${env.engine}@${name}`;
+  for (const size of Object.values(WINDOW_SIZES)) {
+    const where = `${env.engine}@${size.width}x${size.height}`;
     const { page, context } = await openFixture(env, GENERAL, { viewport: size });
     try {
       await page.waitForSelector('[data-settings-part="window"][data-visible="true"] [data-settings-row]', { timeout: 10_000 });
@@ -153,6 +154,8 @@ async function barePart(env) {
           window: box(q('[data-settings-part="window"]')),
           caption: box(caption),
           content: box(content),
+          form: box(q('[data-settings-part="page"] > header')),
+          available: content?.clientWidth ?? 0,
           contentOverflowX: content === null ? 0 : content.scrollWidth - content.clientWidth,
           scrollerY: content === null ? '' : getComputedStyle(content).overflowY,
         };
@@ -166,6 +169,7 @@ async function barePart(env) {
       check(got.window !== null && near(got.window[0], 0) && near(got.window[1], 0) && near(got.window[2], size.width) && near(got.window[3], size.height), where, 'window.bare', `the window\'s content is ${JSON.stringify(got.window)}, not the whole ${size.width} x ${size.height}`);
       check(got.caption !== null && near(got.caption[3], 41) && near(got.caption[2], size.width), where, 'window.bare', `the caption is ${JSON.stringify(got.caption)}, wanted ${size.width} x 41 at the top`);
       check(got.contentOverflowX <= 0, where, 'window.bare', `the page overflows its pane by ${got.contentOverflowX} px sideways`);
+      check(got.content !== null && got.form !== null && near(got.form[0], got.content[0] + 12) && near(got.form[2], got.available - 24), where, 'window.bare', `form ${JSON.stringify(got.form)} does not fill the pane at the 12 px inset`);
       check(got.scrollerY === 'auto', where, 'window.bare', `the page's pane has overflow-y ${got.scrollerY}, wanted auto`);
     } finally {
       await context.close();
@@ -175,8 +179,8 @@ async function barePart(env) {
 
 /** What the Wails runtime reads: `--wails-draggable` in the computed style, drag on the caption and no-drag on Close, and on nothing else. */
 async function dragPart(env) {
-  const where = `${env.engine}@1060x640`;
-  const { page, context } = await openFixture(env, GENERAL, { viewport: WINDOW_SIZES['1060x640'] });
+  const where = `${env.engine}@${env.viewportName}`;
+  const { page, context } = await openFixture(env, GENERAL);
   try {
     await page.waitForSelector('[data-settings-part="window"][data-visible="true"] [data-settings-row]');
     await plant(env, page);
@@ -197,11 +201,11 @@ async function dragPart(env) {
 /** The hides of the fixture's window service, and the visible state of the page. */
 const hides = (page) => page.evaluate(() => window.__windows.calls.hide);
 const draw = (page) => page.evaluate(() => ({ visible: document.querySelector('[data-settings-part="window"]')?.getAttribute('data-visible'), hiddenPaint: getComputedStyle(document.querySelector('[data-settings-part="window"]')).contentVisibility }));
-const current = (page) => page.evaluate(() => document.querySelector('[data-settings-part="nav"] [aria-current="page"]')?.textContent ?? null);
+const current = (page) => page.evaluate(() => document.querySelector('[data-settings-part="tree"] [data-settings-page][aria-current="page"] [data-settings-part="tree-label"]')?.textContent ?? null);
 
 async function keysPart(env) {
-  const where = `${env.engine}@1060x640`;
-  const { page, context } = await openFixture(env, TERMINAL, { viewport: WINDOW_SIZES['1060x640'] });
+  const where = `${env.engine}@${env.viewportName}`;
+  const { page, context } = await openFixture(env, TERMINAL);
   try {
     await page.waitForSelector('[data-settings-part="window"][data-visible="true"] [data-settings-row]');
     await plant(env, page);
@@ -236,9 +240,9 @@ async function keysPart(env) {
 
 /** The host's requests, in the order the host makes them. */
 async function requestPart(env) {
-  const where = `${env.engine}@1060x640`;
+  const where = `${env.engine}@${env.viewportName}`;
   // A window that was never asked to show: the page is there, loaded, and draws nothing.
-  const { page, context } = await openFixture(env, 'case=window', { viewport: WINDOW_SIZES['1060x640'] });
+  const { page, context } = await openFixture(env, 'case=window');
   try {
     await page.waitForFunction(() => document.querySelector('[data-settings-part="window"]')?.getAttribute('data-visible') === 'false', null, { timeout: 5000 });
     await plant(env, page);
@@ -309,8 +313,8 @@ async function requestPart(env) {
 
 /** A change the host reports reaches the page, and a change made in the page reaches the host. */
 async function syncPart(env) {
-  const where = `${env.engine}@1060x640`;
-  const { page, context } = await openFixture(env, TERMINAL, { viewport: WINDOW_SIZES['1060x640'] });
+  const where = `${env.engine}@${env.viewportName}`;
+  const { page, context } = await openFixture(env, TERMINAL);
   try {
     await page.waitForSelector('[data-settings-part="window"][data-visible="true"] [data-settings-row]');
     await plant(env, page);
@@ -348,7 +352,7 @@ async function syncPart(env) {
   }
 }
 
-/** Runs the parts of the section `window` for one engine (the window's size is its own: the host makes it 1060 x 640). */
+/** Runs the window contracts once per engine, at the host's preferred size unless the part supplies its own. */
 export async function windowSection(env) {
   const timed = async (part, run) => {
     const from = Date.now();

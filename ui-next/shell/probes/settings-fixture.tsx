@@ -9,6 +9,7 @@
 //   &host=down    every answer fails                            &host=empty  the host has no settings
 //   &values=<json>  settings that differ from their default, by id (`{"terminal.cursorBlink":false}`)        &stored=<json>  the secrets the host holds, by id (`{"telemetry.auth_value":true}`)
 //   &theme=<id>   the theme the document starts in        &request=<json>   the request the window case starts from (a host that was asked to show Settings, on a page)
+//   &plugins=installed  the inventory includes Acme Resources, with a writable plugin-scoped setting; otherwise no plugin is installed
 //
 // `window.__host` is the host in memory (its calls, its values, `change`, `listeners()`, `next`); `window.__hold()` makes the NEXT answer of the host wait for `window.__release()`, which is how the probe sees an open before and after
 // the data arrives. `window.__redraw()` draws the page again with nothing changed: the lever of the control that plants a page which draws on a clock of its own (nothing in the product calls it).
@@ -18,7 +19,7 @@ import { Button, ThemeProvider, TooltipHost } from '@omniviewdev/kit';
 import { createRoot } from 'react-dom/client';
 import { createSettingsControl, Shell, type ShellRegistration } from '..';
 import { deferred, type Deferred } from '../core/fields/testing';
-import { fakeHost, fakeWindows, hostSnapshot } from '../settings/model/testing';
+import { fakeHost, fakeWindows, hostSnapshot, setting } from '../settings/model/testing';
 import type { HostSnapshot, SettingsClient, SettingsRequest } from '../settings/model/types';
 import SettingsWindow from '../settings/window';
 import { staticTabs, STATIC_RAIL } from '../testing';
@@ -31,6 +32,11 @@ const stored = JSON.parse(params.get('stored') ?? '{}') as Record<string, boolea
 const theme = params.get('theme') ?? undefined;
 
 const host = fakeHost(values, stored);
+if (params.get('plugins') === 'installed') {
+  host.plugin({ id: 'acme', name: 'Acme Resources', description: 'Resource inventory and watches.', icon: 'LuBoxes' }, [
+    setting('watch.autoRefresh', 'toggle', 'Refresh resource watches', 'Reconnect watches when the resource inventory changes.', true),
+  ]);
+}
 Reflect.set(window, '__host', host);
 
 // The functions that stop what Settings listens to, in the order it started to listen: the probe calls them to see what a page that stopped listening to its host does (`window.__stops`).
@@ -38,7 +44,7 @@ const stops: { readonly changed: Array<() => void>; readonly state: Array<() => 
 Reflect.set(window, '__stops', stops);
 const onChanged = host.client.onChanged;
 Object.assign(host.client, {
-  onChanged: (listener: () => void) => {
+  onChanged: (listener: Parameters<SettingsClient['onChanged']>[0]) => {
     const stop = onChanged(listener);
     stops.changed.push(stop);
     return stop;
@@ -68,19 +74,16 @@ if (HOST === 'held') {
   host.next.snapshot = async () => Promise.reject(new Error('The host did not answer.'));
 }
 
-/** The client Settings is given: the host in memory, or one that never answers well, or one with nothing to say. */
-const client: SettingsClient =
-  HOST === 'down'
-    ? {
-      ...host.client,
-      snapshot: async () => {
-        host.calls.snapshot += 1;
-        throw new Error('The host did not answer.');
-      },
-    }
-    : HOST === 'empty'
-      ? { ...host.client, snapshot: async () => Promise.resolve({ categories: {}, stored: {} }) }
-      : host.client;
+/** Core snapshot faults must not replace a plugin's own scoped answer. */
+const client: SettingsClient = HOST === 'down' || HOST === 'empty' ? {
+  ...host.client,
+  snapshot: async (scope) => {
+    if (scope.kind !== 'host') return host.client.snapshot(scope);
+    host.calls.snapshot += 1;
+    if (HOST === 'down') throw new Error('The host did not answer.');
+    return { categories: {}, stored: {} };
+  },
+} : host.client;
 
 const registration: ShellRegistration = {
   plugin: { name: 'Acme' },

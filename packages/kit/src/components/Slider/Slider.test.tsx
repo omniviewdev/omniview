@@ -26,6 +26,21 @@ describe('Slider', () => {
     expect(screen.getByText('100%')).toBeTruthy();
   });
 
+  it('displays every discrete stop and reports its label instead of its index throughout a gesture', () => {
+    const labels = ['80%', '90%', '100%', '110%', '125%'];
+    const onCommit = vi.fn();
+    render(<Slider label="Scale" value={2} min={0} max={4} step={1} stopLabels={labels} onCommit={onCommit} />);
+    const marks = document.querySelector('[data-ov-part="stops"]');
+    expect([...marks!.children].map(mark => mark.textContent)).toEqual(labels);
+    expect(range().getAttribute('aria-valuetext')).toBe('100%');
+    fireEvent.pointerDown(range(), pointer);
+    move(4);
+    expect(range().getAttribute('aria-valuetext')).toBe('125%');
+    expect(onCommit).not.toHaveBeenCalled();
+    fireEvent.pointerUp(range(), pointer);
+    expect(onCommit.mock.calls).toEqual([[4]]);
+  });
+
   it('uses its Field label, help, error and disabled reason without duplicating them', () => {
     render(
       <Field label="Content opacity" help="Canvas" message={{ kind: 'error', text: 'Could not save.' }} disabledReason="Locked here.">

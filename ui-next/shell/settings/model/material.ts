@@ -5,13 +5,6 @@ export const WINDOW_MATERIAL = 'appearance.windowMaterial';
 export const GLASS_STYLE = 'appearance.glassStyle';
 export const SURFACE_OPACITIES = ['appearance.chromeOpacity', 'appearance.contentOpacity', 'appearance.menuOpacity', 'appearance.sheetOpacity'] as const;
 export const MATERIAL_FIELDS = [WINDOW_MATERIAL, GLASS_STYLE, ...SURFACE_OPACITIES] as const;
-const ORDER: readonly string[] = [...MATERIAL_FIELDS, 'appearance.density', 'appearance.textSize', 'appearance.motion'];
-
-export function appearanceOrder(id: string): number {
-  const rank = ORDER.indexOf(id);
-  return rank < 0 ? ORDER.length : rank;
-}
-
 export const RESETTING_MATERIAL = 'resettingMaterial';
 const idle: Condition = { ctx: RESETTING_MATERIAL, notEquals: true, reason: 'Reset in progress.' };
 const glass: Condition = { field: WINDOW_MATERIAL, equals: 'glass', reason: 'Requires Liquid Glass.' };

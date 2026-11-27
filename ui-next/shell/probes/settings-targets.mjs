@@ -9,24 +9,23 @@
 /** The parts of the page. `mock` is relative to the whole document; the mock's Settings page is `.settings-page` in the island, its sidebar `.settings-nav`. */
 export const PARTS = [
   { name: 'nav', mock: '.settings-nav', shell: '[data-settings-part="nav"]' },
-  // The mock's rows of the Core group (a tree row each: 24 px, a glyph and a label); the shell's are the buttons of the navigation, one for each page.
-  { name: 'navFirst', mock: '.settings-nav .tree__row[data-key="appearance"]', shell: '[data-settings-part="nav"] [data-settings-page="appearance"]' },
-  { name: 'navSecond', mock: '.settings-nav .tree__row[data-key="general"]', shell: '[data-settings-part="nav"] [data-settings-page="general"]' },
-  { name: 'navThird', mock: '.settings-nav .tree__row[data-key="editor"]', shell: '[data-settings-part="nav"] [data-settings-page="editor"]' },
-  { name: 'navSelected', mock: '.settings-nav .tree__row[aria-selected="true"]', shell: '[data-settings-part="nav"] [aria-current="page"]' },
-  { name: 'navGroup', mock: '.settings-nav .tree__row[data-key="core"]', shell: '[data-settings-part="nav"] > [aria-hidden="true"]' },
-  { name: 'navGroupLabel', mock: '.settings-nav .tree__row[data-key="core"] .tree__label', shell: '[data-settings-part="nav"] > [aria-hidden="true"]' },
+  { name: 'navFirst', mock: '.settings-nav .tree__row[data-key="appearance"]', shell: '[data-settings-part="tree"] [data-settings-page="appearance"]' },
+  { name: 'navSecond', mock: '.settings-nav .tree__row[data-key="general"]', shell: '[data-settings-part="tree"] [data-settings-page="general"]' },
+  { name: 'navThird', mock: '.settings-nav .tree__row[data-key="editor"]', shell: '[data-settings-part="tree"] [data-settings-page="editor"]' },
+  { name: 'navSelected', mock: '.settings-nav .tree__row[aria-selected="true"]', shell: '[data-settings-part="tree"] [data-settings-page][aria-current="page"]' },
+  { name: 'navGroup', mock: '.settings-nav .tree__row[data-key="core"]', shell: '[data-settings-branch="core"]' },
+  { name: 'navGroupLabel', mock: '.settings-nav .tree__row[data-key="core"] .tree__label', shell: '[data-settings-branch="core"] [data-settings-part="tree-label"]' },
   { name: 'rowTitle', mock: '.settings-page .setting-row .setting-row__title', shell: '[data-settings-row] [data-ov-part="label"]' },
   { name: 'rowText', mock: '.settings-page .setting-row .setting-row__text', shell: '[data-settings-row] [data-ov-part="text"]' },
   { name: 'page', mock: '.settings-page', shell: '[data-settings-part="page"]' },
   { name: 'heading', mock: '.settings-page .heading', shell: '[data-settings-part="page"] > header' },
   { name: 'title', mock: '.settings-page .heading h1', shell: '[data-settings-part="page"] > header > :first-child' },
   { name: 'subtitle', mock: '.settings-page .heading .subtitle', shell: '[data-settings-part="page"] > header > p' },
-  // The mock groups rows in sections with a title each (`H.section`); the host declares none, so the shell's list follows the heading at once.
-  { name: 'sectionHead', mock: '.settings-page .form-section__head', shell: '[data-settings-part="never"]' },
+  // Appearance has section headings; a flat host category such as Terminal starts its rows just below the page heading.
+  { name: 'sectionHead', mock: '.settings-page .form-section__head', shell: '[data-settings-part="section-title"]' },
   { name: 'list', mock: '.settings-page .setting-list', shell: '[data-settings-part="rows"]' },
   { name: 'row', all: true, mock: '.settings-page .setting-row', shell: '[data-settings-row]' },
-  // The states of the page. The mock's are `.settings-state` boxes in the island under the unchanged header; the shell's replace the whole body of the sheet, which is the one place it has (there is no page to put them under).
+  // The mock's states sit under its unchanged header. In the shell, loading and failure replace the body; an empty inventory keeps the sidebar and reports the state in the content pane.
   { name: 'state', mock: '.settings-state', shell: '[data-settings-state]' },
   { name: 'stateStack', mock: '.settings-state > .empty2', shell: '[data-settings-state]' },
   { name: 'stateTitle', mock: '.settings-state .empty2 > b', shell: '[data-settings-state] > :nth-child(1)' },
@@ -55,8 +54,9 @@ export const STYLES = [
 
 /** The rows of the navigation whose paint is read in each state: one that is another page, and the one that is on screen. The Core group's rows. */
 export const NAV_STATES = [
-  { name: 'other', mock: '.settings-nav .tree__row[data-key="general"]', shell: '[data-settings-part="nav"] [data-settings-page="general"]' },
-  { name: 'selected', mock: '.settings-nav .tree__row[aria-selected="true"]', shell: '[data-settings-part="nav"] [aria-current="page"]' },
+  // Measure the selected row first: focusing the other page can make it current.
+  { name: 'selected', mock: '.settings-nav .tree__row[aria-selected="true"]', shell: '[data-settings-part="tree"] [data-settings-page][aria-current="page"]' },
+  { name: 'other', mock: '.settings-nav .tree__row[data-key="general"]', shell: '[data-settings-part="tree"] [data-settings-page="general"]' },
 ];
 
 /** Reads every part of `parts` from the page on one `side` ('mock' or 'shell'): `{ [name]: [[x, y, w, h], ...] }` in viewport px, to 0.01, `[]` for a part that is not there. */
@@ -121,8 +121,8 @@ export async function readNavStates(page, side) {
         const box = await handle.boundingBox();
         await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 2 });
       } else if (state === 'focus') {
-        // A key press first, so the engines treat the focus as the keyboard's (focus-visible). The mock's reference was read after a Shift. WebKit does not count a modifier alone as the keyboard's for a button (the shell's rows
-        // are buttons, the mock's are tree items): a letter does, and nothing in the page does anything with it.
+        // Prime keyboard modality before focusing a row. WebKit needs a non-modifier key after pointer input.
+        // Keep the mock's recorded Shift and send the shell's extra key with focus outside the tree and search.
         await page.keyboard.press('Shift');
         if (side === 'shell') await page.keyboard.press('a');
         await handle.evaluate((element) => element.focus());

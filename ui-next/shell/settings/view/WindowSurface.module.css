@@ -1,4 +1,4 @@
-/* The Settings window's content: a caption and the body under it, as the sheet's header and body (the mock's `.sheet > .hd`, 41 px). The window is the host's, 1060 x 640 px, with no operating-system controls: the caption is the
+/* The Settings window's content: a caption and the body under it, as the sheet's header and body (the mock's `.sheet > .hd`, 41 px). The window has no operating-system controls: the caption is the
    part of it that moves the window, and Close is the one control in it that does not. */
 @layer ov.shell {
   /* The Wails runtime reads --wails-draggable from the computed style to find the regions that move the window: the caption is one, its controls are not. A name outside the private `--_` scale, so the rule that closes
@@ -29,6 +29,7 @@
     box-sizing: border-box;
     min-block-size: 41px;
     padding: var(--ov-spacing-6) var(--ov-spacing-12);
+    background-color: var(--ov-surface-chrome);
   }
 
   .caption button {

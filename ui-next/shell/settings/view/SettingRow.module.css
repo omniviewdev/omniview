@@ -7,4 +7,57 @@
   .row + .row {
     box-shadow: inset 0 1px 0 var(--ov-border-subtle);
   }
+
+  .list {
+    display: grid;
+    gap: var(--ov-spacing-4);
+    inline-size: 280px;
+    max-inline-size: 100%;
+    min-inline-size: 0;
+  }
+
+  .listEntry {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: var(--ov-spacing-4);
+  }
+
+  .listEntry > textarea {
+    box-sizing: border-box;
+    min-inline-size: 0;
+    min-block-size: var(--ov-control-height);
+    margin: 0;
+    padding: var(--ov-spacing-4) var(--ov-spacing-8);
+    border: 1px solid var(--ov-border-control);
+    border-radius: var(--ov-radius-control);
+    background: var(--ov-bg-island);
+    color: var(--ov-fg);
+    font: var(--ov-fs-13) / var(--ov-lh-16) var(--ov-font-ui);
+    resize: vertical;
+  }
+
+  .listEntry > [data-mono] {
+    font-family: var(--ov-font-code);
+    font-variant-ligatures: none;
+  }
+
+  .listEntry > textarea::placeholder {
+    color: var(--ov-fg-muted);
+  }
+
+  .listEntry > textarea:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: -1px;
+  }
+
+  .listEntry > textarea[aria-invalid='true'] {
+    border-color: var(--ov-error-control-inactive);
+    outline-color: var(--ov-error-control);
+  }
+
+  .listEntry > textarea[aria-disabled='true'] {
+    border-color: var(--ov-border-disabled);
+    color: var(--ov-fg-disabled);
+  }
 }

@@ -1,9 +1,11 @@
-import { Field, IconButton, NumberInput, SecretInput, Select, Slider, TextInput, Toggle, tip } from '@omniviewdev/kit';
+import { Field, IconButton, NumberInput, SecretInput, SegmentedControl, Select, Slider, TextInput, Toggle, tip } from '@omniviewdev/kit';
 import { useContext, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
-import type { FieldState, FormStore, Json, Scalar, SetResult } from '../../core/fields';
+import type { FieldState, FormStore, Json, Option, Scalar, SetResult } from '../../core/fields';
 import { SettingsWindowShown } from '../context';
-import type { SettingsSession } from '../model/session';
+import type { ScopeSession } from '../model/session';
+import { ListControl } from './ListControl';
 import styles from './SettingRow.module.css';
+import { ThemePicker } from './ThemePicker';
 import { elsewhereNote, laneOf, resetLabel, SECRET_ELSEWHERE } from './words';
 
 // One setting, drawn from its declared field: the kit's row (`Field layout="row"`: the title, the description and the one message lane on one side, the control and the reset slot on the other) around the kit part its kind asks for,
@@ -58,25 +60,66 @@ function RangeControl({ field, choose }: { readonly field: FieldState; readonly 
   return <Slider value={field.value} min={field.spec.min} max={field.spec.max} step={field.spec.step} unit={field.spec.unit} readOnly={!shown} onCommit={choose} />;
 }
 
+/** The native range moves by index. The field always holds the host option's actual value, never an intermediate percentage. */
+function ChoiceRange({ options, index, choose }: { readonly options: readonly Option[]; readonly index: number; readonly choose: Choose }) {
+  const shown = useContext(SettingsWindowShown);
+  return (
+    <Slider
+      min={0} max={options.length - 1} step={1} value={index}
+      stopLabels={options.map(option => option.label)}
+      readOnly={!shown}
+      onCommit={stop => {
+        const option = options[stop];
+        if (option) {
+          choose(option.value);
+        }
+      }}
+    />
+  );
+}
+
 function Control({ field, form, choose, unavailableOption }: { readonly field: FieldState; readonly form: FormStore; readonly choose: Choose; readonly unavailableOption?: UnavailableOption | undefined }) {
   const { id } = field;
+  if (field.spec.display === 'theme-picker' && typeof field.value === 'string') {
+    return <ThemePicker label={field.label} value={field.value} onChoose={choose} />;
+  }
+
   switch (field.kind) {
     case 'boolean':
       return <Toggle checked={field.value === true} onCheckedChange={choose} />;
     case 'select': {
-      const options = (field.options ?? []).map((option) => ({ value: String(option.value), label: option.label, disabled: Boolean(option.disabled) || unavailableOption?.(option.value) === true }));
+      const options = field.options ?? [];
+      const value = typeof field.value === 'string' || typeof field.value === 'number' || typeof field.value === 'boolean' ? String(field.value) : '';
+      const disabled = (option: Option) => Boolean(option.disabled) || unavailableOption?.(option.value) === true;
+      const chooseOption = (next: string) => {
+        const option = options.find(candidate => String(candidate.value) === next);
+        if (option && !disabled(option)) {
+          choose(option.value);
+        }
+      };
+      if (field.spec.display === 'segmented') {
+        return (
+          <SegmentedControl label={field.label} value={value} onValueChange={chooseOption} options={options.map(option => ({
+            value: String(option.value), label: option.label,
+            disabledReason: typeof option.disabled === 'string' ? option.disabled : disabled(option) ? 'Unavailable.' : undefined,
+          }))} />
+        );
+      }
+
+      if (field.spec.display === 'slider' && options.length > 1 && !options.some(disabled)) {
+        const index = options.findIndex(option => option.value === field.value);
+        if (index >= 0) {
+          return <ChoiceRange options={options} index={index} choose={choose} />;
+        }
+      }
+
       return (
         <Select
-          value={typeof field.value === 'string' || typeof field.value === 'number' || typeof field.value === 'boolean' ? String(field.value) : ''}
-          options={options}
+          value={value}
+          options={options.map(option => ({ value: String(option.value), label: option.label, disabled: disabled(option) }))}
           placeholder="Choose a value"
           width="normal"
-          onValueChange={(next) => {
-            const option = field.options?.find((candidate) => String(candidate.value) === next);
-            if (option && !option.disabled && !unavailableOption?.(option.value)) {
-              choose(option.value);
-            }
-          }}
+          onValueChange={chooseOption}
         />
       );
     }
@@ -107,11 +150,12 @@ function Control({ field, form, choose, unavailableOption }: { readonly field: F
           }}
         />
       );
-    case 'color':
     case 'list':
+      return <ListControl field={field} form={form} />;
+    case 'color':
     case 'multiselect':
     case 'unsupported':
-      // The adapter draws none of these in this slice (`NOT_DRAWN`, `drawnAs`).
+      // The adapter omits kinds for which Settings has no control.
       return null;
     case 'text':
     case 'path':
@@ -142,13 +186,20 @@ function Control({ field, form, choose, unavailableOption }: { readonly field: F
 
 type SettingRowProps = {
   readonly form: FormStore;
-  readonly session: SettingsSession;
+  readonly session: ScopeSession;
   readonly id: string;
   readonly concise?: boolean;
   readonly rollback?: boolean;
   readonly disabledReason?: string | undefined;
   readonly unavailableOption?: UnavailableOption | undefined;
 };
+
+/** Use the kit Field's native label association, including the chosen member of a compound control. */
+export function focusSetting(row: HTMLElement): void {
+  const labelled = row.querySelector<HTMLLabelElement>('[data-ov-part="label"]')?.control;
+  const target = labelled && !labelled.matches(':disabled') ? labelled : row.querySelector<HTMLElement>('[data-ov-part="control"] [tabindex="0"]:not(:disabled)');
+  (target ?? row).focus({ preventScroll: true });
+}
 
 export function SettingRow({ form, session, id, concise, rollback, disabledReason, unavailableOption }: SettingRowProps) {
   const field = useSyncExternalStore(form.subscribe, () => form.field(id));
@@ -161,7 +212,9 @@ export function SettingRow({ form, session, id, concise, rollback, disabledReaso
   useLayoutEffect(() => {
     if (resetting.current && !modified) {
       resetting.current = false;
-      row.current?.querySelector<HTMLElement>('input:not([type="hidden"]), select, button[role="switch"]')?.focus({ preventScroll: true });
+      if (row.current) {
+        focusSetting(row.current);
+      }
     }
   }, [modified]);
 
@@ -196,7 +249,7 @@ export function SettingRow({ form, session, id, concise, rollback, disabledReaso
   const drafted = field.dirty || field.secret?.changed === true;
   const note = drafted && Object.hasOwn(notes, id) ? (field.secret === undefined ? elsewhereNote(notes[id]) : SECRET_ELSEWHERE) : undefined;
   return (
-    <div ref={row} className={styles.row} data-settings-row={id}>
+    <div ref={row} className={styles.row} tabIndex={-1} data-settings-row={id} data-settings-concise={concise || undefined}>
       <Field
         layout="row"
         label={field.label}
@@ -230,7 +283,7 @@ export function SettingRow({ form, session, id, concise, rollback, disabledReaso
           form={form}
           unavailableOption={unavailableOption}
           choose={(value) => {
-            settle(form.setValue(id, value), value);
+            settle(form.setValue(id, value, { commit: true }), value);
           }}
         />
       </Field>

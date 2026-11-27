@@ -30,14 +30,13 @@
     background-color: transparent;
   }
 
-  /* The frame is the surface of a sheet, and the rules here are its `settings` size, the old Settings window's 1060 x 640 px: the window wins where it is smaller, less the 24 px step on each side. The three dialog sizes
-     further down override the size and the anatomy. */
+  /* Settings uses the same preferred size as its native window. In a browser it leaves 24 px clear on every side. */
   .frame {
     display: flex;
     flex-direction: column;
     box-sizing: border-box;
-    inline-size: min(1060px, 100% - 2 * var(--ov-spacing-24));
-    block-size: min(640px, 100dvh - 2 * var(--ov-spacing-24));
+    inline-size: min(1280px, 100% - 2 * var(--ov-spacing-24));
+    block-size: min(800px, 100dvh - 2 * var(--ov-spacing-24));
     overflow: hidden;
     border: 1px solid var(--ov-border-popup);
     border-radius: var(--ov-radius-popup);
@@ -80,6 +79,10 @@
     box-sizing: border-box;
     min-height: 41px;
     padding: var(--ov-spacing-6) var(--ov-spacing-12);
+  }
+
+  .frame[data-ov-size='settings'] .header {
+    background-color: var(--ov-surface-chrome);
   }
 
   /* A dialog's header is roomier than the settings frame's: 12 px above and at the sides, 8 px under (the mock's `.dlg > .hd`). */

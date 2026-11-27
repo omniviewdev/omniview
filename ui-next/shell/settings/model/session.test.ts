@@ -3,7 +3,7 @@ import { deferred, manualClock, SENTINEL, type ManualClock } from '../../core/fi
 import type { FieldState } from '../../core/fields';
 import { createSettingsSession, type SettingsSession } from './session';
 import { fakeHost, hostSnapshot, type FakeHost } from './testing';
-import type { HostCommit, HostSnapshot, SettingsClient } from './types';
+import { HOST_SCOPE, type HostCommit, type HostSnapshot, type SettingsClient } from './types';
 
 // The session is the sheet's whole dealing with the host: it reads the snapshot, makes the form from it, sends what the person changes (one setting at a time, as it is changed), asks the host about a typed value,
 // and follows what changes elsewhere. These tests run the REAL form model over a host that answers from memory (`testing.ts`); nothing here is a mock of the model.
@@ -117,12 +117,12 @@ describe('material reset', () => {
     const release = deferred<void>();
     const client: SettingsClient = {
       ...host.client,
-      commit: async (values) => {
+      commit: async (scope, values) => {
         if (Object.keys(values).length > 1) {
           await release.promise;
         }
 
-        return host.client.commit(values);
+        return host.client.commit(scope, values);
       },
     };
     const session = createSettingsSession({ client, scheduler: clock.scheduler });
@@ -412,7 +412,7 @@ describe('secrets', () => {
 
   it('follow the host when another window sets or clears one', async () => {
     const { session, host, clock } = await rig();
-    await host.client.commit({ 'telemetry.loki_auth_value': 'x' });
+    await host.client.commit(HOST_SCOPE, { 'telemetry.loki_auth_value': 'x' });
     await clock.flush();
     expect(fieldOf(session, 'telemetry.loki_auth_value').secret?.presence).toBe('set');
   });
@@ -447,7 +447,7 @@ describe('disposing', () => {
 describe('a secret typed while the other window changes it', () => {
   // The other window sets or clears the secret: only the host's fact about it moves (`stored`), there is no value to compare. What is typed stays, and the field says so without saying any text.
   const otherWindowClears = async (host: FakeHost, id: string): Promise<void> => {
-    await host.client.commit({ [id]: '' });
+    await host.client.commit(HOST_SCOPE, { [id]: '' });
     host.change(id, '');
   };
 
@@ -486,7 +486,7 @@ describe('a question the host did not answer', () => {
     let asks = 0;
     const client: SettingsClient = {
       ...host.client,
-      snapshot: async () => {
+      snapshot: async (scope) => {
         asks += 1;
         if (down.hang) {
           return new Promise<HostSnapshot>(() => undefined);
@@ -496,7 +496,7 @@ describe('a question the host did not answer', () => {
           throw new Error('the host did not answer');
         }
 
-        return host.client.snapshot();
+        return host.client.snapshot(scope);
       },
     };
     const session = createSettingsSession({ client, scheduler: clock.scheduler });

@@ -4,16 +4,15 @@
 //
 //   nav        a page's row in the navigation against the mock's tree row: its height, the pitch of two rows, the inset from the navigation's edge, its type and its radius                                  page.nav
 //   navstates  the paint of that row in the states rest, hover and focus (a keyboard focus), for another page's row and for the page on screen, exactly, in Void and Light                          page.navstates
-//   group      the group's label ("Core") and its row against the mock's group row                                                                                                                page.group
+//   group      the Core and Plugins branches: names, disclosure state, Core row geometry, and the empty installed inventory                                                                      page.group.*
 //   heading    the page heading against the mock's: the title's and the description's type and colour, the title's lane and the description under it, a description that is one line                     page.heading.*
-//   list       where the rows start under the heading (the mock's section titles are not built, so the mock's own gap is the reference), the rows in the host's order, each row as high as its content makes it       page.list.*, page.rows.*
+//   list       the lift between page heading, sections and rows; the host's row order; each row as high as its text or control requires                                                       page.list.*, page.rows.*
 //              (6 + 16 + the description's one or two lines + the 16 px lane + 6: S126), the separators between rows, and the column the controls end in
 //   scroll     the pane scrolls and nothing else does: the heading goes with the rows, the navigation and the header stay, the last row has the page's inset under it, and a new page starts at the top, as the mock's does   page.scroll.*
 //   states     loading, could not load and nothing to show, against the mock's page states (`.settings-state`), and what each does                                                                  page.states.*
 //   paint      the tokens the page's paint names, resolved in each of the nine themes                                                                                                            page.paint
 //
-// What the shell does not draw and the mock does (each is the shell's decision, docs/ui-next/status/ST1.md section 4): the sections the rows are grouped in, the status slot and the page menu at the end of the heading, a glyph and
-// a tree toggle on each row of the navigation, the search above it, the Plugins group, the 244 px width (the original window's 212 is used), and a skeleton for loading. They are counted and printed, never compared.
+// The mock's Terminal sections, header menu and loading skeleton are not part of this slice.
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -68,8 +67,8 @@ async function navPart(env) {
         check(near(second[1] - first[1], mSecond[1] - mFirst[1]) && near(third[1] - second[1], mThird[1] - mSecond[1]), where, 'page.nav', `two rows are ${round(second[1] - first[1])} px apart, the mock's ${mSecond[1] - mFirst[1]}`);
         const navBox = box(shell, 'nav');
         const mNav = box(mock, 'nav');
-        // The mock's rows stand 5 px inside the navigation (its tree owns that inset, X5); 5 is not on the closed spacing scale, so the shell's is 6. One pixel is the tolerance of x everywhere in the probes.
-        check(near(first[0] - navBox[0], mFirst[0] - mNav[0], 1.01), where, 'page.nav', `a row starts ${round(first[0] - navBox[0])} px inside the navigation, the mock's ${mFirst[0] - mNav[0]}`);
+        check(near(navBox[2], mNav[2]), where, 'page.nav', `the sidebar is ${navBox[2]} px wide, the mock's ${mNav[2]}`);
+        check(near(first[0] - navBox[0], mFirst[0] - mNav[0]), where, 'page.nav', `a row starts ${round(first[0] - navBox[0])} px inside the navigation, the mock's ${mFirst[0] - mNav[0]}`);
       }
       sameStyle(where, 'page.nav', 'a page\'s row', mock, shell, 'navFirst', ['color', 'borderTopLeftRadius', 'fontSize', 'fontWeight', 'lineHeight', 'paddingTop', 'paddingBottom', 'backgroundColor']);
     } finally {
@@ -110,23 +109,40 @@ async function groupPart(env) {
   try {
     const shell = await reading(page);
     const mock = mockOf(env, 'void');
-    // The mock's group is a tree row (24 px, a toggle and a glyph, its label in 600 at 13 px in the text colour); the shell's is a label.
     const group = box(shell, 'navGroup');
     const mGroup = box(mock, 'navGroup');
     const first = box(shell, 'navFirst');
     const mFirst = box(mock, 'navFirst');
-    if (group === null || first === null) return fail(where, 'page.group.label', 'the navigation has no group label');
+    if (group === null || first === null) return fail(where, 'page.group.label', 'the tree has no Core branch or no first page');
     check(near(group[3], mGroup[3]), where, 'page.group.size', `the group's row is ${group[3]} px high, the mock's ${mGroup[3]}`);
     check(near(first[1] - (group[1] + group[3]), mFirst[1] - (mGroup[1] + mGroup[3])), where, 'page.group.size', `the first page's row is ${round(first[1] - (group[1] + group[3]))} px under the group, the mock's ${mFirst[1] - (mGroup[1] + mGroup[3])}`);
     const type = (r) => `${style(r, 'navGroupLabel', 'fontSize')} ${style(r, 'navGroupLabel', 'fontWeight')} ${style(r, 'navGroupLabel', 'color')}`;
     check(type(shell) === type(mock), where, 'page.group.size', `the group's label is ${type(shell)}, the mock's ${type(mock)}`);
-    const facts = await page.evaluate(() => {
-      const label = document.querySelector('[data-settings-part="nav"] > [aria-hidden="true"]');
-      const group = document.querySelector('[data-settings-part="nav"] [role="group"]');
-      return { text: label?.textContent, named: group?.getAttribute('aria-label'), tabbable: label?.matches('a, button, [tabindex]') ?? false };
-    });
-    check(facts.text === 'Core' && facts.named === 'Core', where, 'page.group.label', `the group says ${JSON.stringify(facts.text)} and the list is named ${JSON.stringify(facts.named)}, wanted Core twice (the label is for the eye, the list's name for assistive technology)`);
-    check(!facts.tabbable, where, 'page.group.label', 'the group\'s label is a tab stop');
+    const label = box(shell, 'navGroupLabel');
+    const mockLabel = box(mock, 'navGroupLabel');
+    const firstLabel = await page.locator('[data-settings-page="appearance"] [data-settings-part="tree-label"]').boundingBox();
+    check(label !== null && near(label[0] - group[0], mockLabel[0] - mGroup[0]) && firstLabel !== null && firstLabel.x > label[0], where, 'page.group.size', 'the branch label must clear its chevron and glyph as in the mock, with child labels indented further');
+    const tree = page.locator('[data-settings-part="tree"]');
+    check(await page.locator('[data-settings-part="nav"]').getByRole('tree').count() === 1, where, 'page.group.label', 'the sidebar must expose one accessible tree');
+    const branches = await tree.locator('[role="treeitem"][data-settings-branch]').evaluateAll((items) => items.map((item) => ({
+      id: item.dataset.settingsBranch,
+      label: item.querySelector('[data-settings-part="tree-label"]')?.textContent,
+      expanded: item.getAttribute('aria-expanded'),
+      tabIndex: item.tabIndex,
+    })));
+    check(branches.map((branch) => branch.id).join() === 'core,plugins', where, 'page.group.label', `the tree branches are ${JSON.stringify(branches)}`);
+    for (const [index, label] of ['Core', 'Plugins'].entries()) {
+      const branch = branches[index];
+      check(branch?.label === label && await tree.getByRole('treeitem', { name: label, exact: true }).count() === 1, where, 'page.group.label', `the ${label} branch must have the same visible and accessible name`);
+      check(branch?.expanded === 'true' && branch.tabIndex === -1, where, 'page.group.label', `${label} must start expanded and stay out of the Tab sequence while Terminal is current`);
+    }
+    const empty = page.getByText('No plugin settings available.', { exact: true });
+    const plugins = tree.locator('[data-settings-branch="plugins"]');
+    check(await empty.isVisible(), where, 'page.group.label', 'the expanded Plugins branch does not explain its empty inventory');
+    await plugins.click();
+    check(await plugins.getAttribute('aria-expanded') === 'false' && !await empty.isVisible(), where, 'page.group.label', 'collapsing Plugins did not hide its contents');
+    await plugins.click();
+    check(await plugins.getAttribute('aria-expanded') === 'true' && await empty.isVisible(), where, 'page.group.label', 'reopening Plugins did not reveal its contents');
   } finally {
     await context.close();
   }
@@ -201,19 +217,41 @@ async function listPart(env) {
       const ids = rows.map((row) => row.id);
       const grouped = entry.id === 'appearance';
       const order = grouped
-        ? ['windowMaterial', 'glassStyle', 'chromeOpacity', 'contentOpacity', 'menuOpacity', 'sheetOpacity', 'density', 'textSize', 'motion'].map((key) => `appearance.${key}`)
+        ? ['theme', 'density', 'textSize', 'motion', 'windowMaterial', 'glassStyle', 'chromeOpacity', 'contentOpacity', 'menuOpacity', 'sheetOpacity'].map((key) => `appearance.${key}`)
         : [...ids].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
       check(JSON.stringify(ids) === JSON.stringify(order), here_, 'page.rows.order', `the rows are ${ids.join(', ')}, wanted ${order.join(', ')}`);
       if (grouped) {
         const groups = rows.map((row) => row.group);
-        const expected = ['Window material', 'Window material', 'Surface opacity', 'Surface opacity', 'Surface opacity', 'Surface opacity', 'Interface', 'Interface', 'Interface'];
+        const expected = ['Colors', 'Layout and text', 'Layout and text', 'Layout and text', 'Window material', 'Window material', 'Surface opacity', 'Surface opacity', 'Surface opacity', 'Surface opacity'];
         check(JSON.stringify(groups) === JSON.stringify(expected), here_, 'page.rows.order', `unexpected row groups: ${JSON.stringify(groups)}`);
+        const picker = await page.locator('[data-settings-row="appearance.theme"] [role="radiogroup"]').evaluate((grid) => {
+          const previews = [...grid.querySelectorAll('[data-ov-theme]')];
+          const cards = [...grid.querySelectorAll('label')].map((label) => label.getBoundingClientRect());
+          return {
+            themes: previews.map((preview) => preview.dataset.ovTheme).sort(),
+            heights: previews.map((preview) => preview.getBoundingClientRect().height),
+            width: grid.getBoundingClientRect().width,
+            columns: new Set(cards.map((box) => box.x)).size,
+            rows: new Set(cards.map((box) => box.y)).size,
+            gap: getComputedStyle(grid).gap,
+          };
+        });
+        check(JSON.stringify(picker.themes) === JSON.stringify([...THEMES].sort()) && picker.heights.every((height) => near(height, 56)) && near(picker.width, 480) && picker.columns === 3 && picker.rows === 3 && picker.gap === '8px', here_, 'page.list.start', `the desktop picker is not the 3 × 3 grid of theme previews: ${JSON.stringify(picker)}`);
+        const sections = await page.locator('[data-settings-group]').evaluateAll((elements) => elements.map((element) => {
+          const section = element.getBoundingClientRect();
+          const title = element.querySelector('[data-settings-part="section-title"]').getBoundingClientRect();
+          const list = element.querySelector('[data-settings-part="rows"]').getBoundingClientRect();
+          return { start: section.top, end: section.bottom, titleHeight: title.height, afterTitle: list.top - title.bottom };
+        }));
+        check(sections.length === 4 && sections.every((section, index) => near(section.titleHeight, mSection[3]) && near(section.afterTitle, 8) && (index === 0 || near(section.start - sections[index - 1].end, 12))), here_, 'page.list.start', `section title height, row gap or section gap differs from the mock: ${JSON.stringify(sections)}`);
       }
       rows.forEach((row, index) => {
         const lines = row.help === null ? 0 : Math.min(32, row.help[3]);
         const first = index === 0 || row.group !== rows[index - 1].group;
-        const want = grouped ? Math.max(40, row.control[3] + 12) : 6 + 16 + lines + 16 + 6;
-        if (grouped) check(row.help === null && (row.lane === null || row.lane[3] <= 1), here_, 'page.rows.height', `${row.id} displays a description or status lane at rest`);
+        const concise = row.group === 'Window material' || row.group === 'Surface opacity';
+        const textHeight = 16 + lines + (concise ? 0 : 16);
+        const want = Math.max(40, Math.max(textHeight, row.control[3]) + 12);
+        if (concise) check(row.help === null && (row.lane === null || row.lane[3] <= 1), here_, 'page.rows.height', `${row.id} displays a description or status lane at rest`);
         else check(row.lane !== null && near(row.lane[3], 16), here_, 'page.rows.height', `${row.id} has no 16 px lane reserved (${JSON.stringify(row.lane)})`);
         check(near(row.row[3], want), here_, 'page.rows.height', `${row.id} is ${row.row[3]} px high, its content makes it ${want}`);
         if (!first) check(near(row.row[1], rows[index - 1].row[1] + rows[index - 1].row[3]), here_, 'page.rows.pitch', `${row.id} starts ${round(row.row[1] - rows[index - 1].row[1] - rows[index - 1].row[3])} px under the row above it, wanted none`);
@@ -271,7 +309,7 @@ async function scrollPart(env) {
           overflowX: style.overflowX,
           overscroll: style.overscrollBehaviorY,
           nav: rect(document.querySelector('[data-settings-part="nav"]')),
-          navTop: document.querySelector('[data-settings-part="nav"]').scrollTop,
+          navTop: document.querySelector('[data-settings-part="tree-scroll"]').scrollTop,
           header: rect(document.querySelector('dialog [data-ov-part="header"]') ?? document.querySelector('[data-settings-part="caption"]')),
           heading: rect(document.querySelector('[data-settings-part="page"] > header')),
           lastRow: rect(rows[rows.length - 1]),
@@ -291,27 +329,27 @@ async function scrollPart(env) {
     const moved = await read();
     check(moved.top > 100, where, 'page.scroll.wheel', `a wheel of 300 px moved the page's pane ${moved.top} px`);
     check(near(moved.heading[1], at.heading[1] - moved.top, 1.01), where, 'page.scroll.wheel', `the heading is at ${moved.heading[1]} after a scroll of ${moved.top}, wanted ${round(at.heading[1] - moved.top)}: it goes with the rows`);
-    check(JSON.stringify(moved.nav) === JSON.stringify(at.nav) && moved.navTop === 0, where, 'page.scroll.wheel', 'the navigation moved or scrolled with the page');
+    check(JSON.stringify(moved.nav) === JSON.stringify(at.nav) && moved.navTop === at.navTop, where, 'page.scroll.wheel', 'the tree moved or scrolled with the page');
     check(JSON.stringify(moved.header) === JSON.stringify(at.header), where, 'page.scroll.wheel', 'the header moved with the page');
-    // To the end: the last row stands the page's inset (24 px) above the pane's edge.
+    // To the end: the last row stands the page's 12 px inset above the pane's edge.
     await page.evaluate(() => {
       const content = document.querySelector('[data-settings-part="content"]');
       content.scrollTop = content.scrollHeight;
     });
     await sleep(120);
     const end = await read();
-    check(near(end.content[1] + end.content[3] - (end.lastRow[1] + end.lastRow[3]), 24, 1.01), where, 'page.scroll.end', `the last row ends ${round(end.content[1] + end.content[3] - (end.lastRow[1] + end.lastRow[3]))} px above the pane's edge, wanted the page's 24 px inset`);
+    check(near(end.content[1] + end.content[3] - (end.lastRow[1] + end.lastRow[3]), 12, 1.01), where, 'page.scroll.end', `the last row ends ${round(end.content[1] + end.content[3] - (end.lastRow[1] + end.lastRow[3]))} px above the pane's edge, wanted the page's 12 px inset`);
     // A new page starts at the top, as the mock's does (a page opened from a scrolled one is not left where the last one was).
-    await goToPage(page, 'developer');
+    await goToPage(page, 'editor');
     await sleep(150);
     const next = await read();
-    check(next.top === 0, where, 'page.scroll.reset', `Developer Settings opened scrolled ${next.top} px down (the page before was scrolled ${end.top}): a page starts at the top`);
-    check(near(next.heading[1], next.content[1] + 16, 1.01), where, 'page.scroll.reset', `Developer Settings' heading is at ${next.heading[1]}, wanted ${round(next.content[1] + 16)}: the page's top is out of sight`);
+    check(next.top === 0, where, 'page.scroll.reset', `Editor opened scrolled ${next.top} px down (the page before was scrolled ${end.top}): a page starts at the top`);
+    check(near(next.heading[1], next.content[1] + 12, 1.01), where, 'page.scroll.reset', `Editor heading starts at ${next.heading[1]}, wanted ${round(next.content[1] + 12)}`);
     // A page that fits has nothing to scroll.
-    await goToPage(page, 'appearance');
+    await goToPage(page, 'general');
     await sleep(120);
     const short = await read();
-    check(short.scrollHeight <= short.clientHeight, where, 'page.scroll.fits', `Appearance scrolls at the default viewport (${short.scrollHeight} in ${short.clientHeight})`);
+    check(short.scrollHeight <= short.clientHeight, where, 'page.scroll.fits', `General scrolls at the default viewport (${short.scrollHeight} in ${short.clientHeight})`);
   } finally {
     await context.close();
   }
@@ -332,7 +370,8 @@ const READ_STATE = () => {
     return `${s.fontSize}/${s.lineHeight} ${s.fontWeight} ${s.color}`;
   };
   const state = document.querySelector('[data-settings-state]');
-  const body = document.querySelector('dialog [data-ov-part="body"]') ?? document.querySelector('[data-settings-part="window"]');
+  const pane = state?.closest('[data-settings-part="content"]');
+  const container = pane ?? document.querySelector('dialog [data-ov-part="body"]') ?? document.querySelector('[data-settings-part="window"]');
   const kids = state === null ? [] : [...state.children];
   const stops = [...document.querySelectorAll('dialog button, dialog input, dialog select, dialog [tabindex]')].filter((element) => element.getAttribute('tabindex') !== '-1').map((element) => element.getAttribute('aria-label') ?? element.textContent);
   return {
@@ -340,10 +379,12 @@ const READ_STATE = () => {
     role: state?.getAttribute('role') ?? null,
     text: state?.textContent ?? null,
     state: rect(state),
-    body: rect(body),
+    container: rect(container),
+    inPane: Boolean(pane),
     kids: kids.map((kid) => ({ tag: kid.tagName.toLowerCase(), rect: rect(kid), type: type(kid), text: kid.textContent })),
     stack: state === null ? null : (({ rowGap, alignItems, justifyContent, flexDirection, textAlign }) => ({ rowGap, alignItems, justifyContent, flexDirection, textAlign }))(getComputedStyle(state)),
     navs: document.querySelectorAll('[data-settings-part="nav"]').length,
+    pages: document.querySelectorAll('[data-settings-part="tree"] [data-settings-page]').length,
     rows: document.querySelectorAll('[data-settings-row]').length,
     retry: rect(document.querySelector('[data-settings-part="retry"]')),
     focus: document.activeElement?.getAttribute('data-settings-part') ?? document.activeElement?.getAttribute('aria-label') ?? document.activeElement?.tagName.toLowerCase() ?? null,
@@ -354,9 +395,9 @@ const READ_STATE = () => {
 async function statesPart(env) {
   const where = `${env.engine}@${env.viewportName}`;
   const centred = (r, id, what) => {
-    const cx = r.state[0] + r.state[2] / 2 - (r.body[0] + r.body[2] / 2);
-    const cy = r.state[1] + r.state[3] / 2 - (r.body[1] + r.body[3] / 2);
-    check(Math.abs(cx) <= 1.5 && Math.abs(cy) <= 1.5, where, id, `${what} is ${round(cx)} px and ${round(cy)} px off the centre of the sheet's body`);
+    const cx = r.state[0] + r.state[2] / 2 - (r.container[0] + r.container[2] / 2);
+    const cy = r.state[1] + r.state[3] / 2 - (r.container[1] + r.container[3] / 2);
+    check(Math.abs(cx) <= 1.5 && Math.abs(cy) <= 1.5, where, id, `${what} is ${round(cx)} px and ${round(cy)} px off the centre of ${r.inPane ? 'the content pane' : 'the sheet body'}`);
   };
   // Loading: the host has not answered. One line, a status, nothing to change but Close.
   {
@@ -427,8 +468,9 @@ async function statesPart(env) {
       await plant(env, page);
       await sleep(150);
       const r = await page.evaluate(READ_STATE);
-      check(r.role === null && /no settings/i.test(r.text ?? ''), where, 'page.states.empty', `nothing to show is a ${r.role} saying ${JSON.stringify(r.text)}, wanted a plain line that says the host has no settings`);
-      check(r.navs === 0 && r.rows === 0, where, 'page.states.empty', `${r.navs} navigations and ${r.rows} rows for a host with no settings`);
+      check(r.role === 'status' && /no settings/i.test(r.text ?? ''), where, 'page.states.empty', `nothing to show is a ${r.role} saying ${JSON.stringify(r.text)}, wanted a status that says the host has no settings`);
+      check(r.inPane && r.navs === 1 && r.pages === 0 && r.rows === 0, where, 'page.states.empty', `an empty inventory must keep the sidebar without inventing pages or fields; found ${r.navs} navigations, ${r.pages} pages and ${r.rows} fields`);
+      check(JSON.stringify(r.stops) === JSON.stringify(['Close', 'Search settings', 'Core']), where, 'page.states.empty', `empty Settings has Tab stops ${JSON.stringify(r.stops)}, wanted Close, search and the tree`);
       centred(r, 'page.states.empty', 'the empty line');
     } finally {
       await context.close();
@@ -450,19 +492,30 @@ const READ_TOKENS = () => {
     return getComputedStyle(probe)[property];
   };
   const q = (selector) => document.querySelector(selector);
-  const selected = getComputedStyle(q('[data-settings-part="nav"] [aria-current="page"]'));
-  const group = getComputedStyle(q('[data-settings-part="nav"] > [aria-hidden="true"]'));
+  const selected = getComputedStyle(q('[data-settings-part="tree"] [data-settings-page][aria-current="page"]'));
+  const group = getComputedStyle(q('[data-settings-branch="core"] [data-settings-part="tree-label"]'));
   const title = getComputedStyle(q('[data-settings-part="page"] > header > :first-child'));
   const subtitle = getComputedStyle(q('[data-settings-part="page"] > header > p'));
   const rows = [...document.querySelectorAll('[data-settings-row]')];
   const frame = getComputedStyle(q('dialog [data-ov-part="frame"]') ?? q('[data-settings-part="window"]'));
+  const caption = getComputedStyle(q('dialog [data-ov-part="header"]') ?? q('[data-settings-part="caption"]'));
+  const nav = getComputedStyle(q('[data-settings-part="nav"]'));
+  const content = getComputedStyle(q('[data-settings-part="content"]'));
+  const chrome = resolve('background-color', 'var(--ov-surface-chrome)');
+  const clear = resolve('background-color', 'transparent');
   const result = {
     selectedFill: [selected.backgroundColor, resolve('background-color', 'var(--ov-selection-inactive)')],
     title: [title.color, resolve('color', 'var(--ov-fg)')],
     subtitle: [subtitle.color, resolve('color', 'var(--ov-fg-muted)')],
     group: [group.color, resolve('color', 'var(--ov-fg)')],
     separator: [rows[1] === undefined ? 'none' : getComputedStyle(rows[1]).boxShadow.replace(/^(.*?\)).*$/, '$1'), resolve('color', 'var(--ov-border-subtle)')],
-    frame: [frame.backgroundColor, resolve('background-color', 'var(--ov-bg-dialog)')],
+    frame: [frame.backgroundColor, resolve('background-color', 'var(--ov-surface-sheet)')],
+    caption: [caption.backgroundColor, chrome],
+    navGutter: [nav.boxShadow.includes(chrome), true],
+    contentGutter: [content.boxShadow.includes(chrome), true],
+    // Each pane sees the one sheet fill; a second translucent layer makes the opacity control inaccurate.
+    navSurface: [nav.backgroundColor, clear],
+    contentSurface: [content.backgroundColor, clear],
   };
   probe.remove();
   return result;

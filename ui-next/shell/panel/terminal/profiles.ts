@@ -154,7 +154,9 @@ export function appShellList(): ShellList {
       let left = false;
       void import('../../settings/runtime').then(({ runtimeClient }) => {
         if (!left) {
-          stop = runtimeClient().onChanged(listener);
+          stop = runtimeClient().onChanged((scope) => {
+            if (scope.kind === 'host') listener();
+          });
           // The host does not replay a change made before this listener was registered: ask again now that it is.
           listener();
         }

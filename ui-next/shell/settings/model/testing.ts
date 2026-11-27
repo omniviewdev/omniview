@@ -1,5 +1,5 @@
 import type { SettingsSession } from './session';
-import type { HostCategory, HostCommit, HostOption, HostSetting, HostSettingType, HostSnapshot, HostValidation, SettingsClient, SettingsRequest, SettingsWindowClient } from './types';
+import { HOST_SCOPE, type HostCategory, type HostCommit, type HostOption, type HostSetting, type HostSettingType, type HostSnapshot, type HostValidation, type SettingsClient, type SettingsPlugin, type SettingsRequest, type SettingsScope, type SettingsWindowClient } from './types';
 
 // Test support only: nothing in the model imports this file. A host snapshot built as plain data, with the host's own categories as the Go side declares them today (`internal/settings/{general,appearance,terminal,
 // editor,developer,telemetry}.go`: ids, types, labels, descriptions, options and defaults), and a client that answers from memory, the way the host's settings service does (`backend/pkg/settings/service.go`).
@@ -158,6 +158,10 @@ export type FakeHost = {
   /** What the host holds now, by the id a commit takes (a secret's value is here and nowhere a snapshot reaches). */
   readonly values: Map<string, unknown>;
   readonly calls: { snapshot: number; readonly validate: Array<readonly [string, unknown]>; readonly commit: Array<Readonly<Record<string, unknown>>> };
+  readonly pluginCalls: { inventory: number; readonly snapshot: string[]; readonly validate: Array<readonly [string, string, unknown]>; readonly commit: Array<readonly [string, Readonly<Record<string, unknown>>]> };
+  readonly plugin: (plugin: SettingsPlugin, settings: readonly HostSetting[]) => void;
+  readonly removePlugin: (id: string) => void;
+  readonly inventoryListeners: () => number;
   /** Someone else changes a setting (another window, an agent): the host says so to every listener. */
   readonly change: (id: string, value: unknown) => void;
   /** The listeners that are registered now. */
@@ -175,7 +179,10 @@ export type FakeHost = {
 export function fakeHost(initial: Readonly<Record<string, unknown>> = {}, stored: Readonly<Record<string, boolean>> = {}): FakeHost {
   const values = new Map<string, unknown>(Object.entries(initial));
   const secrets = new Map<string, boolean>(Object.entries(stored));
-  const listeners = new Set<() => void>();
+  const listeners = new Set<(scope: SettingsScope) => void>();
+  const inventoryListeners = new Set<() => void>();
+  const installed = new Map<string, { plugin: SettingsPlugin; schema: HostCategory; values: Map<string, unknown> }>();
+  const pluginCalls: FakeHost['pluginCalls'] = { inventory: 0, snapshot: [], validate: [], commit: [] };
   const reconnects = new Set<() => void>();
   const pendingRestart = new Set<string>();
   const calls: FakeHost['calls'] = { snapshot: 0, validate: [], commit: [] };
@@ -193,20 +200,60 @@ export function fakeHost(initial: Readonly<Record<string, unknown>> = {}, stored
     return base;
   };
 
+  const pluginSnapshot = (id: string): HostSnapshot => {
+    const entry = installed.get(id);
+    if (!entry) throw new Error('Plugin unavailable.');
+    const settings = Object.fromEntries(Object.entries(entry.schema.settings).map(([key, one]) => {
+      if (!one) return [key, undefined];
+      const value = entry.values.has(key) ? entry.values.get(key) : one.value;
+      const pendingRestart = one.pendingRestart || (one.requiresRestart === true && !Object.is(value, one.value));
+      return [key, one.sensitive || one.type === 'password'
+        ? { ...one, sensitive: true, value: '[REDACTED]', default: '[REDACTED]', options: [], fileSelection: null, pendingRestart }
+        : { ...one, value, pendingRestart }];
+    }));
+    return { categories: { plugin: { ...entry.schema, settings } } };
+  };
+
   const client: SettingsClient = {
-    snapshot: async () => {
+    inventory: async () => {
+      pluginCalls.inventory++;
+      return [...installed.values()].map((entry) => entry.plugin);
+    },
+    onInventoryChanged: (listener) => {
+      inventoryListeners.add(listener);
+      return () => { inventoryListeners.delete(listener); };
+    },
+    snapshot: async (scope) => {
+      if (scope.kind === 'plugin') {
+        pluginCalls.snapshot.push(scope.pluginId);
+        return pluginSnapshot(scope.pluginId);
+      }
       calls.snapshot += 1;
       const answer = next.snapshot;
       next.snapshot = undefined;
       return answer === undefined ? snapshot() : answer();
     },
-    validate: async (id, value) => {
+    validate: async (scope, id, value) => {
+      if (scope.kind === 'plugin') {
+        pluginCalls.validate.push([scope.pluginId, id, value]);
+        return { valid: Object.hasOwn(installed.get(scope.pluginId)?.schema.settings ?? {}, id) };
+      }
       calls.validate.push([id, value]);
       const answer = next.validate;
       next.validate = undefined;
       return answer === undefined ? { valid: true } : answer(id, value);
     },
-    commit: async (given) => {
+    commit: async (scope, given) => {
+      if (scope.kind === 'plugin') {
+        pluginCalls.commit.push([scope.pluginId, { ...given }]);
+        const entry = installed.get(scope.pluginId);
+        if (!entry || Object.keys(given).some((key) => !Object.hasOwn(entry.schema.settings, key))) {
+          throw new Error('Unknown plugin setting.');
+        }
+        for (const [key, value] of Object.entries(given)) entry.values.set(key, value);
+        for (const listener of listeners) listener(scope);
+        return { snapshot: pluginSnapshot(scope.pluginId), applied: true, uncertain: false, message: '' };
+      }
       calls.commit.push({ ...given });
       const answer = next.commit;
       next.commit = undefined;
@@ -227,7 +274,7 @@ export function fakeHost(initial: Readonly<Record<string, unknown>> = {}, stored
       }
 
       for (const listener of [...listeners]) {
-        listener();
+        listener(HOST_SCOPE);
       }
 
       return { snapshot: snapshot(), applied: true, uncertain: false, message: '' };
@@ -250,10 +297,20 @@ export function fakeHost(initial: Readonly<Record<string, unknown>> = {}, stored
     client,
     values,
     calls,
+    pluginCalls,
+    plugin: (plugin, settings) => {
+      installed.set(plugin.id, { plugin, schema: category('plugin', 'Plugin', '', '', settings), values: installed.get(plugin.id)?.values ?? new Map() });
+      for (const listener of inventoryListeners) listener();
+    },
+    removePlugin: (id) => {
+      installed.delete(id);
+      for (const listener of inventoryListeners) listener();
+    },
+    inventoryListeners: () => inventoryListeners.size,
     change: (id, value) => {
       values.set(id, value);
       for (const listener of [...listeners]) {
-        listener();
+        listener(HOST_SCOPE);
       }
     },
     listeners: () => listeners.size,
@@ -270,6 +327,7 @@ export function fakeHost(initial: Readonly<Record<string, unknown>> = {}, stored
 
 /** A session that does nothing and can be disposed: what a test of the control (which only makes and disposes one) holds. */
 export function fakeSession(dispose: () => void = () => undefined): SettingsSession {
+  const empty = { phase: 'ready' as const, entries: [] };
   return {
     getState: () => ({ phase: 'loading' }),
     subscribe: () => () => undefined,
@@ -278,6 +336,7 @@ export function fakeSession(dispose: () => void = () => undefined): SettingsSess
     resetMaterial: async () => false,
     elsewhere: { getSnapshot: () => ({}), subscribe: () => () => undefined },
     announcements: { getSnapshot: () => ({ text: '', serial: 0 }), subscribe: () => () => undefined },
+    plugins: { getSnapshot: () => empty, subscribe: () => () => undefined, refresh: () => undefined },
     dispose,
   };
 }

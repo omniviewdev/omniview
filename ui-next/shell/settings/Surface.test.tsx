@@ -1,10 +1,11 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { deferred, SENTINEL } from '../core/fields/testing';
-import { hostSnapshot } from './model/testing';
-import type { HostSnapshot } from './model/types';
+import { hostSnapshot, setting } from './model/testing';
+import type { HostSnapshot, SettingsPlugin } from './model/types';
 import { mount, settle, teardown, type Mounted } from './testing';
 import { Body } from './view/Body';
+import { Surface } from './view/Surface';
 import * as words from './view/words';
 
 // The Settings sheet over the real session, the real form model and the real kit parts, with a host that answers from memory. These tests read what a person reads: which pages there are, which control each setting has, what a
@@ -17,10 +18,12 @@ vi.mock('./view/words', async (importOriginal) => {
 
 afterEach(teardown);
 
-const pageButtons = (): string[] => within(screen.getByRole('navigation', { name: 'Settings pages' })).getAllByRole('button').map((button) => button.textContent ?? '');
+const treeItem = (name: string) => screen.getByRole('treeitem', { name });
+const pageItems = () => within(screen.getByRole('tree', { name: 'Settings pages' })).getAllByRole('treeitem').filter(item => item.hasAttribute('data-settings-page'));
+const search = () => screen.getByRole('searchbox', { name: 'Search settings' });
 
 async function goTo(m: Mounted, title: string): Promise<void> {
-  await m.user.click(within(screen.getByRole('navigation', { name: 'Settings pages' })).getByRole('button', { name: title }));
+  await m.user.click(treeItem(title));
 }
 
 describe('the sheet', () => {
@@ -47,49 +50,78 @@ describe('the sheet', () => {
 });
 
 describe('the pages, by the keyboard', () => {
-  it('follow the focus: an arrow moves to a page and shows it, and Home and End do the same', async () => {
+  it('follows focus on pages and uses the tree keys to cross, close and reopen branches', async () => {
     const m = await mount();
-    expect(screen.getByRole('button', { name: 'Appearance' })).toHaveFocus();
+    expect(treeItem('Appearance')).toHaveFocus();
     await m.user.keyboard('{ArrowDown}');
-    expect(screen.getByRole('button', { name: 'General' })).toHaveFocus();
-    expect(screen.getByRole('button', { name: 'General' })).toHaveAttribute('aria-current', 'page');
+    expect(treeItem('General')).toHaveFocus();
+    expect(treeItem('General')).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('region', { name: 'General' })).toBeInTheDocument();
-    await m.user.keyboard('{End}');
-    expect(screen.getByRole('region', { name: 'Developer Settings' })).toBeInTheDocument();
-    await m.user.keyboard('{Home}');
+    await m.user.keyboard('{ArrowLeft}{ArrowLeft}');
+    expect(treeItem('Core')).toHaveFocus();
+    expect(treeItem('Core')).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('treeitem', { name: 'General' })).toBeNull();
+    expect(screen.getByRole('region', { name: 'General' })).toBeInTheDocument();
+    await m.user.keyboard('{ArrowDown}{Enter}');
+    expect(treeItem('Plugins')).toHaveFocus();
+    expect(treeItem('Plugins')).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('No plugin settings available.')).toBeNull();
+    await m.user.keyboard('{Home}{ArrowRight}{ArrowRight}');
+    expect(treeItem('Appearance')).toHaveFocus();
     expect(screen.getByRole('region', { name: 'Appearance' })).toBeInTheDocument();
     expect(m.page.last()).toBe('appearance');
+    await m.user.keyboard('{End}');
+    expect(treeItem('Plugins')).toHaveFocus();
+    await m.user.keyboard(' ');
+    expect(screen.getByText('No plugin settings available.')).toBeInTheDocument();
+    expect(screen.getAllByRole('treeitem').filter(item => item.tabIndex === 0)).toEqual([treeItem('Plugins')]);
   });
 });
 
 describe('the pages', () => {
-  it('are the host\'s categories in the design\'s order, as one named navigation of buttons, the first on screen', async () => {
+  it('lists the host’s categories in the design order, with the first page on screen', async () => {
     await mount();
-    expect(pageButtons()).toEqual(['Appearance', 'General', 'Editor', 'Terminal', 'Telemetry', 'Developer Settings']);
-    expect(screen.getByRole('button', { name: 'Appearance' })).toHaveAttribute('aria-current', 'page');
+    expect(pageItems().map(item => item.textContent)).toEqual(['Appearance', 'General', 'Editor', 'Terminal', 'Telemetry', 'Developer Settings']);
+    expect(treeItem('Appearance')).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('region', { name: 'Appearance' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 3, name: 'Appearance' })).toBeInTheDocument();
-    expect(screen.getAllByRole('heading', { level: 4 }).map((heading) => heading.textContent)).toEqual(['Window material', 'Surface opacity', 'Interface']);
-    expect(screen.queryByText('Customize the look and feel of the application')).toBeNull();
+    expect(screen.getAllByRole('heading', { level: 4 }).map((heading) => heading.textContent)).toEqual(['Colors', 'Layout and text', 'Window material', 'Surface opacity']);
+    expect(screen.getByText('Customize the look and feel of the application')).toBeInTheDocument();
     expect(screen.queryByText(/Only backgrounds change|Active (here|in this window)/i)).toBeNull();
   });
 
   it('draw the glyph the host names for each category, now that the kit has all six, in a column of their own', async () => {
     await mount();
-    const buttons = within(screen.getByRole('navigation', { name: 'Settings pages' })).getAllByRole('button');
-    expect(buttons.map((button) => button.querySelector('svg')?.getAttribute('data-ov-glyph'))).toEqual(['paintbrush', 'settings-2', 'code', 'square-terminal', 'activity', 'beaker']);
-    expect(buttons.map((button) => button.querySelectorAll('svg').length)).toEqual([1, 1, 1, 1, 1, 1]);
+    expect(pageItems().map(item => item.querySelector('svg')?.getAttribute('data-ov-glyph'))).toEqual(['paintbrush', 'settings-2', 'code', 'square-terminal', 'activity', 'beaker']);
+    expect(pageItems().map(item => item.querySelectorAll('svg').length)).toEqual([1, 1, 1, 1, 1, 1]);
+    expect(treeItem('Core').querySelector('[data-ov-glyph="settings"]')).not.toBeNull();
+    expect(treeItem('Plugins').querySelector('[data-ov-glyph="puzzle"]')).not.toBeNull();
+    expect(treeItem('Plugins')).toHaveAttribute('aria-level', '1');
+    expect(treeItem('Terminal')).toHaveAttribute('aria-level', '2');
   });
 
   it('put the keyboard on the page that is on screen when the sheet is ready', async () => {
     await mount();
-    expect(screen.getByRole('button', { name: 'Appearance' })).toHaveFocus();
+    expect(treeItem('Appearance')).toHaveFocus();
+  });
+
+  it('takes focus after a cached session opens its native dialog', async () => {
+    const m = await mount({ page: 'editor' });
+    m.unmount();
+    vi.spyOn(HTMLDialogElement.prototype, 'showModal').mockImplementation(function (this: HTMLDialogElement) {
+      this.open = true;
+      this.querySelector<HTMLButtonElement>('button')?.focus();
+    });
+    render(<Surface session={m.session} page={m.page} onClose={m.onClose} />);
+    expect(treeItem('Editor')).toHaveFocus();
+    await m.user.keyboard('{ArrowDown}');
+    expect(treeItem('Terminal')).toHaveFocus();
   });
 
   it('change by pressing one, show that page and remember it for the next opening', async () => {
     const m = await mount();
     await goTo(m, 'Terminal');
-    expect(screen.getByRole('button', { name: 'Terminal' })).toHaveAttribute('aria-current', 'page');
+    expect(treeItem('Terminal')).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('region', { name: 'Terminal' })).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Appearance' })).toBeNull();
     expect(m.page.last()).toBe('terminal');
@@ -98,18 +130,145 @@ describe('the pages', () => {
   it('start on the page that was left, when it is still there', async () => {
     await mount({ page: 'editor' });
     expect(screen.getByRole('region', { name: 'Editor' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Editor' })).toHaveAttribute('aria-current', 'page');
+    expect(treeItem('Editor')).toHaveAttribute('aria-current', 'page');
   });
 
-  it('do not offer a setting the sheet has no part for, nor a page left empty by that', async () => {
+  it('draws Appearance in design order and never offers a free-form theme ID', async () => {
     await mount();
-    // Theme is a picker, not a text field. Its absence does not hide the host's material and interface settings.
+    expect(screen.getByRole('radiogroup', { name: 'Theme' })).toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: 'Theme' })).toBeNull();
     const rows = document.querySelectorAll('[data-settings-row]');
     expect([...rows].map((row) => row.getAttribute('data-settings-row'))).toEqual([
+      'appearance.theme', 'appearance.density', 'appearance.textSize', 'appearance.motion',
       'appearance.windowMaterial', 'appearance.glassStyle', 'appearance.chromeOpacity', 'appearance.contentOpacity', 'appearance.menuOpacity', 'appearance.sheetOpacity',
-      'appearance.density', 'appearance.textSize', 'appearance.motion',
     ]);
+  });
+});
+
+describe('searching settings', () => {
+  it('disambiguates equal setting titles by page and goes directly to the chosen control', async () => {
+    const m = await mount();
+    await m.user.click(treeItem('Core'));
+    await m.user.type(search(), '  fOnT sIzE  ');
+    const results = within(screen.getByRole('group', { name: 'Search results' })).getAllByRole('button');
+    expect(results).toHaveLength(2);
+    expect(results[0]).toHaveAccessibleName(/Font Size.*Editor/);
+    expect(results[1]).toHaveAccessibleName(/Font Size.*Terminal/);
+    await m.user.keyboard('{ArrowDown}{ArrowDown}');
+    expect(results[1]).toHaveFocus();
+    expect(screen.getByRole('region', { name: 'Appearance' })).toBeInTheDocument();
+    await m.user.keyboard('{Enter}');
+    expect(search()).toHaveValue('');
+    expect(treeItem('Core')).toHaveAttribute('aria-expanded', 'true');
+    expect(treeItem('Terminal')).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('spinbutton', { name: 'Font Size' })).toHaveFocus();
+    expect(m.page.last()).toBe('terminal');
+    expect(m.host.calls.commit).toEqual([]);
+  });
+
+  it('searches page names, skips omitted settings and values, and clears without closing the sheet', async () => {
+    const m = await mount();
+    await m.user.type(search(), 'Native Terminal Application');
+    expect(screen.getByText('No matching settings.')).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Search results' })).toBeNull();
+    await m.user.keyboard('{Escape}');
+    expect(search()).toHaveValue('');
+    expect(search()).toHaveFocus();
+    expect(m.onClose).not.toHaveBeenCalled();
+    await m.user.type(search(), '/bin/zsh');
+    expect(screen.getByText('No matching settings.')).toBeInTheDocument();
+    await m.user.click(screen.getByRole('button', { name: 'Clear search' }));
+    await m.user.type(search(), 'termiNaL{Enter}');
+    expect(treeItem('Terminal')).toHaveFocus();
+    expect(treeItem('Terminal')).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('can choose the same setting twice on the current page, including a compound control', async () => {
+    const m = await mount();
+    for (let visit = 0; visit < 2; visit += 1) {
+      await m.user.type(search(), 'UI Density{Enter}');
+      expect(screen.getByRole('radio', { name: 'Comfortable' })).toHaveFocus();
+      expect(search()).toHaveValue('');
+    }
+
+    expect(m.host.calls.commit).toEqual([]);
+  });
+
+  it('opens installed plugins with drawable settings, keeps opaque IDs scoped, and drops removed pages', async () => {
+    const field = setting('cursor.["blink"]', 'toggle', 'Cursor Blink', 'Blink the cursor.', false);
+    const m = await mount({
+      prepare: host => {
+        host.plugin({ id: 'example', name: 'Example', description: 'Example preferences.', icon: 'LuCode' }, [field]);
+        host.plugin({ id: 'empty', name: 'Empty plugin', description: '', icon: '' }, []);
+      },
+    });
+    expect(treeItem('Example')).toHaveAttribute('aria-level', '2');
+    expect(screen.queryByRole('treeitem', { name: 'Empty plugin' })).toBeNull();
+    await m.user.click(treeItem('Plugins'));
+    await m.user.type(search(), 'Cursor Blink');
+    const group = within(screen.getByRole('group', { name: 'Search results' }));
+    expect(group.getAllByRole('button')).toHaveLength(2);
+    await m.user.click(group.getByRole('button', { name: /Cursor Blink.*Plugins.*Example/ }));
+    const toggle = screen.getByRole('switch', { name: 'Cursor Blink' });
+    expect(toggle).toHaveFocus();
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+    expect(treeItem('Plugins')).toHaveAttribute('aria-expanded', 'true');
+    expect(m.page.last()).toBe('plugin/example');
+    await m.user.click(toggle);
+    await settle(m.clock);
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+    expect(m.host.calls.commit).toEqual([]);
+    expect(m.host.pluginCalls.commit).toEqual([['example', { [field.id]: true }]]);
+    await m.user.click(treeItem('Core'));
+    expect(treeItem('Core')).toHaveAttribute('aria-expanded', 'false');
+    act(() => {
+      m.host.removePlugin('example');
+    });
+    await settle(m.clock);
+    expect(screen.queryByRole('treeitem', { name: 'Example' })).toBeNull();
+    expect(treeItem('Appearance')).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByText('No plugin settings available.')).toBeInTheDocument();
+  });
+
+  it('preserves a requested plugin page until discovery finishes', async () => {
+    const plugin = { id: 'example', name: 'Example', description: '', icon: 'LuCode' };
+    const inventory = deferred<readonly SettingsPlugin[]>();
+    const m = await mount({
+      page: 'plugin/example',
+      prepare: host => {
+        host.plugin(plugin, [setting('enabled', 'toggle', 'Enabled', '', true)]);
+        vi.spyOn(host.client, 'inventory').mockReturnValueOnce(inventory.promise);
+      },
+    });
+    expect(m.page.last()).toBe('plugin/example');
+    expect(screen.getByText('Loading plugin settings…')).toBeInTheDocument();
+    inventory.resolve([plugin]);
+    await settle(m.clock);
+    expect(treeItem('Example')).toHaveFocus();
+    expect(screen.getByRole('switch', { name: 'Enabled' })).toBeInTheDocument();
+  });
+
+  it('keeps Core usable when plugin discovery fails and retries without switching pages', async () => {
+    const m = await mount({
+      prepare: host => {
+        vi.spyOn(host.client, 'inventory').mockRejectedValueOnce(new Error('offline'));
+      },
+    });
+    expect(treeItem('Appearance')).toHaveAttribute('aria-current', 'page');
+    await m.user.click(treeItem('Couldn’t list plugins. Retry'));
+    await settle(m.clock);
+    expect(treeItem('Plugins')).toHaveFocus();
+    expect(screen.getByText('No plugin settings available.')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Appearance' })).toBeInTheDocument();
+  });
+
+  it('offers no page for an empty host, but keeps the sidebar and both explanations accessible', async () => {
+    await mount({ first: async () => ({ categories: {} }) });
+    expect(pageItems()).toEqual([]);
+    expect(screen.getByText('The host has no settings to show.')).toBeInTheDocument();
+    expect(screen.getByText('No core settings available.')).toBeInTheDocument();
+    expect(screen.getByText('No plugin settings available.')).toBeInTheDocument();
+    expect(search()).toHaveAttribute('data-settings-part', 'search');
   });
 });
 
@@ -122,6 +281,39 @@ describe('each setting has the control its kind asks for', () => {
     expect(within(screen.getByRole('combobox', { name: 'Cursor Style' })).getAllByRole('option').map((option) => option.textContent)).toEqual(['Block', 'Underline', 'Bar']);
     expect(screen.getByRole('spinbutton', { name: 'Font Size' })).toHaveValue('12');
     expect(screen.getByRole('textbox', { name: 'Default Shell' })).toHaveValue('/bin/zsh');
+  });
+
+  it('edits, appends and removes plugin paths as ordered arrays without committing keystrokes', async () => {
+    const original = ['/etc/kube,config', '/work/my cluster/config'];
+    const paths = setting('config.paths', 'text', 'Kubeconfig Paths', 'The kubeconfigs to load.', original, {
+      fileSelection: { enabled: true, multiple: true, allowFolders: false, relative: false },
+    });
+    const m = await mount({ prepare: host => host.plugin({ id: 'kubernetes', name: 'Kubernetes', description: '', icon: '' }, [paths]) });
+    await m.user.type(search(), 'Kubeconfig Paths{Enter}');
+    const list = within(screen.getByRole('group', { name: 'Kubeconfig Paths' }));
+    const first = list.getByRole('textbox', { name: 'Kubeconfig Paths' });
+    const add = list.getByRole('textbox', { name: 'Add a path to Kubeconfig Paths' });
+    expect(first).toHaveFocus();
+    expect(first).toHaveValue(original[0]);
+    expect(list.getByRole('textbox', { name: 'Kubeconfig Paths, path 2' })).toHaveValue(original[1]);
+    await m.user.clear(first);
+    await m.user.type(first, '/tmp/reverted{Escape}');
+    expect(first).toHaveValue(original[0]);
+    await m.user.clear(first);
+    await m.user.type(first, '/etc/updated');
+    expect(m.host.pluginCalls.validate).toEqual([]);
+    expect(m.host.pluginCalls.commit).toEqual([]);
+    await m.user.tab();
+    await settle(m.clock);
+    await m.user.type(add, '/tmp/external{Enter}');
+    await settle(m.clock);
+    await m.user.click(list.getByRole('button', { name: 'Remove path 2 from Kubeconfig Paths' }));
+    await settle(m.clock);
+    expect(add).toHaveFocus();
+    const edits = [['/etc/updated', original[1]], ['/etc/updated', original[1], '/tmp/external'], ['/etc/updated', '/tmp/external']];
+    expect(m.host.pluginCalls.validate).toEqual(edits.map(value => ['kubernetes', paths.id, value]));
+    expect(m.host.pluginCalls.commit).toEqual(edits.map(value => ['kubernetes', { [paths.id]: value }]));
+    expect(m.host.calls.commit).toEqual([]);
   });
 
   it('says what the host says of each: the description is the control\'s description', async () => {
@@ -184,7 +376,7 @@ describe('a change', () => {
 
   it('applies a choice at once and never asks the host about it first', async () => {
     const m = await mount();
-    await m.user.selectOptions(screen.getByRole('combobox', { name: 'UI Density' }), 'compact');
+    await m.user.click(screen.getByRole('radio', { name: 'Compact' }));
     await settle(m.clock);
     expect(m.host.calls.validate).toEqual([]);
     expect(m.host.calls.commit).toEqual([{ 'appearance.density': 'compact' }]);
@@ -328,7 +520,7 @@ describe('a sheet that cannot load', () => {
     expect(screen.getByRole('button', { name: 'Retry' })).toHaveFocus();
     await m.user.click(screen.getByRole('button', { name: 'Retry' }));
     await settle(m.clock);
-    expect(screen.getByRole('button', { name: 'Appearance' })).toBeInTheDocument();
+    expect(treeItem('Appearance')).toBeInTheDocument();
     expect(m.host.calls.snapshot).toBe(2);
   });
 });
@@ -413,7 +605,7 @@ describe('a secret typed while the other window changes it', () => {
     act(() => {
       state.form.setValue('telemetry.auth_value', SENTINEL);
     });
-    await m.host.client.commit({ 'telemetry.auth_value': '' });
+    await m.host.client.commit({ kind: 'host' }, { 'telemetry.auth_value': '' });
     m.host.change('telemetry.auth_value', '');
     await settle(m.clock);
     expect(screen.getByText(/Changed elsewhere\. Escape takes it\./)).toBeInTheDocument();
