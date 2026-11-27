@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"maps"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strconv"
@@ -54,8 +55,7 @@ func environmentOf(probe shellenv.ProbeResult) Environment {
 // the host was launched from, which is not this one (hostPrivate). What is added is what a terminal emulator
 // tells its programs about itself, as VS Code and JetBrains do: TERM and COLORTERM for the emulator's
 // capabilities, TERM_PROGRAM and TERM_PROGRAM_VERSION so that a shell can tell it runs in Omniview (VS Code
-// sets TERM_PROGRAM=vscode, which its shell integration tests for), PWD, the directory the shell starts in
-// as it was given and not as a symlink resolves it, and a UTF-8 locale when the user has set none. A locale
+// sets TERM_PROGRAM=vscode, which its shell integration tests for), PWD (workingDirectory), and a UTF-8 locale when the user has set none. A locale
 // the user chose is theirs and stays.
 func terminalEnvironment(base []string, shellPath, dir, version string) []string {
 	own := ownEnvironment
@@ -73,7 +73,7 @@ func terminalEnvironment(base []string, shellPath, dir, version string) []string
 	}
 	environment = append(environment,
 		"SHELL="+shellPath,
-		"PWD="+dir,
+		"PWD="+workingDirectory(dir),
 		"TERM=xterm-256color",
 		"COLORTERM=truecolor",
 		"TERM_PROGRAM=Omniview",
@@ -225,4 +225,21 @@ func checkLaunchEnv(env map[string]string) error {
 		}
 	}
 	return nil
+}
+
+// workingDirectory is the PWD of a shell that starts in dir: dir as it was given, so that a path through a link keeps
+// the name the user typed, unless dir is not in its own cleaned form. A shell takes a PWD that names the directory it
+// is in as it is, and bash cleans a `..` in it logically, which names another directory when a link comes before it
+// (`/work/link/..` is the parent of what `link` points at and bash's `/work` is not); so a path with a `..` is
+// given as the directory the system leads it to, and any other uncleaned path in its cleaned form.
+func workingDirectory(dir string) string {
+	if filepath.Clean(dir) == dir {
+		return dir
+	}
+	if slices.Contains(strings.Split(dir, string(filepath.Separator)), "..") {
+		if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+			return resolved
+		}
+	}
+	return filepath.Clean(dir)
 }
