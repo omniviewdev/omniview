@@ -511,20 +511,25 @@ const WHERE_GROUP = 'terminal-where';
 // assertion is tried, and the assertion must fail with ITS words and no other. One run serves them all (SEAM_CONTROL=terminal-where); SEAM_CONTROL=<name> makes that one only; SEAM_REMOVE=<name> leaves that assertion out, and the fault must then pass undetected.
 const WHERE_CONTROLS = {
   'where-tab-name': /the tab of a shell chosen in the menu is named after it/,
-  'where-shell-zero': /the shell chosen in the menu says its own name in echo \$0 and to ps/,
+  'where-shell-ps': /the shell chosen in the menu says its own name to ps/,
+  'where-shell-zero': /the shell chosen in the menu says its own name in echo \$0/,
   'where-env-refused': /a refused env name is refused with the typed error that names launch\.env and shows no value/,
   'where-cwd': /a terminal started in \/tmp is in \/tmp/,
   'where-env': /an env entry of the launch is visible to the shell/,
   'where-here': /New terminal here starts a shell in the directory the terminal it was opened from is in/,
   'where-title-shown': /a program's title is on the tab while it runs/,
   'where-title-ended': /the tab says the shell's name again once the program has ended/,
-  'where-title-bound': /a title of 100,000 characters is bounded on the tab and has no control character/,
+  'where-title-bound': /a title of 100,000 characters shows its text on the tab/,
+  'where-title-length': /a title of 100,000 characters is at most 256 bytes on the tab/,
+  'where-title-control': /a title with a control character has none on the tab/,
   'where-rename': /a renamed tab shows the name the person gave it/,
   'where-rename-programs': /a renamed tab keeps its name while a program sets a title/,
   'where-rename-reload': /a renamed tab keeps its name after a reload/,
   'where-restart-transcript': /the ended terminal's transcript is kept above the restarted shell/,
+  'where-restart-command': /a restart asks the host for the shell the ended terminal ran/,
   'where-restart-id': /a restart is a new terminal in the same tab, under a different id/,
-  'where-restart-shell': /a restarted terminal runs the same shell/,
+  'where-restart-shell': /a restarted terminal runs the same shell by ps/,
+  'where-restart-zero': /a restarted terminal runs the same shell by \$0/,
   'where-restart-dir': /a restarted terminal starts in the directory the ended one started in/,
   'where-restart-env': /a restarted terminal has the environment the ended one was asked to start with/,
 };
@@ -11780,13 +11785,16 @@ async function checkTerminalOpenWhere(page, base, engine) {
       ],
     );
     await asserting(
-      'where-shell-zero',
+      'where-shell-ps',
       async () => doIt(id, 'ps() { echo fish; }'),
       async () => doIt(id, 'unset -f ps'),
-      async () => {
-        const said = await nameOf(id);
-        assert.deepEqual(said, { ps: name, zero: name }, `${engine}: the shell chosen in the menu says its own name in echo $0 and to ps (${name})`);
-      },
+      async () => assert.equal((await nameOf(id)).ps, name, `${engine}: the shell chosen in the menu says its own name to ps (${name})`),
+    );
+    await asserting(
+      'where-shell-zero',
+      async () => doIt(id, '__z=$0; if [ -n "$BASH_VERSION" ]; then BASH_ARGV0=fish; else 0=fish; fi'),
+      async () => doIt(id, 'if [ -n "$BASH_VERSION" ]; then BASH_ARGV0=$__z; else 0=$__z; fi; unset __z'),
+      async () => assert.equal((await nameOf(id)).zero, name, `${engine}: the shell chosen in the menu says its own name in echo $0 (${name})`),
     );
     named.push(`${name}: tab ${JSON.stringify(name)}, $0 and ps say ${name}`);
   }
@@ -11827,7 +11835,10 @@ async function checkTerminalOpenWhere(page, base, engine) {
   note('a refused env', refusals.map((one) => `${one.name} -> ${one.words}`).join('; '));
 
   // 3. A terminal started in /tmp with an env entry, chosen in the menu.
-  const subject = chosen.includes('zsh') ? 'zsh' : 'bash';
+  // The shell of the rest of the scenario is one the menu lists that is NOT the host's default: a page that ignored the choice (or a restart that dropped it) would start the default and be seen.
+  const subject = ['zsh', 'bash'].find((one) => shells.some((shell) => shell.name === one && shell.default !== true));
+  assert.ok(subject !== undefined, `${engine}: the host lists a shell that is not its default, for the menu's choice to be told from the default (it lists ${JSON.stringify(shells.map((shell) => `${shell.name}${shell.default === true ? ' (default)' : ''}`))}; run with SEAM_SHELL set to a shell the host lists second, or on a machine with two of bash and zsh)`);
+  const subjectPath = shells.find((shell) => shell.name === subject && shell.default !== true).path;
   const launched = { cwd: '/tmp', env: WHERE_ENV };
   const beforeTw1 = await ids();
   const stopTw1 = await addToNextCreate(page, launched);
@@ -11900,14 +11911,14 @@ async function checkTerminalOpenWhere(page, base, engine) {
       await typeLine(page, titled(WHERE_TITLE));
       await waitUntil('the host to say that a program runs', async () => isBusy(tw1Id), 20_000);
     },
-    ['where-title-shown', async () => assert.ok((await isBusy(tw1Id)) && (await tabIs(WHERE_TITLE)), `${engine}: a program's title is on the tab while it runs: the host says ${(await busyOf(base, tw1Id)).state} and the tab says ${JSON.stringify((await labels())[tw1Index])}`)],
+    ['where-title-shown', async () => assert.ok(await tabIs(WHERE_TITLE), `${engine}: a program's title is on the tab while it runs: the host says ${(await busyOf(base, tw1Id)).state} and the tab says ${JSON.stringify((await labels())[tw1Index])}`)],
   );
   await afterwards(
     async () => {
       await page.keyboard.press('Control+c');
       await waitUntil('the host to say that the shell is at its prompt', async () => isIdle(tw1Id), 20_000);
     },
-    ['where-title-ended', async () => assert.ok((await isIdle(tw1Id)) && (await tabIs(tw1Name)), `${engine}: the tab says the shell's name again once the program has ended: the host says ${(await busyOf(base, tw1Id)).state} and the tab says ${JSON.stringify((await labels())[tw1Index])}`)],
+    ['where-title-ended', async () => assert.ok(await tabIs(tw1Name), `${engine}: the tab says the shell's name again once the program has ended: the host says ${(await busyOf(base, tw1Id)).state} and the tab says ${JSON.stringify((await labels())[tw1Index])}`)],
   );
   note('a program title', `while a program ran the tab said ${JSON.stringify(WHERE_TITLE)}; after Control C it said ${JSON.stringify(subject)} again`);
   await afterwards(
@@ -11919,12 +11930,38 @@ async function checkTerminalOpenWhere(page, base, engine) {
     [
       'where-title-bound',
       async () => {
-        assert.ok(await isBusy(tw1Id), `${engine}: a title of 100,000 characters is bounded on the tab and has no control character: no program runs`);
         await holdsWithin(async () => ((await labels())[tw1Index] ?? '').startsWith('abcd'), 15_000);
         const label = (await labels())[tw1Index] ?? '';
-        assert.ok(label.startsWith('abcdxxxx') && label.length <= 256 && !/[\u0000-\u001f\u007f-\u009f]/.test(label), `${engine}: a title of 100,000 characters is bounded on the tab and has no control character: the tab says ${JSON.stringify(label.slice(0, 40))} (${String(label.length)} characters)`);
+        assert.ok(label.startsWith('abcdxxxx'), `${engine}: a title of 100,000 characters shows its text on the tab, with the control character gone: the tab says ${JSON.stringify(label.slice(0, 40))}`);
       },
     ],
+  );
+  const labelNow = async () => (await labels())[tw1Index] ?? '';
+  const tabLabelTo = (text) => async () => page.evaluate(([index, value]) => {
+    const tab = document.querySelectorAll('[data-shell-part="sessionTabs"] [role="tab"]')[index];
+    window.__seamLabel = tab.getAttribute('aria-label');
+    tab.setAttribute('aria-label', value ?? window.__seamLabel);
+  }, [tw1Index, text]);
+  const tabLabelBack = async () => page.evaluate((index) => {
+    document.querySelectorAll('[data-shell-part="sessionTabs"] [role="tab"]')[index].setAttribute('aria-label', window.__seamLabel);
+  }, tw1Index);
+  await asserting(
+    'where-title-length',
+    tabLabelTo(`abcd${'x'.repeat(300)}`),
+    tabLabelBack,
+    async () => {
+      const label = await labelNow();
+      assert.ok(new TextEncoder().encode(label).length <= 256, `${engine}: a title of 100,000 characters is at most 256 bytes on the tab: the tab says ${String(label.length)} characters`);
+    },
+  );
+  await asserting(
+    'where-title-control',
+    tabLabelTo('ab\u0001cd'),
+    tabLabelBack,
+    async () => {
+      const label = await labelNow();
+      assert.ok(!/[\u0000-\u001f\u007f-\u009f]/.test(label), `${engine}: a title with a control character has none on the tab: the tab says ${JSON.stringify(label.slice(0, 20))}`);
+    },
   );
   await page.keyboard.press('Control+c');
   await waitUntil('the host to say that the shell is at its prompt', async () => isIdle(tw1Id), 20_000);
@@ -12009,10 +12046,13 @@ async function checkTerminalOpenWhere(page, base, engine) {
       'where-restart-shell',
       async () => doIt(made.id, 'ps() { echo fish; }'),
       async () => doIt(made.id, 'unset -f ps'),
-      async () => {
-        const said = await nameOf(made.id);
-        assert.deepEqual(said, { ps: subject, zero: subject }, `${engine}: a restarted terminal runs the same shell (${subject})`);
-      },
+      async () => assert.equal((await nameOf(made.id)).ps, subject, `${engine}: a restarted terminal runs the same shell by ps (${subject})`),
+    );
+    await asserting(
+      'where-restart-zero',
+      async () => doIt(made.id, '__z=$0; if [ -n "$BASH_VERSION" ]; then BASH_ARGV0=fish; else 0=fish; fi'),
+      async () => doIt(made.id, 'if [ -n "$BASH_VERSION" ]; then BASH_ARGV0=$__z; else 0=$__z; fi; unset __z'),
+      async () => assert.equal((await nameOf(made.id)).zero, subject, `${engine}: a restarted terminal runs the same shell by $0 (${subject})`),
     );
     await asserting(
       'where-restart-dir',
@@ -12035,6 +12075,7 @@ async function checkTerminalOpenWhere(page, base, engine) {
   await say(tw1Id, `echo ${marker}`, /\nWHERE_BEFORE_RESTART\r?\n/, 'the shell to print what the transcript must keep');
   const labelBeforeRestart = (await labels())[tw1Index];
   await endIt(tw1Id);
+  const createsBefore = wire.of('CreateTerminal').length;
   let restartedOne;
   await afterwards(
     async () => {
@@ -12048,6 +12089,21 @@ async function checkTerminalOpenWhere(page, base, engine) {
         assert.ok(at.before >= 0 && at.line > at.before, `${engine}: the ended terminal's transcript is kept above the restarted shell: what the ended shell printed is at ${String(at.before)} and the restart's line at ${String(at.line)} of ${JSON.stringify(buffer.slice(-200))}`);
       },
     ],
+  );
+  await asserting(
+    'where-restart-command',
+    async () => {
+      // A create call made later that asks for another shell: the last call is not the restart's.
+      wire.calls.push({ method: 'CreateTerminal', args: [{ command: ['/bin/sh'] }, {}] });
+    },
+    async () => {
+      wire.calls.pop();
+    },
+    async () => {
+      const made = wire.of('CreateTerminal');
+      const asked = made.at(-1)?.args?.[0]?.command;
+      assert.ok(made.length === createsBefore + 1 && asked?.[0] === subjectPath, `${engine}: a restart asks the host for the shell the ended terminal ran: ${String(made.length - createsBefore)} create calls were made and the last asked for ${JSON.stringify(asked)}, not ${subjectPath}`);
+    },
   );
   await restartedFacts(tw1Id, restartedOne, labelBeforeRestart, false);
   note('Restart', `${subject}: the ended ${tw1Id} went, ${restartedOne.id} took its tab (${JSON.stringify(labelBeforeRestart)} before, ${JSON.stringify((await labels())[tw1Index])} after), started in ${TMP} (not /usr), says ${subject} to $0 and ps, and the transcript with ${marker} is above the restart line`);

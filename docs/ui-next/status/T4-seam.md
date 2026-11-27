@@ -65,3 +65,11 @@ Linux amd64, Go 1.27.4 toolchain, Node 26, bash 5.3 and zsh 5.9 of this machine 
 ## Backend catalog
 
 - Nothing for the SDK, a plugin or the host.
+
+## Review round (ReviewWhereSeam, FIX FIRST on a40f829bc)
+
+- The shell of r9 is now a listed shell that is NOT the host's default (`subject`), so a page that ignores the menu's choice, or a restart that drops it, starts the default and is seen. If the host lists no such shell the scenario FAILS with that sentence (it lists bash and zsh here; run with `SEAM_SHELL` set to a shell the host lists second, or on a machine with two). `where-restart-command` asserts that the restart's `CreateTerminal` asked for the ended shell's path (a decoy later create is its fault).
+- The title controls are on the tab side: `where-title-shown` and `where-title-ended` assert the tab only (the act already waited for the host's busy fact); `where-title-length` and `where-title-control` plant a 300-character and a control-character label on the tab.
+- `ps` and `$0` are separate assertions with a fault each (`ps()` redefined; `BASH_ARGV0` or `0` assigned): `where-shell-ps`, `where-shell-zero`, `where-restart-shell`, `where-restart-zero`.
+- The `SEAM_REMOVE` half proves little where an act has one assertion: removing it leaves nothing else to see the fault, so it passes by construction. It is a check on controls that share an act only.
+- CI runs r9 with bash only (the image has no zsh): there the host lists one shell and r9 fails at the non-default check, so the nightly needs a second listed shell or a default other than bash (NOT RUN for zsh there; not changed here).
