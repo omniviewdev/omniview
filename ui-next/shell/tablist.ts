@@ -110,7 +110,9 @@ export function useTablist({ ids, selected, onClose, onMove, onDragOut }: Tablis
       }
     });
     observer.observe(element);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+    };
   }, [hasScroller]);
 
   // A tab closed from the keyboard hands the focus to its neighbour, once the neighbour is there to take it.

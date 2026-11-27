@@ -207,7 +207,9 @@ describe('the tabs and the top row', () => {
       ],
     });
 
-    act(() => { screen.getByRole('tab', { name: 'Widgets' }).focus(); });
+    act(() => {
+      screen.getByRole('tab', { name: 'Widgets' }).focus();
+    });
     await user.tab();
     expect(screen.getByRole('button', { name: 'Region: West' })).toHaveFocus();
     await user.tab();

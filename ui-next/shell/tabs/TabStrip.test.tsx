@@ -628,7 +628,9 @@ describe('layout it cannot see', () => {
     vi.stubGlobal('ResizeObserver', class {
       observe = observe;
       disconnect = disconnect;
-      constructor(callback: () => void) { resized = callback; }
+      constructor(callback: () => void) {
+        resized = callback;
+      }
     });
     try {
       mount({ active: 2 });

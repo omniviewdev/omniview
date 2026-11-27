@@ -21,6 +21,7 @@ function ParentCrumb({ label, route, platform }: { readonly label: string; reado
     event.preventDefault();
     store.open({ route }, { how: dispositionOf(event, { platform }), source: 'crumb' });
   };
+
   return (
     <button type="button" className={styles.crumbLink} data-shell-focus="" tabIndex={0} onClick={open} onAuxClick={open}>
       {label}
