@@ -123,11 +123,14 @@ func TestEventsLaneTerminalsThatEndCannotEvictTheEndOfAChannelTerminal(t *testin
 // page that sleeps for that long instead of for the stall.
 func TestAChannelStreamsProgressKeepsTheMonotonicReadingOfTheClock(t *testing.T) {
 	c := newChannelConn(newFakeChannel(t), wallClock{})
+	before := time.Now()
 	c.progress()
+	after := time.Now()
 	guarded(t, "monotonic-progress", func() {
 		assert.Contains(t, c.lastProgress().String(), " m=", "the stamp of the last progress has the monotonic reading of the clock it was taken on")
 	})
-	assert.WithinDuration(t, time.Now(), c.lastProgress(), time.Minute, "and it is when the progress was")
+	assert.False(t, c.lastProgress().Before(before), "and it is when the progress was: not before the call that made it")
+	assert.False(t, c.lastProgress().After(after), "and not after it")
 }
 
 // The stall timer is armed for the deadline. The clock moves half of the stall while the timer is being registered, after the pump
