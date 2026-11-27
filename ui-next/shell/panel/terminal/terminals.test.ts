@@ -7,6 +7,7 @@ import { focusTab } from '../focus';
 import type { EngineAppearance } from './engine';
 import type { TerminalBusy, TerminalDirectory, TerminalFeedHandle, TerminalTarget } from './feed';
 import { localHereTarget, localProfileTarget, localShellTarget } from './localShell';
+import { DEFAULT_PREFERENCES_SOURCE } from './preferences';
 import { shellsOf, type ShellChoice, type ShellList } from './profiles';
 import { createScreen } from './screen';
 import { createScreenReaderChoice } from './screenReader';
@@ -155,7 +156,7 @@ describe('the screen reader choice of the window', () => {
     const store = createPanelStore();
     store.registerTool(TERMINAL_TOOL);
     const loader = fakeEngineLoader();
-    const terminals = createTerminals(store, { load: loader.load }, { screenReader: true });
+    const terminals = createTerminals(store, { load: loader.load, preferences: DEFAULT_PREFERENCES_SOURCE }, { screenReader: true });
     const stop = terminals.sessions.attach();
     const bodies = ['one', 'two'].map((title) => {
       const opened = terminals.sessions.open({ plugin: HOST, id: title, title, open: () => fakeTerminalFeed() });

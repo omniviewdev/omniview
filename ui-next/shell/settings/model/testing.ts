@@ -60,9 +60,18 @@ export const TERMINAL = category('terminal', 'Terminal', 'Customize the behavior
   setting('theme', 'text', 'Theme', 'The color theme for the terminal', 'application', {
     options: opts(['application', 'Application'], ['dracula', 'Dracula'], ['solarized-dark', 'Solarized Dark'], ['solarized-light', 'Solarized Light'], ['nord', 'Nord'], ['one-light', 'One Light']),
   }),
-  setting('fontSize', 'integer', 'Font Size', 'The size of the font in the terminal', 12),
+  setting('fontSize', 'integer', 'Font Size', 'The size of the font in the terminal, in pixels, from 6 to 72.', 12),
+  setting('fontFamily', 'text', 'Font Family', 'Font names for the terminal, separated by commas, tried in order before the theme\'s monospace face. Empty uses the theme\'s face.', ''),
+  setting('lineHeight', 'float', 'Line Height', 'The height of a row as a multiple of the font size, from 1 to 2. A row is never shorter than the font\'s own line height.', 1.5),
+  setting('scrollback', 'integer', 'Scrollback', 'Lines the terminal keeps above the screen, from 0 to 100000. A larger value uses more memory for each terminal.', 5000),
   setting('cursorStyle', 'text', 'Cursor Style', 'The style of the cursor in the terminal', 'block', { options: opts(['block', 'Block'], ['underline', 'Underline'], ['bar', 'Bar']) }),
   setting('cursorBlink', 'toggle', 'Cursor Blink', 'Whether the cursor should blink in the terminal', true),
+  setting('cursorBlinkNext', 'toggle', 'Cursor Blink (new terminal)', 'Whether the cursor blinks in the new terminal. A blinking cursor keeps a timer running while the terminal has the focus, so it is off unless you turn it on.', false),
+  setting('macOptionIsMeta', 'text', 'Option as Meta', 'Whether the Option key acts as Meta (Alt+B moves back a word) instead of typing a character. Automatic turns it on for the US and US International layouts.', 'auto', { options: opts(['auto', 'Automatic'], ['on', 'On'], ['off', 'Off']) }),
+  setting('bell', 'text', 'Bell', 'What the terminal does when a program rings the bell. The terminal never makes a sound.', 'visual', { options: opts(['off', 'Off'], ['visual', 'Visual']) }),
+  setting('gpuAcceleration', 'text', 'GPU Acceleration', 'Whether the terminal draws with the GPU. Automatic uses it while the terminal is shown and falls back to the slower renderer if it fails.', 'auto', { options: opts(['auto', 'Automatic'], ['on', 'On'], ['off', 'Off']) }),
+  setting('copyOnSelect', 'toggle', 'Copy on Select', 'Copy the selected text to the clipboard when you finish selecting it with the mouse.', false),
+  setting('multiLinePasteWarning', 'text', 'Multi-line Paste Warning', 'Ask before pasting text of more than one line. Automatic asks only when the program has not asked for bracketed paste.', 'auto', { options: opts(['auto', 'Automatic'], ['always', 'Always ask'], ['never', 'Never ask']) }),
 ]);
 
 export const EDITOR = category('editor', 'Editor', 'Change settings within the code editor', 'LuCode', [

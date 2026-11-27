@@ -12,6 +12,7 @@ import type { TerminalBusy, TerminalDirectory, TerminalFeedHandle, TerminalResta
 import { createFinishedNotices } from './finishedNotice';
 import { keyOf } from './keys';
 import { localHereTarget, localProfileTarget, localShellTarget } from './localShell';
+import { appTerminalPreferences, type PreferencesSource } from './preferences';
 import { appShellList, shellMenu, type ShellChoice, type ShellList, type TerminalProfile } from './profiles';
 import { clearScreenIn } from './screen';
 import { createScreenReaderChoice, type ScreenReaderChoice } from './screenReader';
@@ -109,6 +110,8 @@ export type TerminalsOptions = {
    * its view to the command. Absent: the window says nothing of a finished command.
    */
   readonly notices?: Pick<NoticesStore, 'notify'> | undefined;
+  /** The person's terminal settings, as every terminal reads them (`preferences.ts`). Default: the host's settings service, asked when the first terminal is shown and never before. */
+  readonly preferences?: PreferencesSource | undefined;
   /** Whether the window is shown to the person (not minimised, not on another desktop): a terminal in front of a window nobody looks at is not in front. Default: the document is visible. */
   readonly windowShown?: (() => boolean) | undefined;
 };
@@ -153,6 +156,7 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
   const { restore, reattach, restart, openExternal } = options;
   // The shells the `+` offers: the list is asked of the host when the menu is first drawn (and never while it is not), and the items are made again only when the list changes.
   const shells = options.shells ?? appShellList();
+  const preferences = options.preferences ?? appTerminalPreferences();
   const startFrom = (profile: TerminalProfile) => {
     sessions.open(localProfileTarget(profile), { focus: true });
   };
@@ -369,6 +373,7 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
         visible,
         load: options.load,
         screenReader,
+        preferences,
         name: store.selectors.sessionItem(store.getSnapshot(), session.id)?.name,
         onNewHere: (id) => {
           void openHere(id);

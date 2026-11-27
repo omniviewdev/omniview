@@ -1,4 +1,5 @@
 import type { EngineAppearance } from './engine';
+import { sanitiseFontFamily, type TerminalPreferences } from './preferences';
 
 // The look of the screen, from the theme (docs/ui-next/status/T1.md, "The look"). An emulator that draws on a canvas cannot read a stylesheet, and the host writes no colour in code: the body renders a hidden
 // swatch for each colour the screen needs (`TerminalBody.tsx`), the stylesheet paints each with the theme's own token, and this reads what the engine resolved for it. A theme change, or a change of
@@ -80,12 +81,21 @@ function pixelsOf(value: string): number | undefined {
   return value.endsWith('px') && Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
-/** Reads the look of the screen from the swatches under `root`. */
-export function readAppearance(root: ParentNode): EngineAppearance {
+/** The size the theme draws its code at 100 percent of the text scale: the person's size is multiplied by the swatch's size over it, so the text scale still reaches the terminal. */
+const SCALE_BASE = 12;
+
+/**
+ * Reads the look of the screen from the swatches under `root`, and from the person's settings when there are some (`preferences.ts`): the colours are always the theme's. A person's font names come before the theme's face (a name
+ * that is not installed falls through to it), their size is scaled by the theme's text scale, their line height is a multiple of that size, and their cursor is the cursor.
+ */
+export function readAppearance(root: ParentNode, preferences?: TerminalPreferences): EngineAppearance {
   const face = swatch(root, 'font');
   const style = face === null ? undefined : getComputedStyle(face);
-  const fontSize = pixelsOf(style?.fontSize ?? '') ?? FALLBACK.fontSize;
+  const themeSize = pixelsOf(style?.fontSize ?? '') ?? FALLBACK.fontSize;
   const line = pixelsOf(style?.lineHeight ?? '');
+  const themeFace = style?.fontFamily ?? 'monospace';
+  const names = sanitiseFontFamily(preferences?.fontFamily);
+  const fontSize = preferences === undefined ? themeSize : Math.round(((preferences.fontSize * themeSize) / SCALE_BASE) * 100) / 100;
   return {
     theme: {
       background: colourOf(root, 'background'),
@@ -96,8 +106,9 @@ export function readAppearance(root: ParentNode): EngineAppearance {
       selectionInactiveBackground: colourOf(root, 'selectionInactive'),
       palette: PALETTE_ROLES.map((role) => colourOf(root, role)),
     },
-    fontFamily: style?.fontFamily ?? 'monospace',
+    fontFamily: names === '' ? themeFace : `${names}, ${themeFace}`,
     fontSize,
-    lineHeight: line === undefined ? FALLBACK.lineHeight : line / fontSize,
+    lineHeight: preferences === undefined ? (line === undefined ? FALLBACK.lineHeight : line / themeSize) : preferences.lineHeight,
+    cursorStyle: preferences?.cursorStyle ?? 'block',
   };
 }

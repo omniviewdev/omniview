@@ -12,6 +12,7 @@ import { offersTakeBack, type TerminalFeedHandle, type TerminalFeedSnapshot } fr
 import { createFindSession, useTerminalFind } from './find';
 import { useCommandGutter } from './gutter/useCommandGutter';
 import { integrationWords } from './integration';
+import type { PreferencesSource } from './preferences';
 import { loadXtermEngine } from './loadEngine';
 import { useTerminalLinks, useTerminalMenu } from './menu';
 import { createScreen } from './screen';
@@ -140,6 +141,8 @@ type TerminalBodyProps = {
   readonly load?: EngineLoader | undefined;
   /** The window's one screen reader choice (`screenReader.ts`): the emulator is made in it and follows it, and the description says which it is. */
   readonly screenReader: ScreenReaderSource;
+  /** The person's terminal settings (`preferences.ts`): the emulator is made in them and follows them while it lives. Absent: the theme's own look and the host's defaults. */
+  readonly preferences?: PreferencesSource | undefined;
   /** The session as its tab names it, with the ordinal of a twin (`zsh (2)`: the panel's rule): the emulator's input is named by it. Absent, the title and the scope are. */
   readonly name?: string | undefined;
   /** Opens a new terminal where this session's terminal is (the menu's "New terminal here"): the window's own way to do it, which asks the session's feed where it is. Absent: the menu has no such item. */
@@ -150,7 +153,7 @@ type TerminalBodyProps = {
  * The body of a Terminal session. A session with no feed (restored from the last run: the host keeps no output across a restart, or its terminal is not adopted yet) has nothing to draw: it says that the earlier output is gone
  * and how to get a shell again, in the empty state the panel has for it, and draws the screen when the registry gives it a feed.
  */
-export function TerminalBody({ sessions, session, visible, load, screenReader, name, onNewHere }: TerminalBodyProps) {
+export function TerminalBody({ sessions, session, visible, load, screenReader, preferences, name, onNewHere }: TerminalBodyProps) {
   const feed = useSyncExternalStore(sessions.subscribeFeeds, () => sessions.feedOf(session.id));
   // The person pressed a control in the lane (Take it back) and wants the keyboard in the screen the registry makes for it: the request lives here, which that screen does not replace.
   const keyboard = useRef(false);
@@ -195,6 +198,7 @@ export function TerminalBody({ sessions, session, visible, load, screenReader, n
       visible={visible}
       load={load ?? loadXtermEngine}
       screenReader={screenReader}
+      preferences={preferences}
       name={name}
       takeBack={takeBack}
       restart={restart}
@@ -211,6 +215,7 @@ type TerminalViewProps = {
   readonly visible: boolean;
   readonly load: EngineLoader;
   readonly screenReader: ScreenReaderSource;
+  readonly preferences: PreferencesSource | undefined;
   readonly name: string | undefined;
   /** The person pressed Take it back in the lane: asks the registry to take the terminal back, and keeps the request for the keyboard. */
   readonly takeBack: () => void;
@@ -222,7 +227,7 @@ type TerminalViewProps = {
   readonly onNewHere: ((session: SessionId) => void) | undefined;
 };
 
-function TerminalView({ sessions, session, feed, visible, load, screenReader, name, takeBack, restart, takeKeyboard, onNewHere }: TerminalViewProps) {
+function TerminalView({ sessions, session, feed, visible, load, screenReader, preferences, name, takeBack, restart, takeKeyboard, onNewHere }: TerminalViewProps) {
   const host = useRef<HTMLDivElement>(null);
   const hintId = useId();
   const platform = platformOf(navigator);
@@ -234,7 +239,8 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader, na
       feed,
       load,
       // The swatches are in the body, around the screen's element: found from it, so no ref is read while this renders.
-      appearance: (element) => readAppearance(element.closest('[data-shell-part="terminalBody"]') ?? element),
+      appearance: (element) => readAppearance(element.closest('[data-shell-part="terminalBody"]') ?? element, preferences?.getSnapshot()),
+      preferences,
       platform,
       label: `Terminal input, ${label}`,
       descriptionId: hintId,

@@ -27,7 +27,7 @@ describe('the pages', () => {
   });
 
   it('list the settings of a category by id, as the host sends them and the old window drew them', () => {
-    expect(model.pages.find((page) => page.id === 'terminal')?.fields).toEqual(['terminal.cursorBlink', 'terminal.cursorStyle', 'terminal.defaultShell', 'terminal.fontSize', 'terminal.shellIntegration', 'terminal.theme']);
+    expect(model.pages.find((page) => page.id === 'terminal')?.fields).toEqual(['terminal.bell', 'terminal.copyOnSelect', 'terminal.cursorBlink', 'terminal.cursorBlinkNext', 'terminal.cursorStyle', 'terminal.defaultShell', 'terminal.fontFamily', 'terminal.fontSize', 'terminal.gpuAcceleration', 'terminal.lineHeight', 'terminal.macOptionIsMeta', 'terminal.multiLinePasteWarning', 'terminal.scrollback', 'terminal.shellIntegration', 'terminal.theme']);
   });
 
   it('draw the opt-out of the shell integration as a switch that is on until it is turned off: a toggle the host declares in the terminal category', () => {
