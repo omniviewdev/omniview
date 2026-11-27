@@ -9,10 +9,10 @@ vendor/zim/termtitle-init.zsh            zimfw/termtitle b0de7783181804d21cc73fb
 
 STAND-INS (written for the tests; each cites the upstream file and lines it copies, in its own header):
 standins/starship      the starship binary (starship/starship, ISC)
-standins/p10k.zsh      powerlevel10k (romkatv/powerlevel10k 50a35cc8d9f1488d18fb8aea6cddcfc31189cc9f, MIT)
+standins/p10k.zsh      powerlevel10k (copied parts: MIT notice in standins/LICENSE.powerlevel10k) (romkatv/powerlevel10k 50a35cc8d9f1488d18fb8aea6cddcfc31189cc9f, MIT)
 standins/ohmyzsh.zsh   the loader of oh-my-zsh (oh-my-zsh.sh) and its theme
 standins/zim-init.zsh  the init.zsh that zimfw generates (zimfw/zimfw b892020d091f0a6ccb5cc91cff870169063bf975, MIT)
-standins/z4h.zsh       zsh4humans (romkatv/zsh4humans v5, c0c29f999635f58e2b1bdb442e633c01a1b9ecc2, MIT)
+standins/z4h.zsh       zsh4humans (copied parts: MIT notice in standins/LICENSE.zsh4humans) (romkatv/zsh4humans v5, c0c29f999635f58e2b1bdb442e633c01a1b9ecc2, MIT)
 homes/*                the startup files of a user of each framework
 
 No copyleft file is vendored. sha256 of the vendored files:

@@ -11,9 +11,13 @@
 # Run from anywhere in the worktree:  bash docs/ui-next/status/T5-frameworks/mutations.sh.txt [control-name]
 # A control named "?" prints what goes red (a discovery run) instead of comparing.
 export GOWORK=off GOTOOLCHAIN=local
+# The bash under test is chosen explicitly: a colon-separated list of bash binaries, which must include a 5.3 (bash-preexec takes
+# its PS0 path there; a control on that path is undetected without one).
+: "${OMNIVIEW_TEST_BASHES:?set OMNIVIEW_TEST_BASHES=/path/to/bash-5.2:/path/to/bash-5.3}"
+export OMNIVIEW_TEST_BASHES
 WT=$(git rev-parse --show-toplevel) || exit 2
 PKG=./backend/pkg/terminal/
-RUN='^(TestAFrameworksUserStillGetsTheGenuineMarksTrustedWithTheRightExitCodes|TestWhatAFrameworkPrintsOnItsOwnIsAcceptedAtLowTrustAndNeverAsACommandLine|TestAPowerlevel10kUserGetsNoHooksFromTheIntegrationAndKeepsTheirOwnMarks|TestTheStatusAFrameworksHookSeesIsTheUsersAndEveryCommandReachesTheFramework|TestAFrameworksPromptTextIsUnchangedAndNothingIsPrintedOutsideTheMarks|TestTheFilesOfAFrameworksUserAreByteIdenticalAfterASession|TestTheZDOTDIROfZimAndZsh4humansIsTheUsersOwn|TestADirectoryWhoseNameHoldsAnEscapeByteNeitherEndsTheCwdMarkEarlyNorGivesAWrongPath)$'
+RUN='^(TestAFrameworksUserStillGetsTheGenuineMarksTrustedWithTheRightExitCodes|TestWhatAFrameworkPrintsOnItsOwnIsAcceptedAtLowTrustAndNeverAsACommandLine|TestAPowerlevel10kUserGetsNoHooksFromTheIntegrationAndKeepsTheirOwnMarks|TestTheStatusAFrameworksHookSeesIsTheUsersAndEveryCommandReachesTheFramework|TestAFrameworksPromptTextIsUnchangedAndNothingIsPrintedOutsideTheMarks|TestTheFilesOfAFrameworksUserAreByteIdenticalAfterASession|TestTheZDOTDIROfZimAndZsh4humansIsTheUsersOwn|TestADirectoryWhoseNameHoldsAnEscapeByteNeitherEndsTheCwdMarkEarlyNorGivesAWrongPath|TestBashPreexecOnBash53RecordsEveryCommandWithItsOwnLine)$'
 M=$(mktemp -d "${TMPDIR:-/tmp}/t5fw-mut.XXXXXX") || { echo "no scratch directory" >&2; exit 2; }
 trap 'rm -rf -- "$M"' EXIT
 cd "$WT" || exit 2
@@ -62,6 +66,7 @@ T4=TestTheStatusAFrameworksHookSeesIsTheUsersAndEveryCommandReachesTheFramework
 T5=TestAFrameworksPromptTextIsUnchangedAndNothingIsPrintedOutsideTheMarks
 T6=TestTheFilesOfAFrameworksUserAreByteIdenticalAfterASession
 T7=TestTheZDOTDIROfZimAndZsh4humansIsTheUsersOwn
+T9=TestBashPreexecOnBash53RecordsEveryCommandWithItsOwnLine
 T8=TestADirectoryWhoseNameHoldsAnEscapeByteNeitherEndsTheCwdMarkEarlyNorGivesAWrongPath
 
 # powerlevel10k: the guard on P9K_VERSION is gone, the hooks of the integration are installed next to p10k's.
@@ -75,6 +80,9 @@ run bash-preexec-first-command "$B" 's|\*__bp_precmd_invoke_cmd\*) __bp_preexec_
 
 # bash: the first prompt command returns 0, not the status: the framework's hook (starship's $?) sees 0 after `false`. (zsh hands
 # every hook the status of the command whatever a hook before it returns, so there the fault is to read $? late, below.)
+# bash 5.3: bash-preexec's PS0 hook and the epilogue of the prompt commands are taken for the user's command.
+run bash-preexec-ps0-not-ignored "$B" 's|__bp_\*) return "$__omniview_ret" ;; esac|__bp_NEVER*) return "$__omniview_ret" ;; esac|' "$T1 $T9"
+
 run bash-status-clobbered "$B" '0,/^    return "$__omniview_status"$/s||    return 0|' "$T4"
 
 # zsh: the first precmd hook reads $? after a builtin: every exit code is 0.
@@ -107,9 +115,11 @@ run path-with-control-byte-stripped "$O" "$STRIP" "$T8"
 # The same fault, held by the tests of package marks (the contract of the scanner).
 PKG_SAVED=$PKG; RUN_SAVED=$RUN
 PKG=./backend/pkg/terminal/marks/
-RUN='^(TestADirectoryWithAControlByteInItsNameMakesTheTrackedDirectoryUnknown|TestATrustedDirectoryWithAnEscapedControlByteIsUnknownAndNeverAStrippedPath)$'
+RUN='^(TestADirectoryWithAControlByteInItsNameMakesTheTrackedDirectoryUnknown|TestATrustedDirectoryWithAnEscapedControlByteIsUnknownAndNeverAStrippedPath|TestAForgedOSC7WithAControlByteLeavesTheDirectoryTheShellProved)$'
+# A forged OSC 7 takes the proved directory away (forgetCwd clears both slots whoever sent it).
+run forged-osc7-clears-proved-directory backend/pkg/terminal/marks/log.go 's|\tif trusted {|\tif true {|' 'TestAForgedOSC7WithAControlByteLeavesTheDirectoryTheShellProved'
 run path-with-control-byte-stripped-marks "$O" "$STRIP" \
-  'TestADirectoryWithAControlByteInItsNameMakesTheTrackedDirectoryUnknown TestATrustedDirectoryWithAnEscapedControlByteIsUnknownAndNeverAStrippedPath'
+  'TestADirectoryWithAControlByteInItsNameMakesTheTrackedDirectoryUnknown TestAForgedOSC7WithAControlByteLeavesTheDirectoryTheShellProved TestATrustedDirectoryWithAnEscapedControlByteIsUnknownAndNeverAStrippedPath'
 PKG=$PKG_SAVED; RUN=$RUN_SAVED
 
 exit $bad

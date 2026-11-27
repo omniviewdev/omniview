@@ -60,6 +60,7 @@ func frameworkCases() []frameworkCase {
 		{home: "omz-zsh", shell: "zsh", exit3: "(exit 3)", hooksLeftOut: false, ownEnd: false, ownCwd: true, statusLog: "framework-status"},
 		{home: "zim-zsh", shell: "zsh", exit3: "(exit 3)", hooksLeftOut: false, ownEnd: false, ownCwd: false, statusLog: "framework-status"},
 		{home: "z4h-zsh", shell: "zsh", exit3: "(exit 3)", hooksLeftOut: false, ownEnd: true, ownCwd: false, statusLog: "framework-status"},
+		{home: "z4h-p10k-zsh", shell: "zsh", exit3: "(exit 3)", hooksLeftOut: true, ownEnd: true, ownCwd: false, statusLog: "framework-status"},
 		{home: "bash-preexec", shell: "bash", exit3: "sh -c 'exit 3'", hooksLeftOut: false, ownEnd: false, ownCwd: false, statusLog: "framework-status"},
 		{home: "starship-bash", shell: "bash", exit3: "(exit 3)", hooksLeftOut: false, ownEnd: false, ownCwd: false, statusLog: "framework-status"},
 		{home: "starship-bash-133", shell: "bash", exit3: "(exit 3)", hooksLeftOut: false, ownEnd: false, ownCwd: false, statusLog: "framework-status"},
@@ -283,8 +284,12 @@ func TestWhatAFrameworkPrintsOnItsOwnIsAcceptedAtLowTrustAndNeverAsACommandLine(
 // environment: the script looks for it at the end of .zlogin (`${+P9K_VERSION}`), and leaves its hooks out. The user's p10k
 // prints its own marks: they stay what they are, and nothing of the integration's is next to them.
 func TestAPowerlevel10kUserGetsNoHooksFromTheIntegrationAndKeepsTheirOwnMarks(t *testing.T) {
-	c := frameworkCases()[0]
-	require.Equal(t, "p10k-zsh", c.home)
+	// p10k alone, and zsh4humans with its default prompt (which loads p10k).
+	eachFramework(t, func(c frameworkCase) bool { return c.hooksLeftOut }, func(t *testing.T, c frameworkCase) { p10kUserBody(t, c) })
+}
+
+func p10kUserBody(t *testing.T, c frameworkCase) {
+	t.Helper()
 	f := frameworkFixture(t, c, true)
 	info := f.started()
 	assert.Equal(t, IntegrationOn, info.Integration.State, "the script still tells the host the shell is up")
@@ -514,4 +519,34 @@ func fishPrintsTheName(t *testing.T, name string) bool {
 		}
 	}
 	return false
+}
+
+// bash-preexec 0.7.0 takes another way on bash 5.3 (PS0, not the DEBUG trap): this test is the one that runs on it. It is NOT RUN, by
+// name, when no bash 5.3 is among OMNIVIEW_TEST_BASHES.
+func TestBashPreexecOnBash53RecordsEveryCommandWithItsOwnLine(t *testing.T) {
+	var path string
+	for _, candidate := range testBashes(t) {
+		if major, minor, err := probeBashVersion(candidate); err == nil && (major > 5 || (major == 5 && minor >= 3)) {
+			path = candidate
+		}
+	}
+	if path == "" {
+		t.Skip("NOT RUN: no bash 5.3 in OMNIVIEW_TEST_BASHES")
+	}
+	for _, home := range []string{"bash-preexec", "starship-bash-preexec"} {
+		t.Run(home+"@"+bashLabel(t, path), func(t *testing.T) {
+			c := frameworkCase{home: home, shell: "bash", exit3: "sh -c 'exit 3'", hooksLeftOut: false, ownEnd: false, ownCwd: false, shellPath: path, statusLog: "framework-status"}
+			f := frameworkFixture(t, c, true)
+			info := f.started()
+			f.runThree(info.ID, c)
+			f.run(info.ID, "echo four")
+			ran := f.ranRecords(info.ID, 4)
+			var lines []string
+			for _, r := range ran {
+				lines = append(lines, r.CommandLine)
+			}
+			assert.Equal(t, []string{"true", "false", c.exit3, "echo four"}, lines, "each command's trusted line is its own, and there is no fifth record")
+			assert.Equal(t, []int32{0, 1, 3, 0}, exitCodes(ran))
+		})
+	}
 }

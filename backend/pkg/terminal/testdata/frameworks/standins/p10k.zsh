@@ -1,3 +1,7 @@
+# LICENCE: the functions _p9k_iterm2_precmd and _p9k_iterm2_preexec, the hook arrays and the P9K_VERSION line below are copied (adapted,
+# not word for word where they differ) from romkatv/powerlevel10k internal/p10k.zsh at 50a35cc8d9f1488d18fb8aea6cddcfc31189cc9f, which
+# is MIT licensed: Copyright (c) 2009-2014 Robby Russell and contributors; (c) 2014-2017 Ben Hilburn; (c) 2019 Roman Perepelitsa and
+# contributors. The copyright notice and the permission notice are in LICENSE.powerlevel10k, next to this file, and apply to those parts.
 # STAND-IN for powerlevel10k (romkatv/powerlevel10k, MIT; read at 50a35cc8d9f1488d18fb8aea6cddcfc31189cc9f). It is 9500
 # lines and needs gitstatus; this file does what bites an integration, and nothing else. What it copies:
 #   internal/p10k.zsh:9539        `typeset -g P9K_VERSION=1.21.0`, a SHELL variable (not exported), set while .zshrc runs;

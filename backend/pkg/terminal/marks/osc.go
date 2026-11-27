@@ -185,7 +185,7 @@ func (s *Scanner) readCwdProperty(rest []byte, out []Mark) []Mark {
 	s.ourPrompt = true
 	dir := unescape(field[len(key):i])
 	if hasControl(dir) {
-		return s.unknownCwd(out)
+		return s.unknownCwd(true, out)
 	}
 	return s.emitCwd(dir, true, out)
 }
@@ -206,7 +206,7 @@ func (s *Scanner) readCwdURL(url []byte, out []Mark) []Mark {
 	}
 	dir, clean := decodePercent(rest[i:])
 	if !clean {
-		return s.unknownCwd(out)
+		return s.unknownCwd(false, out)
 	}
 	return s.emitCwd(dir, false, out)
 }
@@ -215,9 +215,9 @@ func (s *Scanner) readCwdURL(url []byte, out []Mark) []Mark {
 // name another directory, or none, and a terminal must not be made to read it. The mark is dropped and counted, and what the log
 // knows of the directory becomes unknown, so that neither a wrong path nor the one from before the `cd` is believed. The next
 // sound directory sets it again.
-func (s *Scanner) unknownCwd(out []Mark) []Mark {
+func (s *Scanner) unknownCwd(trusted bool, out []Mark) []Mark {
 	s.malformed.Add(1)
-	s.log.forgetCwd()
+	s.log.forgetCwd(trusted)
 	return out
 }
 

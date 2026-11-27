@@ -20,7 +20,7 @@ Each stand-in carries its citation in its own header and every test file says it
 
 ## Which shell and emulator ran
 
-Every test uses the machine's REAL zsh 5.9, bash 5.3.0 and fish 4.0.2 on a pty (fish is not installed on this machine: the Debian 4.0.2 package was unpacked into `/tmp/fishdl` and made visible with an overlay mount of `/usr/share` in a user namespace, as in `T5-inject.md`; without fish its subtests skip as "NOT RUN"). There is NO emulator: the tests read the bytes of the pty and feed the host's scanner (`marks`), as the manager does. No Go test here uses a stub shell. pwsh is not installed and not part of this step.
+Every test uses the machine's REAL zsh 5.9, bash 5.2.37 (`/usr/bin/bash`; the earlier text said 5.3, which was wrong) and, for the bash-preexec PS0 path, bash 5.3.15 (Debian `bash_5.3-4+b1` unpacked into `/tmp/bash53`, not installed; chosen with `OMNIVIEW_TEST_BASHES=/usr/bin/bash:/tmp/bash53/root/usr/bin/bash`; every bash subtest name carries its version: `home@bash-5.3.15`; the older tests of `integration_bash_test.go` use the bash on PATH) and fish 4.0.2 on a pty (fish is not installed on this machine: the Debian 4.0.2 package was unpacked into `/tmp/fishdl` and made visible with an overlay mount of `/usr/share` in a user namespace, as in `T5-inject.md`; without fish its subtests skip as "NOT RUN"). There is NO emulator: the tests read the bytes of the pty and feed the host's scanner (`marks`), as the manager does. No Go test here uses a stub shell. pwsh is not installed and not part of this step.
 
 ## Tests
 
@@ -76,5 +76,13 @@ Environment: Go 1.27.4, `GOWORK=off GOTOOLCHAIN=local`; fish through `/tmp/fishd
 
 ## Not verified
 
-- macOS, any other zsh, bash or fish version; real p10k, real z4h, real Zim, real starship, real oh-my-zsh (stand-ins and vendored single files only); bash-preexec on bash 4.x (PS0 or DEBUG path differs: bash 5.3 here used the DEBUG path).
+- macOS, any other zsh, bash or fish version; real p10k, real z4h, real Zim, real starship, real oh-my-zsh (stand-ins and vendored single files only); bash-preexec on bash 4.x; bash 5.3.15 ran the framework tests and the existing integration tests (see the review round), not the whole existing bash suite under 5.2 AND 5.3 at once.
 - The page: vitest of `ui-next/shell/panel/terminal` (see below).
+
+## Review round (ReviewFrameworks)
+
+1. bash 5.3 + bash-preexec (P1, true; the status said 5.3 where the machine's bash is 5.2.37). bash-preexec 0.7.0 uses PS0 on bash >= 5.3 (`bash-preexec.sh:465`) and leaves our DEBUG trap in place; the trap took `__bp_invoke_preexec_from_ps0` (history is still the previous line: the previous command's `633;E`) and the epilogue `__bp_interactive_mode` for the user's command: 4 records, wrong lines. Red `a1dd002c6` on 5.3.15 (3 commands, `fewer`/4 records), fix: the trap ignores `__bp_*` commands. Both bashes green; `TestBashPreexecOnBash53RecordsEveryCommandWithItsOwnLine` names the version and is NOT RUN, by name, when no 5.3 is in `OMNIVIEW_TEST_BASHES`. Control `bash-preexec-ps0-not-ignored`; the script now refuses to run without `OMNIVIEW_TEST_BASHES`.
+2. A forged OSC 7 cleared the proved directory (P2, true). `forgetCwd(trusted)`: a unreadable OSC 7 clears the loose slot only; an unreadable 633;P clears both. Red test `TestAForgedOSC7WithAControlByteLeavesTheDirectoryTheShellProved`, control `forged-osc7-clears-proved-directory`.
+3. zsh4humans' default prompt is p10k (`fn/-z4h-init-zle:713-717`): home `z4h-p10k-zsh` (z4h and p10k stand-ins, `P9K_VERSION` set): hooks skipped, both frameworks' C/D at low trust, no command line; runs in `TestAPowerlevel10kUser...` with p10k alone.
+4. `standins/p10k.zsh` and `z4h.zsh` carry the MIT notice and source in their headers; the full texts are `standins/LICENSE.powerlevel10k` and `LICENSE.zsh4humans`.
+5. DEL: kept as disclosed. A raw control byte inside an OSC (DEL too) is ignored by the scanner like a terminal does; `T5-scan.md` says so. Percent-encoded or escaped control bytes (including DEL) drop the mark.

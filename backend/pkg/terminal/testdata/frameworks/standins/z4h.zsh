@@ -1,3 +1,6 @@
+# LICENCE: -z4h-iterm2-precmd, -z4h-iterm2-preexec and the two hook functions below are copied (adapted) from romkatv/zsh4humans
+# fn/-z4h-enable-iterm2-integration and fn/-z4h-init-zle at c0c29f999635f58e2b1bdb442e633c01a1b9ecc2, which is MIT licensed:
+# Copyright (c) 2020 Roman Perepelitsa. The notice and the permission notice are in LICENSE.zsh4humans, next to this file, and apply.
 # STAND-IN for z4h.zsh and its init of zsh4humans (romkatv/zsh4humans, MIT; branch v5 at
 # c0c29f999635f58e2b1bdb442e633c01a1b9ecc2). What it copies:
 #   fn/-z4h-enable-iterm2-integration:28-41   -z4h-iterm2-precmd prints 133;C (only after an empty Enter) and 133;D;<status>,
@@ -26,7 +29,7 @@ function -z4h-set-term-title-preexec() {
 }
 function -z4h-set-term-title-precmd() {
   local -i err=$?
-  builtin print -r -- $err >>$HOME/framework-status
+  (( ${+_z4h_standin_nolog} )) || builtin print -r -- $err >>$HOME/framework-status
   -z4h-iterm2-precmd $err
   builtin printf '\e]0;%s\a' ${(%):-%~}
 }
