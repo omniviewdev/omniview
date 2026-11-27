@@ -390,6 +390,11 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
 
     if (entry.command !== undefined && entry.command !== '') {
       const earlier = entry.epoch !== epoch;
+      // A line of an earlier terminal is typed and not run, and a pasted line feed is a carriage return when bracketed paste is off: with a line break its first line would run. The same rule as for a line nobody proved.
+      if (earlier && /[\r\n]/.test(entry.command)) {
+        return undefined;
+      }
+
       return { text: entry.command.replace(unsafe, ''), enter: !earlier, ...(earlier ? { earlier: true as const } : {}) };
     }
 

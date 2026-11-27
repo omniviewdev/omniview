@@ -273,6 +273,8 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
     markWrites += 1;
     emulator.write(NOTHING, () => {
       markWrites -= 1;
+      // Everything queued before the restart is parsed: what the emulator answers from here on is for the new shell.
+      draining = false;
       gutter?.seal();
       if (markWrites === 0 && replayHeld !== undefined && pending === 0) {
         schedule();
@@ -327,9 +329,6 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
   /** The emulator parsed `bytes` it had accepted: a frame that stopped at the bound goes on once half of it is parsed, a replay that waited for the emulator to be idle comes once it is, and the feed is told what was live, which is what the host paces the shell by. */
   function parsed(bytes: number, owner: TerminalFeedHandle | undefined): void {
     pending -= bytes;
-    if (pending === 0) {
-      draining = false;
-    }
 
     // What the emulator parsed is credited to the feed it came from: a restart may have given the screen another feed since.
     owner?.ack(bytes);
@@ -1117,7 +1116,7 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
       replaying = undefined;
       // The commands of the ended terminal stay with its transcript, none of them runs any more, and the new terminal's are its own.
       sealAfterQueued(emulator);
-      draining = pending > 0;
+      draining = true;
       held = [];
       heldLength = 0;
       heldFull = false;
