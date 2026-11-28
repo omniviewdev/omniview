@@ -123,7 +123,7 @@ run user-file-edited "$Z" 's|^  \[\[ -r ${ZDOTDIR:-$HOME}/.zlogin \]\] && builti
 run script-prints-outside-its-marks "$Z" 's|^  unset __omniview_fd$|  unset __omniview_fd; builtin print -rn -- "integration loaded"|' "$T5"
 
 # ZDOTDIR is left at the shim after the user's files ran.
-run zdotdir-not-given-back "$Z" '0,/if (( __omniview_zd_set )); then ZDOTDIR=$__omniview_zd_val; else unset ZDOTDIR; fi/s||:|' "$T5 $T7" "$T1 $T8"
+run zdotdir-not-given-back "$Z" '0,/if (( __omniview_zd_set )); then ZDOTDIR=$__omniview_zd_val; else unset ZDOTDIR; fi/s||:|' "$T5 $T7" "$T1 $T8 $T3"
 
 # A raw ESC byte is not escaped in the directory of the cwd mark (zsh, bash, fish).
 run zsh-esc-not-escaped "$Z" "s|\[\$'\\\\x01'-\$'\\\\x1f'\$'\\\\x7f'\]|[\$'\\\\x01'-\$'\\\\x1a'\$'\\\\x1c'-\$'\\\\x1f'\$'\\\\x7f']|" "$T8"
