@@ -316,9 +316,14 @@ func (r *Relay) startListenerLocked() {
 			r.listenErr = serveErr.Error()
 			listenerCancel()
 			r.listenerCancel = nil
+			unlisten := r.unlisten // the loop stopped: nothing answers on the address any more
+			r.unlisten = nil
 			r.authority.Retire()
 			status := r.statusLocked()
 			r.mu.Unlock()
+			if unlisten != nil {
+				unlisten()
+			}
 			r.emit(EventStatus, status)
 		}
 	}()
