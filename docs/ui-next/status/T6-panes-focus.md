@@ -42,3 +42,10 @@ Tab was found trapped in both engines (above): the palette commands, `panes.pale
 - tsc app, test, kit typecheck exit 0; `pnpm lint` exit 0; the stable build exit 0 and `ui-flavour` 7 pass.
 - Seam `pages,terminal-core,controls-kept` (the exact command): exit 0, 32 phases, 10 controls detected. A first run failed once in WebKit's `providers` phase (the palette dialog was still attached after 30 s: the palette's detach, nothing of the panel), and the run after it passed.
 - `vitest run ui-next/shell/panel ui-next/shell/session ui-next/shell/core`: 5336 pass; the failures differ from run to run and are the timing tests of a loaded shared machine (load average 6 to 8): the 5 s timeouts of `core/panel/fuzz.test.ts` (two) and `LogStreams.fuzz.test.ts`/`LogStreams.test.ts`, and the perf tests of the palette and the notices, which pass alone (`core/notices/perf.test.ts` 9 of 9 twice; `core/panel/fuzz.test.ts` passes with a long timeout).
+
+## Results after the second review (rebased on `origin/main` with #819, #805, #816)
+
+- `PART=panes`: **PASS (96 assertions)** in both engines at both viewports, `panes.palette` and `panes.tab-trapped` among them; the 6 probe controls of this part (`panes-sash-unfocusable` included): each detected by its own assertion and NOT detected with it dropped.
+- Code controls (`controls.sh.txt`): **exit 0, 22 of 22**, second half enforced (`SOLE` of 16).
+- tsc app, test, kit typecheck exit 0; `pnpm lint` exit 0; seam `pages,terminal-core,controls-kept` exit 0 (32 phases); stable build exit 0, `ui-flavour` 7 pass.
+- Vitest of `ui-next/shell/panel`, `session`, `core` and `plugins/host`: 7629 pass; the failures are the timing tests of a loaded machine (the 5 s timeouts of `core/panel/fuzz.test.ts`, the notices perf test), which pass alone or with a long timeout.
