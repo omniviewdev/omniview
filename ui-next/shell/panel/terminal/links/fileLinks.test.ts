@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cellWidth, FILE_LINK_LIMITS, findFileLinks, type FileLinkLimits, type FindFileLinksOptions } from './fileLinks';
+import { FILE_LINK_LIMITS, findFileLinks, type FileLinkLimits, type FindFileLinksOptions } from './fileLinks';
 
 // The file-link matcher: which `file[:line[:col]]` candidates a line of terminal output holds, found by one forward scan. Every test names a fact: the formats real tools print, the caps of the issue, the lines a hostile
 // program can print, and the step count that shows the scan never backtracks.
@@ -134,6 +134,43 @@ const FORMATS: readonly Row[] = [
   ]],
   ['a unix path with no line', 'cannot open /etc/hosts: permission denied', [{ path: '/etc/hosts', text: '/etc/hosts' }]],
 
+  // Quotes inside a word, versions, time stamps, addresses, image tags and rates (the review of the first matcher)
+  ['zap json line: the quote ends the path before it', '{"ts":"2026-11-28T12:30:45Z","caller":"app/main.go:42"}', [{ path: 'app/main.go', line: 42, text: 'app/main.go:42' }]],
+  ['logfmt line: a quoted time stamp', 'time="2026-11-28T12:30:45Z" level=info msg="started"', []],
+  ['a version and a number', 'v1.2.3:4', []],
+  ['a go version and a number', 'using go1.22.1:5 now', []],
+  ['an iso time stamp', '2026-11-28T12:30:45', []],
+  ['an iso time stamp after a word', 'at 2026-11-28T12:30:45Z ok', []],
+  ['an ipv6 address', 'fe80::1', []],
+  ['an ipv6 address with a port', '[::1]:8080', []],
+  ['an ipv6 address with a port after a word', 'listening on [::1]:8080', []],
+  ['an image tag', 'nginx:1.25', []],
+  ['an image tag with a registry', 'ghcr.io/org/app:1.2', []],
+  ['an image tag after a word', 'image: ghcr.io/org/app:1.2.3', []],
+  ['a line and a column after a dot still read on a file with an extension', 'src/a.go:12.5', [{ path: 'src/a.go', line: 12, col: 5, text: 'src/a.go:12.5' }]],
+  ['a progress rate', '9.00it/s', []],
+  ['a progress bar', '100%|███| 5/5 [00:01<00:00,  9.00it/s]', []],
+  ['a rate in bytes', 'copying 5MB/s', []],
+  ['node internal module, kept as printed: the resolver says it is no file', '    at Module._compile (node:internal/modules/cjs/loader:1256:14)', [{ path: 'node:internal/modules/cjs/loader', line: 1256, col: 14, text: 'node:internal/modules/cjs/loader:1256:14' }]],
+  ['java module frame: the class name is a bare path, the file is the link', '\tat java.base/java.lang.Thread.run(Thread.java:833)', [
+    { path: 'java.base/java.lang.Thread.run', text: 'java.base/java.lang.Thread.run' },
+    { path: 'Thread.java', line: 833, text: 'Thread.java:833' },
+  ]],
+  ['file url with an escaped space', 'at file:///home/u/my%20dir/a.js:3:4', [{ path: '/home/u/my dir/a.js', line: 3, col: 4, text: '/home/u/my%20dir/a.js:3:4' }]],
+  ['file url with an escape that does not decode', 'file:///a%zz.js:1', [{ path: '/a%zz.js', line: 1, text: '/a%zz.js:1' }]],
+  ['file url with an escaped newline', 'file:///a%0Ab.js:1', []],
+  ['file url with an escaped ESC', 'file:///a%1bb.js:1', []],
+  ['file url with an escaped bidirectional override', 'file:///a%E2%80%AEb.js:1', []],
+  ['curly quotes round a name with spaces', '\u201cmy file.txt\u201d, line 3', [{ path: 'my file.txt', line: 3, text: 'my file.txt\u201d, line 3' }]],
+  ['curly quotes round a name with a colon suffix', '\u201csrc/a.go\u201d:12', [{ path: 'src/a.go', line: 12, text: 'src/a.go\u201d:12' }]],
+  ['a curly apostrophe in prose', 'it\u2019s src/a.go:3', [{ path: 'src/a.go', line: 3, text: 'src/a.go:3' }]],
+
+  // Survivors of the review's mutants
+  ['a no-break space inside a quoted name is a space of the name', '"my\u00a0file.txt", line 3', [{ path: 'my\u00a0file.txt', line: 3, text: 'my\u00a0file.txt", line 3' }]],
+  ['a no-break space after the colon before a bracket suffix', 'src/a.ts:\u00a0(12)', [{ path: 'src/a.ts', line: 12, text: 'src/a.ts:\u00a0(12)' }]],
+  ['a bare path in square brackets', '[src/lib/a.go]', [{ path: 'src/lib/a.go', text: 'src/lib/a.go' }]],
+  ['a bare path in braces', '{./a/b.txt}', [{ path: './a/b.txt', text: './a/b.txt' }]],
+
   // Text that is not a file
   ['a clock time', '12:30:45 started', []],
   ['an address with a port', 'listening on 127.0.0.1:8080', []],
@@ -152,6 +189,12 @@ describe('the formats of real tools', () => {
 
   it.each(FORMATS)('%s', (_label, line, expected) => {
     expect(found(line)).toEqual(expected);
+  });
+});
+
+describe('a url inside a quoted name', () => {
+  it('is no path: a quoted name with spaces that holds a scheme is not taken whole', () => {
+    expect(findFileLinks('"see http://x/a b.go", line 3').map((c) => c.path).filter((p) => p.includes('://'))).toEqual([]);
   });
 });
 
@@ -343,55 +386,6 @@ describe('lines a hostile program can print', () => {
     expect(found('')).toEqual([]);
     expect(found(':1')).toEqual([]);
     expect(found('(1)')).toEqual([]);
-  });
-});
-
-describe('the range of a candidate, in the emulator\'s cells', () => {
-  it('is a range of UTF-16 offsets into the text and, beside it, of cells counted from 0 with the end excluded', () => {
-    const line = 'see src/a.go:12:3 now';
-    const [c] = findFileLinks(line);
-    expect([c?.start, c?.end, c?.startCell, c?.endCell]).toEqual([4, 17, 4, 17]);
-  });
-
-  it('counts a wide character as two cells', () => {
-    const line = '名前: 日本語/a.go:1';
-    const [c] = findFileLinks(line);
-    expect(line.slice(c?.start, c?.end)).toBe('日本語/a.go:1');
-    expect(c?.start).toBe(4);
-    expect(c?.startCell).toBe(6);
-    expect(c?.endCell).toBe(6 + 6 + '/a.go:1'.length);
-  });
-
-  it('counts a character of two UTF-16 units as two cells when it is wide, and one unit per cell otherwise', () => {
-    const line = '🎉 a.go:1';
-    const [c] = findFileLinks(line);
-    expect([c?.start, c?.startCell]).toEqual([3, 3]);
-    expect(c?.endCell).toBe(3 + 'a.go:1'.length);
-    const narrow = '𝒜 a.go:1';
-    const [n] = findFileLinks(narrow);
-    expect([n?.start, n?.startCell]).toEqual([3, 2]);
-  });
-
-  it('counts a combining mark as no cell', () => {
-    const line = 'e\u0301.go:1';
-    const [c] = findFileLinks(line);
-    expect([c?.start, c?.end, c?.startCell, c?.endCell]).toEqual([0, 7, 0, 6]);
-  });
-
-  it('counts the cells of a later link after wide text before it', () => {
-    const line = '日 日 a.go:1';
-    const [c] = findFileLinks(line);
-    expect(c?.startCell).toBe(2 + 1 + 2 + 1);
-  });
-
-  it('takes the width of a character from the caller when it gives one', () => {
-    const line = 'ab c.go:1';
-    const [c] = findFileLinks(line, { cellWidth: () => 2 });
-    expect([c?.start, c?.startCell, c?.endCell]).toEqual([3, 6, 6 + 'c.go:1'.length * 2]);
-  });
-
-  it('has widths that agree with the terminal on the common cases', () => {
-    expect([cellWidth(0x61), cellWidth(0x65e5), cellWidth(0x3042), cellWidth(0xac00), cellWidth(0x1f389), cellWidth(0x301), cellWidth(0x200b), cellWidth(0xff21), cellWidth(0x1d49c)]).toEqual([1, 2, 2, 2, 2, 0, 0, 2, 1]);
   });
 });
 

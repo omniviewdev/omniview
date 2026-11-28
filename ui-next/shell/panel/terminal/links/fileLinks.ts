@@ -19,21 +19,17 @@ export type FileLinkLimits = {
 export const FILE_LINK_LIMITS: FileLinkLimits = Object.freeze({ maxLineLength: 2000, maxLinks: 10, maxPathLength: 1024, maxLinkLength: 500 });
 
 /**
- * One candidate. The text is one buffer row, or the rows of a wrapped line joined: the link provider joins them (as VS Code does) and cuts the join at `maxLineLength`. When a wide character did not fit at the end of a
- * row, xterm leaves a blank padding cell there; the provider leaves that cell out of the text, so the cells counted here are short by one for each such row. A provider that joins rows therefore maps `start` and `end`
- * to buffer cells with its own table (one entry for each UTF-16 offset) and reads `startCell` and `endCell` only for a single row.
- * `start` and `end` are UTF-16 offsets into the text (`end` is excluded) and cover the path and its suffix, not an opening quote or bracket. `startCell` and `endCell` are the same range in the emulator's
- * cells, counted from 0 with the end excluded: a wide character is two cells, a combining mark none (`cellWidth`); the emulator's own `translateToString` skips the second cell of a wide character, so an offset into that
- * string and this cell column agree (checked against a real xterm with the Unicode 11 addon: `fileLinksXterm.test.ts`). A caller whose emulator disagrees on a character gives its own `cellWidth`.
+ * One candidate. `start` and `end` are UTF-16 offsets into the text that was given (`end` is excluded) and cover the path and its suffix, not an opening quote or bracket. **The matcher knows no cells**: it does not know
+ * the emulator's widths (xterm's Unicode 11 tables give a different width than any table kept here: `✅` is 2, an Arabic mark is 0), nor a wrapped row's padding cell. The link provider (step 4) gives the text of the
+ * logical line (the wrapped rows joined, cut at `maxLineLength`) and maps an offset to a buffer cell through the buffer itself, one entry for each UTF-16 offset (`fileLinksXterm.test.ts` holds that mapping over a real
+ * xterm, wrapped rows and padding included).
  *
- * `path` is the text as printed: no normalisation, no expansion of `~`, not resolved against any directory. `line` and `col` are as printed (a first line is 1; a printed 0 is 0). `diffPrefix` is the `a/`, `b/` (or
- * another git mnemonic) that was cut off the path of a diff header, so that a resolver can try the path with it as well.
+ * `path` is the text as printed: no normalisation, no expansion of `~`, not resolved against any directory; only a `file:///` path is percent-decoded. `line` and `col` are as printed (a first line is 1; a printed 0 is 0).
+ * `diffPrefix` is the `a/`, `b/` (or another git mnemonic) that was cut off the path of a diff header, so that a resolver can try the path with it as well.
  */
 export type FileLinkCandidate = {
   readonly start: number;
   readonly end: number;
-  readonly startCell: number;
-  readonly endCell: number;
   readonly path: string;
   readonly line?: number;
   readonly col?: number;
@@ -47,49 +43,7 @@ export type FindFileLinksOptions = {
   readonly limits?: Partial<FileLinkLimits>;
   /** Called once for every character the scan looks at: the step counter of the no-backtracking proof. */
   readonly onStep?: () => void;
-  /** The cells a code point takes; `cellWidth` by default. */
-  readonly cellWidth?: (codePoint: number) => number;
 };
-
-/** The cells of a code point in a terminal: 0 for a combining mark or a zero-width format character, 2 for an East Asian wide or full-width character or an emoji, else 1. */
-export function cellWidth(codePoint: number): number {
-  if (codePoint < 0x300) {
-    return codePoint === 0 ? 0 : 1;
-  }
-
-  if (
-    codePoint <= 0x36f ||
-    (codePoint >= 0x1ab0 && codePoint <= 0x1aff) ||
-    (codePoint >= 0x1dc0 && codePoint <= 0x1dff) ||
-    (codePoint >= 0x200b && codePoint <= 0x200f) ||
-    (codePoint >= 0x20d0 && codePoint <= 0x20ff) ||
-    (codePoint >= 0xfe00 && codePoint <= 0xfe0f) ||
-    (codePoint >= 0xfe20 && codePoint <= 0xfe2f) ||
-    codePoint === 0xfeff
-  ) {
-    return 0;
-  }
-
-  if (
-    (codePoint >= 0x1100 && codePoint <= 0x115f) ||
-    (codePoint >= 0x2e80 && codePoint <= 0x303e) ||
-    (codePoint >= 0x3041 && codePoint <= 0xa4cf) ||
-    (codePoint >= 0xac00 && codePoint <= 0xd7a3) ||
-    (codePoint >= 0xf900 && codePoint <= 0xfaff) ||
-    (codePoint >= 0xfe30 && codePoint <= 0xfe6f) ||
-    (codePoint >= 0xff00 && codePoint <= 0xff60) ||
-    (codePoint >= 0xffe0 && codePoint <= 0xffe6) ||
-    (codePoint >= 0x1f300 && codePoint <= 0x1f64f) ||
-    (codePoint >= 0x1f680 && codePoint <= 0x1f6ff) ||
-    (codePoint >= 0x1f900 && codePoint <= 0x1f9ff) ||
-    (codePoint >= 0x1fa70 && codePoint <= 0x1faff) ||
-    (codePoint >= 0x20000 && codePoint <= 0x3fffd)
-  ) {
-    return 2;
-  }
-
-  return 1;
-}
 
 const MAX_DIGITS = 9;
 
@@ -101,6 +55,8 @@ type Suffix = {
   readonly colEnd?: number;
   /** The suffix names a line without doubt: a colon and a number, or a quote that closed a path. Any word may precede it. Others need a path that has a dot or a slash, or `version 12` is a link. */
   readonly strong: boolean;
+  /** The column was written after a dot (`:12.5`), which is also how an image tag reads (`nginx:1.25`). */
+  readonly dotCol?: boolean;
 };
 
 type Raw = {
@@ -121,12 +77,48 @@ type Quoted = {
   readonly suffix: Suffix;
 };
 
+/**
+ * The shapes that read as `name:number` and are not a file: a version (`v1.2.3:4`, `go1.22.1:5`), a time stamp (`2026-11-28T12:30:45`), an IPv6 address (`fe80::1`), and an image tag (`nginx:1.25`,
+ * `ghcr.io/org/app:1.2`: a column after a dot, on a last name that has no dot). Each costs a pass over a path of at most 1,024 characters that the caller has already stepped over.
+ */
+function notAFile(path: string, suffix: Suffix): boolean {
+  if (VERSION.test(path) || ISO_TIME.test(path) || (IPV6.test(path) && path.includes(':'))) {
+    return true;
+  }
+
+  return suffix.dotCol === true && !path.slice(path.lastIndexOf('/') + 1).includes('.');
+}
+
 const noop = (): void => undefined;
 
 const isDigit = (c: number): boolean => c >= 48 && c <= 57;
 const isAlpha = (c: number): boolean => (c >= 65 && c <= 90) || (c >= 97 && c <= 122);
 const isSpace = (c: number): boolean => c === 32 || c === 0xa0;
-const isQuote = (c: number): boolean => c === 34 || c === 39 || c === 96;
+/** A character a path must have at least one of: a letter, an underscore or any non-ASCII character. `]`, `-1` and `::` are no file. */
+const isWordChar = (c: number): boolean => isAlpha(c) || c === 95 || c >= 0x80;
+const VERSION = /^(?:v|go)?\d+(?:\.\d+)+$/;
+const ISO_TIME = /^\d{4}-\d\d-\d\dT/;
+const IPV6 = /^[0-9a-fA-F:.]+$/;
+const RATE = /^\d[\d.]*[A-Za-z]+$/;
+const CONTROL = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/;
+
+/** The text of a `file:///` path with its percent escapes decoded; `null` when a decoded character is a control or a format character (an `%1b` or `%0a` in a path is an attack, not a name). An escape that does not decode is left. */
+function decodeFilePath(path: string): string | null {
+  if (!path.includes('%')) {
+    return path;
+  }
+
+  let decoded = path;
+  try {
+    decoded = decodeURIComponent(path);
+  } catch {
+    // not valid UTF-8 escapes: the text as printed
+  }
+
+  return CONTROL.test(decoded) ? null : decoded;
+}
+
+const isQuote = (c: number): boolean => c === 34 || c === 39 || c === 96 || c === 0x201c || c === 0x201d;
 
 /**
  * Whether a UTF-16 unit ends a word: white space, a control character (ESC and a newline among them), the characters a path cannot hold (`<`, `>`, `|`), the box-drawing and block characters that tools draw trees
@@ -161,6 +153,8 @@ function endsPiece(c: number): boolean {
   switch (c) {
     case 33: // !
     case 34: // "
+    case 0x201c:
+    case 0x201d:
     case 38: // &
     case 39: // '
     case 40: // (
@@ -181,6 +175,7 @@ function endsPiece(c: number): boolean {
 function startsSuffix(c: number): boolean {
   switch (c) {
     case 34: // "
+    case 0x201d:
     case 35: // #
     case 39: // '
     case 40: // (
@@ -206,6 +201,8 @@ class Matcher {
   private readonly diff: 0 | 1 | 2;
   /** Bare paths found before a suffix that may take them in: they are kept when the word ends without one. */
   private pending: Raw[] = [];
+  /** The word being read is the path of a `file:///` url: its percent escapes are decoded. */
+  private fileUrl = false;
 
   constructor(text: string, limits: FileLinkLimits, step: () => void) {
     this.t = text;
@@ -236,7 +233,7 @@ class Matcher {
       }
 
       if (qi < quoted.length && quoted[qi].open === i) {
-        this.emit(quoted[qi].from, quoted[qi].to, this.t.slice(quoted[qi].from, quoted[qi].to), quoted[qi].suffix);
+        this.take(quoted[qi].from, quoted[qi].to, this.t.slice(quoted[qi].from, quoted[qi].to), quoted[qi].suffix);
         i = quoted[qi].suffix.end;
         qi += 1;
         continue;
@@ -256,18 +253,18 @@ class Matcher {
   }
 
   // -------------------------------------------------------------------------------------------------------------------------------------------------------------------
-  // Quoted names with spaces: `"my file.txt", line 3`. One pass pairs the quotes of each kind in turn; a closing quote that no suffix follows opens the next pair, so an apostrophe in prose pairs with nothing.
+  // Quoted names with spaces: `"my file.txt", line 3`. One pass pairs the quotes of each kind in turn (a break between two quotes needs no reset: `spacedName` refuses a name that holds one); a closing quote that no suffix follows opens the next pair, so an apostrophe in prose pairs with nothing.
   // -------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
   private findQuoted(): Quoted[] {
     const { t, n, limits } = this;
     const found: Quoted[] = [];
-    const open = [-1, -1, -1];
+    const open = [-1, -1, -1, -1];
     let i = 0;
     while (i < n && found.length < limits.maxLinks) {
       this.step();
       const c = t.charCodeAt(i);
-      const kind = c === 34 ? 0 : c === 39 ? 1 : c === 96 ? 2 : -1;
+      const kind = c === 34 ? 0 : c === 39 ? 1 : c === 96 ? 2 : c === 0x201c || c === 0x201d ? 3 : -1;
       if (kind >= 0) {
         const from = open[kind];
         if (from < 0) {
@@ -276,19 +273,13 @@ class Matcher {
           const suffix = from + 1 < i ? this.parseSuffix(i) : null;
           if (suffix !== null && this.spacedName(from + 1, i)) {
             found.push({ open: from, from: from + 1, to: i, suffix });
-            open[0] = -1;
-            open[1] = -1;
-            open[2] = -1;
+            open.fill(-1);
             i = suffix.end;
             continue;
           }
 
           open[kind] = suffix !== null ? -1 : i;
         }
-      } else if (isBreak(c) && !isSpace(c)) {
-        open[0] = -1;
-        open[1] = -1;
-        open[2] = -1;
       }
 
       i += 1;
@@ -327,6 +318,7 @@ class Matcher {
   /** Scans `t[s, e)`, a word, and returns where the scan goes on: `e`, or the end of a suffix that reached past it (` line 12`). */
   private segment(s: number, e: number): number {
     const { t, n, limits } = this;
+    this.fileUrl = false;
     let ps = this.skipLead(s, e);
     let ps2 = ps;
     const opens: number[] = [];
@@ -340,6 +332,7 @@ class Matcher {
         const scheme = this.schemeStart(i - 1, ps);
         if (scheme >= 0) {
           if (i - scheme === 4 && t.slice(scheme, i).toLowerCase() === 'file' && t.charCodeAt(i + 3) === 47) {
+            this.fileUrl = true;
             ps = i + 3;
             ps2 = ps;
             opens.length = 0;
@@ -357,8 +350,8 @@ class Matcher {
         const suffix = this.parseSuffix(i);
         if (suffix !== null) {
           const pathStart = opens.length > 0 ? opens[opens.length - 1] + 1 : ps;
-          this.release(pathStart);
-          this.emit(pathStart, i, t.slice(pathStart, i), suffix);
+          // A suffix that is read inside a word is consumed whether or not it gives a candidate: the path before it is not read again from its start, which is what keeps a long word linear.
+          this.take(pathStart, i, t.slice(pathStart, i), suffix);
           if (this.out.length >= limits.maxLinks) {
             return n;
           }
@@ -373,6 +366,16 @@ class Matcher {
           i = ps;
           continue;
         }
+      }
+
+      if (isQuote(c) && i > ps) {
+        // A quote that no suffix follows ends what came before it and starts a new path: `{"caller":"app/main.go:42"}` holds `app/main.go`, not everything from the first quote.
+        this.piece(ps2, i);
+        ps = this.skipLead(i + 1, e);
+        ps2 = ps;
+        opens.length = 0;
+        i = ps;
+        continue;
       }
 
       if (c === 40 || c === 91) {
@@ -395,9 +398,10 @@ class Matcher {
       const suffix = this.parseSuffix(e);
       if (suffix !== null) {
         const pathStart = opens.length > 0 ? opens[opens.length - 1] + 1 : ps;
-        this.release(pathStart);
-        this.emit(pathStart, e, t.slice(pathStart, e), suffix);
-        return suffix.end;
+        // At the end of the word a suffix that gives no candidate is not consumed (`at 2026-11-28T12:30:45Z`: the ` 2026` after `at` is no line, and the word after it is read whole): each character is read at most twice.
+        if (this.take(pathStart, e, t.slice(pathStart, e), suffix)) {
+          return suffix.end;
+        }
       }
     }
 
@@ -440,11 +444,8 @@ class Matcher {
 
   private piece(from: number, to: number): void {
     const { t, limits } = this;
-    let a = from;
+    const a = from;
     let b = to;
-    while (a < b && (t.charCodeAt(a) === 91 || t.charCodeAt(a) === 123)) {
-      a += 1;
-    }
 
     let bracket = false;
     let slashes = 0;
@@ -460,7 +461,7 @@ class Matcher {
         bracket = true;
       }
 
-      if (!isDigit(c) && c !== 47 && c !== 46 && c !== 45) {
+      if (isWordChar(c)) {
         plain = true;
       }
     }
@@ -477,11 +478,16 @@ class Matcher {
 
     // `App.run/1` is a function and its arity (Elixir, Erlang), not a directory and a file.
     const arity = slashes === 1 && /^\d+$/.test(t.slice(lastSlash + 1, b));
-    if (slashes === 0 || arity || !plain || b <= a || this.pending.length + this.out.length >= limits.maxLinks) {
+    // `9.00it/s` and `5MB/s` are rates, not a directory and a file.
+    const rate = slashes === 1 && RATE.test(t.slice(a, lastSlash));
+    if (slashes === 0 || arity || rate || !plain || b <= a || this.pending.length + this.out.length >= limits.maxLinks) {
       return;
     }
 
-    this.pending.push(this.build(a, b, t.slice(a, b), null));
+    const raw = this.build(a, b, t.slice(a, b), null);
+    if (raw !== null) {
+      this.pending.push(raw);
+    }
   }
 
   private flush(): void {
@@ -507,10 +513,19 @@ class Matcher {
   // A candidate.
   // -------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-  /** Builds a candidate, and cuts a git diff prefix off a path in a diff header. `suffix` is null for a bare path. */
-  private build(start: number, end: number, path: string, suffix: Suffix | null): Raw {
+  /** Builds a candidate, cuts a git diff prefix off a path in a diff header, and decodes a `file:///` path. `null` for a path that decodes to a control character. `suffix` is null for a bare path. */
+  private build(start: number, end: number, path: string, suffix: Suffix | null): Raw | null {
     let s = start;
     let p = path;
+    if (this.fileUrl) {
+      const decoded = decodeFilePath(p);
+      if (decoded === null) {
+        return null;
+      }
+
+      p = decoded;
+    }
+
     let diffPrefix: string | undefined;
     if (this.diff === 2 ? GIT_DIFF_PREFIX.test(p) : this.diff === 1 && start === 4 && GIT_DIFF_PREFIX.test(p)) {
       diffPrefix = p.slice(0, 2);
@@ -541,11 +556,11 @@ class Matcher {
     return raw;
   }
 
-  /** Takes a path with its suffix when it is a candidate: not empty, not just numbers, a dot or a slash in it unless the suffix is sure, within the caps. A suffix that is read is consumed whether or not it is taken. */
-  private emit(start: number, pathEnd: number, path: string, suffix: Suffix): void {
+  /** Takes a path with its suffix when it is a candidate: a letter in it, a dot or a slash unless the suffix is sure, none of the shapes of `notAFile`, within the caps. True when it was taken (the bare paths that it covers are dropped first). */
+  private take(start: number, pathEnd: number, path: string, suffix: Suffix): boolean {
     const { limits } = this;
     if (start >= pathEnd || this.out.length >= limits.maxLinks || path.length > limits.maxPathLength || suffix.end - start > limits.maxLinkLength) {
-      return;
+      return false;
     }
 
     let plain = false;
@@ -553,7 +568,7 @@ class Matcher {
     for (let i = 0; i < path.length; i += 1) {
       this.step();
       const c = path.charCodeAt(i);
-      if (!isDigit(c) && c !== 47 && c !== 46 && c !== 45 && c !== 58) {
+      if (isWordChar(c)) {
         plain = true;
       }
 
@@ -562,11 +577,18 @@ class Matcher {
       }
     }
 
-    if (!plain || !(suffix.strong || fileLike)) {
-      return;
+    if (!plain || !(suffix.strong || fileLike) || notAFile(path, suffix)) {
+      return false;
     }
 
-    this.out.push(this.build(start, pathEnd, path, suffix));
+    const raw = this.build(start, pathEnd, path, suffix);
+    if (raw === null) {
+      return false;
+    }
+
+    this.release(start);
+    this.out.push(raw);
+    return true;
   }
 
   // -------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -661,7 +683,7 @@ class Matcher {
       }
     }
 
-    return this.make(end, line.value, col, lineEnd, colEnd, strong);
+    return this.make(end, line.value, col, lineEnd, colEnd, strong, col !== undefined && sep === 46);
   }
 
   /** ` on ` before `line N`, or `line N` itself. */
@@ -806,7 +828,7 @@ class Matcher {
     return this.make(end, line.value, col, lineEnd, undefined, false);
   }
 
-  private make(end: number, line: number, col: number | undefined, lineEnd: number | undefined, colEnd: number | undefined, strong: boolean): Suffix {
+  private make(end: number, line: number, col: number | undefined, lineEnd: number | undefined, colEnd: number | undefined, strong: boolean, dotCol = false): Suffix {
     return {
       end,
       line,
@@ -814,6 +836,7 @@ class Matcher {
       ...(lineEnd === undefined ? {} : { lineEnd }),
       ...(colEnd === undefined ? {} : { colEnd }),
       strong,
+      ...(dotCol ? { dotCol } : {}),
     };
   }
 
@@ -838,29 +861,5 @@ class Matcher {
 
 export function findFileLinks(text: string, options: FindFileLinksOptions = {}): FileLinkCandidate[] {
   const limits: FileLinkLimits = { ...FILE_LINK_LIMITS, ...options.limits };
-  const raws = new Matcher(text, limits, options.onStep ?? noop).run();
-  const width = options.cellWidth ?? cellWidth;
-  const step = options.onStep ?? noop;
-  // The cells of each range in one forward pass: the candidates are in order and do not overlap.
-  const out: FileLinkCandidate[] = [];
-  let at = 0;
-  let cells = 0;
-  const advance = (to: number): number => {
-    while (at < to) {
-      step();
-      const cp = text.codePointAt(at) ?? 0;
-      cells += width(cp);
-      at += cp > 0xffff ? 2 : 1;
-    }
-
-    return cells;
-  };
-
-  for (const raw of raws) {
-    const startCell = advance(raw.start);
-    const endCell = advance(raw.end);
-    out.push({ ...raw, startCell, endCell });
-  }
-
-  return out;
+  return new Matcher(text, limits, options.onStep ?? noop).run();
 }
