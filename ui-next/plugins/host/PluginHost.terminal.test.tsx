@@ -1,6 +1,6 @@
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PANEL_HOST, type TerminalsOptions } from '../../shell';
 import { fakeEngineLoader, fakeTerminalFeed, type FakeEngineLoader } from '../../shell/panel/terminal/testing';
 import { openSession, SESSION_VERSION, type LoadedSession } from '../../shell/session';
@@ -25,6 +25,11 @@ dialog.showModal ??= function showModal(this: HTMLDialogElement) {
 beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => undefined);
 });
+
+// The terminal reads its settings through `shell/settings/runtime`, a lazy chunk: on a cold transform cache its first import outlasts what a test waits for. Load it before the tests, under the hook's own timeout.
+beforeAll(async () => {
+  await import('../../shell/settings/runtime');
+}, 60_000);
 
 afterEach(() => {
   cleanup();
@@ -182,9 +187,9 @@ describe('the choice and the session', () => {
       expect(loader.engines[0]?.screenReaderModes).toEqual([true]);
     });
     unmount();
+    // What the window leaves is the last thing written: an earlier write (the panel's opening) may land first, so the first one written is not the one to read.
     await waitFor(() => {
-      expect(written).toHaveLength(1);
+      expect(JSON.parse(written.at(-1) ?? 'null')).toMatchObject({ version: SESSION_VERSION, terminalScreenReader: true });
     });
-    expect(JSON.parse(written[0] ?? '')).toMatchObject({ version: SESSION_VERSION, terminalScreenReader: true });
   });
 });

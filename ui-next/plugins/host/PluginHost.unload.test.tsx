@@ -476,5 +476,6 @@ describe('a plugin that stops and returns twenty times', () => {
     expect(feed.closed()).toBe(1);
     expect(world.panel.getSnapshot().sessions[session?.id ?? '']).toMatchObject({ state: 'ended', cause: 'The plugin was unloaded.', held: true });
     expect(screen.getAllByRole('tab', { name: 'alpha/app, ended' })).toHaveLength(1);
-  });
+  // Twenty rounds of the whole window take 3 to 5 s alone, against the 5 s a test has: more than that where the machine is busy. The bound is the loop's, not the chunk's (a cold run alone is as long as a warm one).
+  }, 60_000);
 });
