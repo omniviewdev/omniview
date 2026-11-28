@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PALETTE_ROLES, SWATCH_ROLES, normaliseColour, readAppearance, type PixelContext } from './appearance';
+import { DEFAULT_PREFERENCES, sanitiseFontFamily } from './preferences';
 
 // The look of the screen, from the theme. An emulator that draws on a canvas cannot read a stylesheet, so the body renders a hidden swatch for each colour the screen needs, painted by the stylesheet with
 // the theme's own tokens, and this reads what the engine resolved for each (`getComputedStyle`): the colours follow the nine themes and the text size with no colour written in code. Here the swatches
@@ -61,6 +62,53 @@ describe('the font of the screen', () => {
     expect(lost.fontSize).toBeGreaterThan(0);
     expect(Number.isFinite(lost.lineHeight)).toBe(true);
     expect(lost.lineHeight).toBeGreaterThan(0);
+  });
+});
+
+describe('the font and the cursor with the person\'s settings (#697)', () => {
+  const THEME = 'font-family: \'Int UI Mono\', monospace; font-size: 12px; line-height: 18px';
+
+  it('is the theme\'s own look until the host has said anything: the defaults of the settings are the mock\'s 12 px on an 18 px row, a block cursor', () => {
+    const plain = readAppearance(paint({}, THEME));
+    const withDefaults = readAppearance(paint({}, THEME), DEFAULT_PREFERENCES);
+    expect(withDefaults).toEqual(plain);
+    expect(plain).toMatchObject({ fontFamily: '"Int UI Mono", monospace', fontSize: 12, cursorStyle: 'block' });
+    expect(plain.lineHeight).toBeCloseTo(1.5, 5);
+  });
+
+  it('puts the person\'s font names before the theme\'s face, so a name that is not installed falls to the theme\'s and never to the browser\'s serif', () => {
+    expect(readAppearance(paint({}, THEME), { ...DEFAULT_PREFERENCES, fontFamily: 'JetBrains Mono, Menlo' }).fontFamily).toBe('"JetBrains Mono", "Menlo", "Int UI Mono", monospace');
+    expect(readAppearance(paint({}, THEME), { ...DEFAULT_PREFERENCES, fontFamily: '' }).fontFamily).toBe('"Int UI Mono", monospace');
+  });
+
+  it('is the person\'s size, scaled by the theme\'s text scale (the swatch\'s size over the 12 px it is at 100 percent), and the person\'s line height as a multiple of it', () => {
+    const chosen = { ...DEFAULT_PREFERENCES, fontSize: 16, lineHeight: 1.25 };
+    const atRest = readAppearance(paint({}, THEME), chosen);
+    expect(atRest.fontSize).toBe(16);
+    expect(atRest.lineHeight).toBe(1.25);
+    const scaled = readAppearance(paint({}, 'font-family: monospace; font-size: 15px; line-height: 20px'), chosen);
+    expect(scaled.fontSize).toBe(20);
+    expect(scaled.lineHeight).toBe(1.25);
+  });
+
+  it('is the person\'s cursor', () => {
+    expect(readAppearance(paint({}, THEME), { ...DEFAULT_PREFERENCES, cursorStyle: 'bar' }).cursorStyle).toBe('bar');
+    expect(readAppearance(paint({}, THEME), { ...DEFAULT_PREFERENCES, cursorStyle: 'underline' }).cursorStyle).toBe('underline');
+  });
+
+  it('keeps the person\'s first face for a list the host accepted at 255 characters, whose quoted form is longer than the limit', () => {
+    const raw = `Menlo, ${'A'.repeat(237)}, monospace`;
+    const names = sanitiseFontFamily(raw);
+    expect(raw).toHaveLength(255);
+    expect(names.length).toBeGreaterThan(256);
+    const made = readAppearance(paint({}, THEME), { ...DEFAULT_PREFERENCES, fontFamily: names });
+    expect(made.fontFamily.startsWith('"Menlo", ')).toBe(true);
+    expect(made.fontFamily.endsWith(', "Int UI Mono", monospace')).toBe(true);
+  });
+
+  it('is never a family from the person that carries more than names, even if one got here', () => {
+    const hostile = readAppearance(paint({}, THEME), { ...DEFAULT_PREFERENCES, fontFamily: 'a; color: red' });
+    expect(hostile.fontFamily).toBe('"Int UI Mono", monospace');
   });
 });
 

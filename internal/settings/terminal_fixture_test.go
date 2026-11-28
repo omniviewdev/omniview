@@ -18,7 +18,7 @@ import (
 // setting the host adds (the opt-out of the shell integration, issue #694 step 6) cannot be missing from what the
 // page's tests prove it draws.
 
-var fixtureSetting = regexp.MustCompile(`(?m)^\s*setting\('(\w+)', '(\w+)', '((?:[^'\\]|\\.)*)', '((?:[^'\\]|\\.)*)', ('(?:[^'\\]|\\.)*'|true|false|\d+)`)
+var fixtureSetting = regexp.MustCompile(`(?m)^\s*setting\('(\w+)', '(\w+)', '((?:[^'\\]|\\.)*)', '((?:[^'\\]|\\.)*)', ('(?:[^'\\]|\\.)*'|true|false|\d+(?:\.\d+)?)`)
 
 func unescape(text string) string { return strings.ReplaceAll(text, `\'`, `'`) }
 

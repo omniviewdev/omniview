@@ -91,6 +91,7 @@ export function createXtermEngine(options: EngineOptions): Engine {
     fontFamily: appearance.fontFamily,
     fontSize: appearance.fontSize,
     lineHeight: 1,
+    cursorStyle: appearance.cursorStyle,
     theme: themeOf(appearance),
     // Idle is zero timers: a blinking cursor is a timer for as long as the terminal has focus.
     cursorBlink: false,
@@ -173,7 +174,7 @@ export function createXtermEngine(options: EngineOptions): Engine {
 
   /**
    * The emulator's row is the font's own height times `lineHeight`, rounded down: a multiple that is right for one font is not for another. This finds the multiple that makes the row the pitch the host asked for
-   * (the mock's rows are 18 px at 12 px) by looking at the row it makes, and stops when it is, or after a few tries (a font that rounds the other way).
+   * (the mock's rows are 18 px at 12 px) by looking at the row it makes, and stops when it is, or after a few tries (a font that rounds the other way). A pitch shorter than the font's own row cannot be had: the row is the font's.
    */
   const calibrate = (): void => {
     for (let attempt = 0; attempt < 4; attempt += 1) {
@@ -182,7 +183,8 @@ export function createXtermEngine(options: EngineOptions): Engine {
         return;
       }
 
-      terminal.options.lineHeight = (terminal.options.lineHeight ?? 1) * (pitch / cell) + (attempt > 1 ? 0.01 : 0);
+      // The emulator takes no multiple below 1 (it throws): a pitch shorter than the font's own row is drawn at the font's own row, which is the shortest row a font has.
+      terminal.options.lineHeight = Math.max(1, (terminal.options.lineHeight ?? 1) * (pitch / cell) + (attempt > 1 ? 0.01 : 0));
     }
   };
 
@@ -528,6 +530,7 @@ export function createXtermEngine(options: EngineOptions): Engine {
       terminal.options.theme = themeOf(next);
       terminal.options.fontFamily = next.fontFamily;
       terminal.options.fontSize = next.fontSize;
+      terminal.options.cursorStyle = next.cursorStyle;
       pitch = pitchOf(next);
       calibrate();
       redrawFind?.();

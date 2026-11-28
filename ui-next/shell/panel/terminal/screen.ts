@@ -2,6 +2,7 @@ import type { Platform } from '../../core/chords';
 import { CURSOR_INIT, FULL_RESET, modesPrologue, type Engine, type EngineAppearance, type EngineLoader, type EngineOptions, type Finder, type LinkHandler } from './engine';
 import type { PlacedMark, TerminalFeedHandle, TerminalFeedSnapshot, TerminalReplay, TerminalSize } from './feed';
 import { keyOf, sequenceOf } from './keys';
+import { DEFAULT_PREFERENCES_SOURCE, type PreferencesSource, type TerminalPreferences } from './preferences';
 import type { ScreenReaderSource } from './screenReader';
 import { createCommandGutter, type CommandGutter, type GutterEvent } from './gutter/commandGutter';
 import { COPIED_OUTPUT, COULD_NOT_COPY, INPUT_OFF, NO_COMMANDS, NO_LINE, NO_OUTPUT, NO_SUCH_COMMAND, RERUN_EARLIER, RERUN_RUNNING, RERUN_SENT, RERUN_TYPED, SCREEN_TAKEN } from './gutter/words';
@@ -93,6 +94,11 @@ export type ScreenDeps = {
   readonly observe: (element: HTMLElement, callback: () => void) => () => void;
   /** Resolves when the font (a CSS `font` shorthand: size and family) is loaded, or is not going to be. */
   readonly fontsReady: (font: string) => Promise<void>;
+  /**
+   * The person's settings (`preferences.ts`). The emulator is made after the host's first answer, in the scrollback it holds; a change of the font, its size, its line height or the cursor is applied to the emulator that is there
+   * (the font loaded first, when its family changed), at once when the screen is shown and when it is shown again if it was not; the rest of what it holds is read by later steps. Default: the host's own defaults, forever.
+   */
+  readonly preferences?: PreferencesSource | undefined;
   /** Puts text on the clipboard; says whether it could. */
   readonly copy: (text: string) => Promise<boolean>;
   readonly warn?: ((message: string, error?: unknown) => void) | undefined;
@@ -182,6 +188,9 @@ export type TerminalScreen = {
 /** Text in the muted colour of the transcript's own lines, on a line of its own (the escape sequences are the emulator's: reset, bright black, reset). The palette's bright black is the theme's muted text; the emulator's dim style would be half the opacity of any colour, which no contrast rule can pass. */
 const muted = (text: string): string => `\u001b[0m\r\n\u001b[90m${text}\u001b[0m\r\n`;
 
+/** What of the person's settings changes how the emulator looks: the font names, the size, the line height and the cursor. */
+const lookOf = (preferences: TerminalPreferences): string => JSON.stringify([preferences.fontFamily, preferences.fontSize, preferences.lineHeight, preferences.cursorStyle]);
+
 /** What the transcript gets between an ended process and its restart, before the muted line: the soft terminal reset (`DECSTR`) after the modes a program may have left on are switched off by name (mouse tracking and its encodings, focus events, bracketed paste, application cursor keys: DECSTR resets none of the mouse), and the way out of the alternate screen that keeps the normal screen's cursor (`?47l`: `?1049l` would restore a saved cursor that DECSTR has reset, to the top). */
 const SEPARATOR = '\u001b[?47l\u001b[?1000l\u001b[?1002l\u001b[?1003l\u001b[?1004l\u001b[?1005l\u001b[?1006l\u001b[?1015l\u001b[?2004l\u001b[?1l\u001b[!p';
 
@@ -219,6 +228,14 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
   let engine: Engine | undefined;
   /** The screen reader mode the emulator has now. */
   let readerMode = false;
+  const preferences = deps.preferences ?? DEFAULT_PREFERENCES_SOURCE;
+  /** What of the person's settings the emulator was last given (`lookOf`), and the family of its font: a change of the family is a font to load. */
+  let appliedLook = lookOf(preferences.getSnapshot());
+  let appliedFamily: string | undefined;
+  /** The changes of look so far: a font that comes after a later change is not applied. */
+  let looks = 0;
+  /** A change of look came while the screen was not shown: it is applied when the screen is. */
+  let lookWaits = false;
   let visible = false;
   /** The GPU renderer is in place for this showing: until then nothing is measured, and the feed is told no size. */
   let rendererReady = false;
@@ -865,8 +882,74 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
     }
   }
 
+  /**
+   * Applies the look the page reads now (the theme's colours, the person's font, size, line height and cursor) to the emulator that is there. A new FAMILY is a font that may not be loaded: the emulator measures its cell when it is
+   * given the font, and measures the fallback's if it is not loaded yet, so the family is awaited first (`fontsReady`) and the look is read again after, in case a later change came meanwhile (that change applies it, and this one
+   * ends). A change of the size, the line height or the cursor needs no font and is applied before this returns. The grid is measured again after (a new text size changes the cells that fit while the host's own rectangle did not
+   * move, so no observer says it; it sends nothing when the size is the same). A screen that is not shown keeps the change for when it is: nothing is measured behind a hidden element.
+   */
+  async function look(): Promise<void> {
+    const emulator = engine;
+    if (emulator === undefined || host === undefined) {
+      return;
+    }
+
+    if (!visible) {
+      lookWaits = true;
+      return;
+    }
+
+    looks += 1;
+    const mine = looks;
+    const wanted = deps.appearance(host);
+    if (wanted.fontFamily !== appliedFamily) {
+      try {
+        await deps.fontsReady(`${String(wanted.fontSize)}px ${wanted.fontFamily}`);
+      } catch {
+        // A font that cannot load is the fallback's.
+      }
+
+      if (mine !== looks || disposed || engine !== emulator || host === undefined) {
+        return;
+      }
+
+      if (!visible) {
+        lookWaits = true;
+        return;
+      }
+    }
+
+    const applied = deps.appearance(host);
+    emulator.setAppearance(applied);
+    appliedFamily = applied.fontFamily;
+    fit();
+  }
+
+  /** Applies the look and says what could not be: nothing awaits it. */
+  function applyLook(): void {
+    look().catch((error: unknown) => {
+      warn('[terminal] the look of the terminal could not be applied', error);
+    });
+  }
+
+  /** The host's settings changed (or its first answer came after the emulator was made): a change of what the emulator looks like is applied, and nothing else is told to it. */
+  function preferencesChanged(): void {
+    const now = lookOf(preferences.getSnapshot());
+    if (now === appliedLook) {
+      return;
+    }
+
+    appliedLook = now;
+    applyLook();
+  }
+
   /** The screen is on screen: the emulator draws in the host, follows its size and the window's screen reader choice. */
   function attach(emulator: Engine): void {
+    if (lookWaits) {
+      lookWaits = false;
+      applyLook();
+    }
+
     rendererReady = false;
     showings += 1;
     const showing = showings;
@@ -903,8 +986,13 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
     }
 
     readerMode = deps.screenReader.getSnapshot();
-    const made = factory({ cols: INITIAL.cols, rows: INITIAL.rows, scrollback: SCROLLBACK, appearance: deps.appearance(host), screenReaderMode: readerMode });
+    const person = preferences.getSnapshot();
+    const look = deps.appearance(host);
+    const made = factory({ cols: INITIAL.cols, rows: INITIAL.rows, scrollback: deps.preferences === undefined ? SCROLLBACK : person.scrollback, appearance: look, screenReaderMode: readerMode });
     engine = made;
+    appliedLook = lookOf(person);
+    appliedFamily = look.fontFamily;
+    stops.push(preferences.subscribe(preferencesChanged));
     gutter = createCommandGutter(made);
     stops.push(
       gutter.onEvent((event) => {
@@ -969,8 +1057,23 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
     set({ error: undefined });
     try {
       factory ??= await deps.load();
-      const { fontSize, fontFamily } = deps.appearance(element);
-      await deps.fontsReady(`${String(fontSize)}px ${fontFamily}`);
+      // The person's font is known before it is loaded: a terminal is made in the settings the host holds and not in the defaults.
+      if (deps.preferences !== undefined) {
+        await deps.preferences.settled();
+      }
+
+      // The look is read again after each wait: a setting changed while the font loaded (the store is kept live by another terminal, and this screen listens only once its emulator is made) may name another family, which is loaded
+      // too, before the emulator measures its cell. With nothing changed this waits once. Three rounds at most: a person who changes the family faster than a font loads is not waited for.
+      let loaded: string | undefined;
+      for (let round = 0; round < 3; round += 1) {
+        const { fontSize, fontFamily } = deps.appearance(element);
+        if (fontFamily === loaded) {
+          break;
+        }
+
+        loaded = fontFamily;
+        await deps.fontsReady(`${String(fontSize)}px ${fontFamily}`);
+      }
     } catch (error) {
       loading = false;
       if (!disposed) {
@@ -1203,11 +1306,7 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
     copy,
 
     refresh: () => {
-      if (host !== undefined) {
-        engine?.setAppearance(deps.appearance(host));
-        // A new text size changes the cells that fit while the host's own rectangle did not move, so no observer says it: the grid is measured again (it sends nothing when the size is the same).
-        fit();
-      }
+      applyLook();
     },
 
     rename: (next) => {

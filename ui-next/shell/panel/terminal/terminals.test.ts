@@ -7,6 +7,7 @@ import { focusTab } from '../focus';
 import type { EngineAppearance } from './engine';
 import type { TerminalBusy, TerminalDirectory, TerminalFeedHandle, TerminalTarget } from './feed';
 import { localHereTarget, localProfileTarget, localShellTarget } from './localShell';
+import { DEFAULT_PREFERENCES_SOURCE } from './preferences';
 import { shellsOf, type ShellChoice, type ShellList } from './profiles';
 import { createScreen } from './screen';
 import { createScreenReaderChoice } from './screenReader';
@@ -30,6 +31,7 @@ const APPEARANCE: EngineAppearance = {
   fontFamily: 'monospace',
   fontSize: 12,
   lineHeight: 1.33,
+  cursorStyle: 'block',
 };
 
 const command = (key: string, init: KeyboardEventInit = {}) => new KeyboardEvent('keydown', { key, code: `Key${key.toUpperCase()}`, metaKey: true, bubbles: true, cancelable: true, ...init });
@@ -154,7 +156,7 @@ describe('the screen reader choice of the window', () => {
     const store = createPanelStore();
     store.registerTool(TERMINAL_TOOL);
     const loader = fakeEngineLoader();
-    const terminals = createTerminals(store, { load: loader.load }, { screenReader: true });
+    const terminals = createTerminals(store, { load: loader.load, preferences: DEFAULT_PREFERENCES_SOURCE }, { screenReader: true });
     const stop = terminals.sessions.attach();
     const bodies = ['one', 'two'].map((title) => {
       const opened = terminals.sessions.open({ plugin: HOST, id: title, title, open: () => fakeTerminalFeed() });

@@ -108,6 +108,7 @@ const APPEARANCE: EngineAppearance = {
   fontFamily: 'monospace',
   fontSize: 12,
   lineHeight: 1.33,
+  cursorStyle: 'block',
 };
 
 const OPTS: FindOptions = { caseSensitive: false, regex: false, wholeWord: false };
@@ -2455,5 +2456,53 @@ describe('the GPU renderer of a real emulator (#698 item 15)', () => {
     expect(gpus.made).toHaveLength(3);
     first.dispose();
     second.dispose();
+  });
+});
+
+// The person's settings reach a real emulator (#697 step 1): the font names, the size, the line height and the cursor are applied to the emulator that is there. It is the same object (the engine is not made again) and its
+// scrollback is untouched: the lines written before the change are the lines after it.
+describe('the person\'s settings on a real emulator', () => {
+  const lines = (terminal: Terminal): string[] => {
+    const out: string[] = [];
+    const buffer = terminal.buffer.active;
+    for (let row = 0; row < buffer.length; row += 1) {
+      out.push(buffer.getLine(row)?.translateToString(true) ?? '');
+    }
+
+    return out;
+  };
+
+  it('is made in the cursor and the font of the settings', () => {
+    const before = made.length;
+    const engine = createXtermEngine({ cols: 80, rows: 24, scrollback: 777, appearance: { ...APPEARANCE, cursorStyle: 'bar', fontFamily: 'Menlo, monospace', fontSize: 15 }, screenReaderMode: false });
+    const terminal = made.at(-1);
+    expect(made.length).toBe(before + 1);
+    expect(terminal?.options).toMatchObject({ cursorStyle: 'bar', fontFamily: 'Menlo, monospace', fontSize: 15, scrollback: 777 });
+    engine.dispose();
+  });
+
+  it('changes the font names, the size and the cursor of the emulator that is there: no second emulator, and every line it held is still held', async () => {
+    const engine = createXtermEngine({ cols: 20, rows: 4, scrollback: 100, appearance: APPEARANCE, screenReaderMode: false });
+    const terminal = made.at(-1);
+    if (terminal === undefined) {
+      throw new Error('no emulator');
+    }
+
+    const written = async (data: string) => {
+      const { promise, resolve } = Promise.withResolvers<void>();
+      engine.write(data, resolve);
+      return promise;
+    };
+
+    await written(Array.from({ length: 30 }, (_, index) => `line ${String(index)}`).join('\r\n'));
+    const held = lines(terminal);
+    expect(held.length).toBeGreaterThan(20);
+    const count = made.length;
+
+    engine.setAppearance({ ...APPEARANCE, fontFamily: 'JetBrains Mono, monospace', fontSize: 16, cursorStyle: 'underline' });
+    expect(made.length).toBe(count);
+    expect(terminal.options).toMatchObject({ fontFamily: 'JetBrains Mono, monospace', fontSize: 16, cursorStyle: 'underline' });
+    expect(lines(terminal)).toEqual(held);
+    engine.dispose();
   });
 });
