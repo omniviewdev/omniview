@@ -1,7 +1,7 @@
 import { equalRatios, fitRatios, minRatio, moveBoundary, PANE_MIN_PX } from './ratios';
 import { openSession } from './sessions';
 import { effectiveSession, identifier, own, patch, refuse, sessionVisible, settle, toolVisible, unchanged, type Context, type Step } from './state';
-import type { PaneAxis, PaneGroup, PaneId, PanelResult, PanelState, SessionInput, SplitResult, ToolId } from './types';
+import type { PaneAxis, PaneGroup, PaneId, PanelResult, PanelState, SessionId, SessionInput, SplitResult, ToolId } from './types';
 
 // The panes of a tool: a new session beside the active one, the sash, the shares. A tool that has no group shows one session and none of this applies to it. Closing a pane is closing its session
 // (`closeSession`, ./sessions.ts); what keeps the active session in the active pane is `settle` (./state.ts).
@@ -13,6 +13,8 @@ export type SplitOptions = {
   readonly extent: number;
   /** How a tool's first split lays its panes out; a group has ONE axis (flat, as a terminal group is: no nesting), so another axis for a tool that has panes is refused (`axis`). Default: `row`. */
   readonly axis?: PaneAxis | undefined;
+  /** The new pane goes after the pane of this session when it is in the group, whichever pane is active (a split pressed in a pane goes beside THAT pane, though the keyboard has gone elsewhere while the host answered); a session that is in no pane, or none, leaves the active pane the anchor. */
+  readonly beside?: SessionId | undefined;
 };
 
 /** Whether one more pane fits in a tool: every pane, the new one included, would have its minimum of `extent` (the length the panes share along the axis). A tool with no group has one pane. */
@@ -67,7 +69,8 @@ export function splitPane(state: PanelState, tool: ToolId, input: Omit<SessionIn
 
   const made = opened.result.id;
   const base: PaneGroup = group ?? { axis: options.axis ?? 'row', panes: [{ id: slot(1), session: beside ?? made }], ratios: [1], active: slot(1), seq: 1 };
-  const after = Math.max(0, base.panes.findIndex((pane) => pane.id === base.active));
+  const named = options.beside === undefined ? -1 : base.panes.findIndex((pane) => pane.session === options.beside);
+  const after = named >= 0 ? named : Math.max(0, base.panes.findIndex((pane) => pane.id === base.active));
   const pane = { id: slot(base.seq + 1), session: made };
   const panes = [...base.panes.slice(0, after + 1), pane, ...base.panes.slice(after + 1)];
   const next = patch(opened.state, {

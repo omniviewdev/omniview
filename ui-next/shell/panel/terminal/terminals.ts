@@ -294,7 +294,7 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
 
   // The directory comes from the session's own feed and from nothing the page knows: the host's `ChannelTerminalCwd` while the shell runs, the directory it started in once it ended or was lost. A feed that throws instead of
   // saying `unknown` is a feed that could not say, and the terminal opens in the host's default directory all the same.
-  const openHere = async (session: SessionId, split?: { readonly extent: number }): Promise<void> => {
+  const openHere = async (session: SessionId, split?: { readonly extent: number; readonly beside: SessionId }): Promise<void> => {
     const feed = sessions.feedOf(session);
     if (feed?.directory === undefined) {
       return;
@@ -316,7 +316,7 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
       return;
     }
 
-    await openHere(session, { extent });
+    await openHere(session, { extent, beside: session });
   };
 
   return {

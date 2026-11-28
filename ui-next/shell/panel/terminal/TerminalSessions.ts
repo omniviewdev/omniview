@@ -86,7 +86,7 @@ export type OpenTerminalOptions = {
    * Opens the session in a NEW pane beside the active one (the panel model's `splitPane`, #697 step 6) instead of as another tab of one body: `extent` is the length the panes would share along the deck's axis, in pixels, which the
    * layout knows and the model does not. A split the panel refuses (no room for another pane: each needs 80 px) is a refused session: nothing opens and the process that was started is closed again.
    */
-  readonly split?: { readonly extent: number } | undefined;
+  readonly split?: { readonly extent: number; readonly beside?: SessionId | undefined } | undefined;
 };
 
 export type TerminalSessions = {
@@ -704,7 +704,7 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
       entries.set(id, entry);
       if (saved === undefined) {
         const input = { id, plugin, title: target.title, scope: target.scope, route: target.resource?.route, ...sessionStateOf(first) };
-        const opened = opening.split === undefined ? store.openSession({ ...input, tool: TERMINAL_TOOL_ID }, { reveal: opening.reveal }) : store.splitPane(TERMINAL_TOOL_ID, input, { extent: opening.split.extent });
+        const opened = opening.split === undefined ? store.openSession({ ...input, tool: TERMINAL_TOOL_ID }, { reveal: opening.reveal }) : store.splitPane(TERMINAL_TOOL_ID, input, { extent: opening.split.extent, beside: opening.split.beside });
         if (opened.status === 'refused') {
           entries.delete(id);
           closeFeed(plugin, (): Promise<void> | void => feed.close());

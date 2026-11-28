@@ -28,7 +28,7 @@ The bottom panel's state and its rules, as pure TypeScript: no React, no DOM, no
 
 ## Panes (#697 step 6)
 
-A tool can show several of its sessions side by side. The model owns who is in which pane and their shares; the layout owns pixels, the sash and the keys (later pull requests).
+A tool can show several of its sessions side by side. The model owns who is in which pane and their shares; the layout (`../../panel/panes/`) owns pixels, the drag of the sash and its keys, which are in; focus movement between panes by key and the saved ratios' wiring are the later pull requests.
 
 - **A group has two panes or more.** One pane is no group: a tool with one session, or a group that fell to one, has none, and is the panel as it was. `paneLayout(state, tool)` gives what a body draws, for both: the visible panes, their shares (summing to 1) and the active one.
 - **`active` stays the tool's session**, and it is the session of the active pane (`settle` keeps them so). A session chosen or opened in the tool that no pane shows takes the active pane; the session that pane had stays a tab, in no pane. A session is in at most one pane.

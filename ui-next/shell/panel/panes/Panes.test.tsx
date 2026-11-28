@@ -425,7 +425,7 @@ describe('the sash\'s drag', () => {
   it('cancels the drag when a pane before the sash closes: the preview is cleared from the panes it was written to, and nothing is committed', () => {
     const h = mount();
     split(h, 3);
-    const [first, , third] = h.store.getSnapshot().order;
+    const [first] = h.store.getSnapshot().order;
     const sash = sashAt(1);
     fireEvent.pointerDown(sash, { button: 0, isPrimary: true, pointerId: 1, clientX: 530 });
     fireEvent.pointerMove(sash, { pointerId: 1, clientX: 400 });
@@ -434,7 +434,6 @@ describe('the sash\'s drag', () => {
     });
     expect(slots().some((slot) => slot.style.getPropertyValue('flex-grow') !== '')).toBe(true);
     const before = h.store.getSnapshot().panes.terminal?.ratios;
-    void third;
     act(() => {
       h.store.closeSession(first);
     });
@@ -498,14 +497,14 @@ describe('the sash\'s drag', () => {
 
 describe('a resize of the panel', () => {
   it('brings the shares within the minimum of the length the deck has now', () => {
-    let resized: (() => void) | undefined;
+    const resized: Array<() => void> = [];
     class Observer {
       observe = vi.fn();
 
       disconnect = vi.fn();
 
       constructor(callback: () => void) {
-        resized = callback;
+        resized.push(callback);
       }
     }
 
@@ -517,7 +516,9 @@ describe('a resize of the panel', () => {
     });
     expect(h.store.getSnapshot().panes.terminal?.ratios[0]).toBeCloseTo(0.02, 9);
     act(() => {
-      resized?.();
+      for (const callback of resized) {
+        callback();
+      }
     });
     expect((h.store.getSnapshot().panes.terminal?.ratios[0] ?? 0) * (DECK - SASH)).toBeGreaterThanOrEqual(80 - 1e-6);
     vi.unstubAllGlobals();
@@ -532,14 +533,14 @@ function Room() {
 
 describe('the room for one more pane', () => {
   it('is what the deck measured: one more fits while every pane would keep 80 px, and the length a split is given has the sash the new pane brings', () => {
-    let resized: (() => void) | undefined;
+    const resized: Array<() => void> = [];
     class Observer {
       observe = vi.fn();
 
       disconnect = vi.fn();
 
       constructor(callback: () => void) {
-        resized = callback;
+        resized.push(callback);
       }
     }
 
@@ -555,13 +556,17 @@ describe('the room for one more pane', () => {
     };
 
     act(() => {
-      resized?.();
+      for (const callback of resized) {
+        callback();
+      }
     });
     // Two panes and a sash in 800 px: a third needs 240 of the 790 two sashes leave.
     expect(read()).toEqual({ fits: 'true', extent: String(DECK - 2 * SASH) });
     deckWidth = 200;
     act(() => {
-      resized?.();
+      for (const callback of resized) {
+        callback();
+      }
     });
     expect(read().fits).toBe('false');
     vi.unstubAllGlobals();

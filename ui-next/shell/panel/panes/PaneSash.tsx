@@ -52,9 +52,31 @@ export function PaneSash({ deck, tool, axis, boundary, sessions, ratios, prefix 
 
   // The committed shares are drawn: what a drag wrote is given back to the stylesheet in the commit that draws them, so the panes never show the old shares between the two.
   useLayoutEffect(() => {
+    // A drag is of the panes it began on: when the panes before or after the sash change (a close, a split) the drag is cancelled while the old mapping is still in place, so that its preview is taken off the panes it was written to.
+    const was = live.get();
+    if (was.tool !== tool || was.axis !== axis || was.boundary !== boundary || was.sessions.length !== sessions.length || was.sessions.some((one, at) => one !== sessions[at])) {
+      sash.cancel();
+    }
+
     live.set({ tool, axis, boundary, sessions });
     sash.release();
   }, [live, sash, tool, axis, boundary, sessions, ratios]);
+
+  // The deck's length changes while the pointer is down (the window, a maximise): the drag is measured again.
+  useEffect(() => {
+    const element = deck.current;
+    if (element === null || typeof ResizeObserver === 'undefined') {
+      return undefined;
+    }
+
+    const observer = new ResizeObserver(() => {
+      sash.remeasure();
+    });
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+    };
+  }, [deck, sash]);
 
   useEffect(
     () => () => {

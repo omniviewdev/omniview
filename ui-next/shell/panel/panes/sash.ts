@@ -61,6 +61,8 @@ export type Sash = {
   readonly key: (event: SashKey) => void;
   /** A double click: every pane the same share again. */
   readonly reset: () => void;
+  /** The deck changed length: a drag that is running is measured again, so that its preview holds the minimum of the length the deck has now (a drag measured at its start would keep a share that a shorter deck makes under 80 px). */
+  readonly remeasure: () => void;
   readonly dragging: () => boolean;
   /** Gives the shares back to the stylesheet: removes what a drag wrote, unless one is running. */
   readonly release: () => void;
@@ -69,7 +71,7 @@ export type Sash = {
 
 type Drag = Place & {
   readonly pointerId: number;
-  readonly geometry: Geometry;
+  geometry: Geometry;
   readonly ratios: readonly number[];
   raw: number;
   applied: readonly number[] | undefined;
@@ -229,6 +231,22 @@ export function createSash({ store, place, geometry, panes, marked }: SashOption
       const measured = geometry();
       if (measured !== null) {
         store.equalisePanes(place().tool, measured.extent);
+      }
+    },
+    remeasure: () => {
+      const session = drag;
+      const now = geometry();
+      if (session === null || now === null || now.extent === session.geometry.extent) {
+        return;
+      }
+
+      session.geometry = now;
+      session.applied = undefined;
+      session.dirty = true;
+      if (session.frame === 0) {
+        session.frame = requestAnimationFrame(() => {
+          write(session);
+        });
       }
     },
     dragging: () => drag !== null,

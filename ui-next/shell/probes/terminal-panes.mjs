@@ -87,14 +87,13 @@ const near = (a, b, tolerance = 1) => typeof a === 'number' && Math.abs(a - b) <
 const rounded = (value) => Math.round(value * 10) / 10;
 
 /**
- * The negative controls: a fault of the page (`init` before the page's own scripts, `after` at the `stage` the section names). Each runs in Chromium: what it proves does not depend on the engine.
+ * The negative controls: a fault of the page (`init` before the page's own scripts, `after` at the `stage` the section names). Each runs in both engines, as the rule is (AGENTS 25).
  */
 export const PANES_CONTROLS = {
   // The first pane takes a little more than its share: 3 px of 1,400, which the emulators' columns do not see (a third of a column) and the equal widths do.
   'panes-unequal': {
     assertion: 'panes.equal',
     section: 'panes-layout',
-    engines: ['chromium'],
     stage: 'split',
     after: (page) => page.evaluate(() => document.querySelector('[data-shell-part="panelBody"][data-pane]').style.setProperty('--_share', '0.502')),
   },
@@ -102,7 +101,6 @@ export const PANES_CONTROLS = {
   'panes-wrong-directory': {
     assertion: 'panes.split',
     section: 'panes-layout',
-    engines: ['chromium'],
     init: () => {
       // What the page asks the host for a terminal in goes through the probe's binding: the directory is changed on its way.
       const call = window.__host;
@@ -113,7 +111,6 @@ export const PANES_CONTROLS = {
   'panes-focus-stays': {
     assertion: 'panes.focus',
     section: 'panes-layout',
-    engines: ['chromium'],
     stage: 'split',
     after: (page) => page.locator('[data-shell-part="panelBody"][data-pane] [data-terminal-tool="find"]').first().focus(),
   },
@@ -121,7 +118,6 @@ export const PANES_CONTROLS = {
   'panes-order-lost': {
     assertion: 'panes.order',
     section: 'panes-order',
-    engines: ['chromium'],
     stage: 'order',
     after: (page) =>
       page.evaluate(() => {
@@ -133,7 +129,6 @@ export const PANES_CONTROLS = {
   'panes-remounted': {
     assertion: 'panes.keep',
     section: 'panes-order',
-    engines: ['chromium'],
     stage: 'split',
     after: (page) => page.evaluate(() => document.querySelector('[data-shell-part="panelDeck"] .xterm').remove()),
   },
@@ -141,7 +136,6 @@ export const PANES_CONTROLS = {
   'panes-min-lost': {
     assertion: 'panes.min',
     section: 'panes-sash',
-    engines: ['chromium'],
     stage: 'min',
     after: (page) =>
       page.evaluate(() => {
@@ -153,7 +147,6 @@ export const PANES_CONTROLS = {
   'panes-reset-lost': {
     assertion: 'panes.reset',
     section: 'panes-sash',
-    engines: ['chromium'],
     init: () => {
       window.addEventListener('dblclick', (event) => event.stopImmediatePropagation(), true);
     },
@@ -162,7 +155,6 @@ export const PANES_CONTROLS = {
   'panes-keys-lost': {
     assertion: 'panes.keys',
     section: 'panes-sash',
-    engines: ['chromium'],
     init: () => {
       window.addEventListener('keydown', (event) => { if (event.target?.getAttribute?.('role') === 'separator' && event.key.startsWith('Arrow')) event.stopImmediatePropagation(); }, true);
     },
@@ -171,7 +163,6 @@ export const PANES_CONTROLS = {
   'panes-sash-not-a-stop': {
     assertion: 'panes.sash',
     section: 'panes-sash',
-    engines: ['chromium'],
     stage: 'start',
     after: (page) => page.evaluate(() => document.querySelectorAll('[data-shell-part="paneSash"]').forEach((sash) => sash.setAttribute('tabindex', '-1'))),
   },
@@ -179,7 +170,6 @@ export const PANES_CONTROLS = {
   'panes-fit-lost': {
     assertion: 'panes.fit',
     section: 'panes-resize',
-    engines: ['chromium'],
     init: () => {
       const Observer = window.ResizeObserver;
       window.ResizeObserver = class extends Observer {
@@ -196,7 +186,6 @@ export const PANES_CONTROLS = {
   'panes-full-enabled': {
     assertion: 'panes.full',
     section: 'panes-full',
-    engines: ['chromium'],
     stage: 'full',
     after: (page) => page.evaluate(() => document.querySelectorAll('[data-terminal-tool="split"]').forEach((button) => button.removeAttribute('aria-disabled'))),
   },
@@ -204,7 +193,6 @@ export const PANES_CONTROLS = {
   'panes-gl-every-show': {
     assertion: 'panes.gl',
     section: 'panes-gl',
-    engines: ['chromium'],
     init: () => {
       const getContext = HTMLCanvasElement.prototype.getContext;
       HTMLCanvasElement.prototype.getContext = function (kind, ...rest) {
@@ -218,7 +206,6 @@ export const PANES_CONTROLS = {
   'panes-axe': {
     assertion: 'axe.panes',
     section: 'panes-axe',
-    engines: ['chromium'],
     stage: 'axe',
     after: (page) =>
       page.evaluate(() => {
@@ -242,30 +229,37 @@ export function createPanesSections({ check, note, report, runAxe }) {
     const { browser, origin, viewport, control } = ctx;
     const host = createHost({ ...control?.host?.options, faults: { ...control?.host?.faults } });
     const context = await browser.newContext({ viewport: { width: width ?? viewport.width, height: viewport.height }, locale: 'en-US', timezoneId: 'UTC' });
-    const served = await serveContext(context, host);
-    await context.addInitScript(HELPERS);
-    if (control?.init !== undefined) await context.addInitScript(control.init);
-    const page = await context.newPage();
-    await page.goto(`${origin}/shell/probes/terminal-fixture.html?host=shared&renderer=${renderer}`, { waitUntil: 'load' });
-    await page.waitForSelector('[data-shell-part="window"]');
-    await page.click('[data-shell-part="panelToggle"]');
-    await page.waitForSelector('[data-shell-part="panelEmpty"]');
-    await page.click('[data-shell-part="panelEmpty"] button');
-    await page.waitForSelector('.xterm-helper-textarea', { timeout: 20_000 });
-    await page.waitForFunction(() => /user@synthetic/.test(document.querySelector('.xterm-rows, [data-shell-part="terminalScreen"]')?.textContent ?? '') || document.querySelector('canvas') !== null, null, { timeout: 20_000 });
+    let served;
+    // What was acquired is released when the setup fails: the section's `finally` begins after `open` returns, so a setup that throws would leave the host, the bridge and the context behind.
     const close = async () => {
       host.stop();
-      await served.close();
+      await served?.close();
       await context.close();
     };
 
-    // The width of one column, from the one terminal there is, once the host has been told its size.
-    await until(async () => host.log.created.length === 1 && colsOf(host, 0) !== null && (await bodies(page)).length === 1 && (await bodies(page))[0].screen !== null);
-    const [only] = await bodies(page);
-    const measured = await page.evaluate(() => window.__panes.cell());
-    const cell = measured > 0 ? measured : only.screen.width / colsOf(host, 0);
-    // What a screen's width holds besides its columns (the inset and the scrollbar's room), which is the same for every pane: a pane of width w has floor((w - offset) / cell) columns.
-    return { page, host, context, close, cell, offset: only.screen.width - colsOf(host, 0) * cell };
+    try {
+      served = await serveContext(context, host);
+      await context.addInitScript(HELPERS);
+      if (control?.init !== undefined) await context.addInitScript(control.init);
+      const page = await context.newPage();
+      await page.goto(`${origin}/shell/probes/terminal-fixture.html?host=shared&renderer=${renderer}`, { waitUntil: 'load' });
+      await page.waitForSelector('[data-shell-part="window"]');
+      await page.click('[data-shell-part="panelToggle"]');
+      await page.waitForSelector('[data-shell-part="panelEmpty"]');
+      await page.click('[data-shell-part="panelEmpty"] button');
+      await page.waitForSelector('.xterm-helper-textarea', { timeout: 20_000 });
+      await page.waitForFunction(() => /user@synthetic/.test(document.querySelector('.xterm-rows, [data-shell-part="terminalScreen"]')?.textContent ?? '') || document.querySelector('canvas') !== null, null, { timeout: 20_000 });
+      // The width of one column, from the one terminal there is, once the host has been told its size.
+      await until(async () => host.log.created.length === 1 && colsOf(host, 0) !== null && (await bodies(page)).length === 1 && (await bodies(page))[0].screen !== null);
+      const [only] = await bodies(page);
+      const measured = await page.evaluate(() => window.__panes.cell());
+      const cell = measured > 0 ? measured : only.screen.width / colsOf(host, 0);
+      // What a screen's width holds besides its columns (the inset and the scrollbar's room), which is the same for every pane: a pane of width w has floor((w - offset) / cell) columns.
+      return { page, host, context, close, cell, offset: only.screen.width - colsOf(host, 0) * cell };
+    } catch (error) {
+      await close().catch(() => undefined);
+      throw error;
+    }
   }
 
   /** A bounded wait for something the page or the host's log shows: the answer is whether it came. */
@@ -457,6 +451,7 @@ export function createPanesSections({ check, note, report, runAxe }) {
       check('panes.sash', sashProblems.length === 0, `${tag}: the sash: ${sashProblems.length === 0 ? 'a Tab stop (tabindex 0), vertical, and the pointer reaches it 3 px either side of its line' : sashProblems.join('; ')}`);
 
       // A drag by 150 px to the left.
+      const colsBefore = [colsOf(host, 0), colsOf(host, 1)];
       await page.mouse.move(centre.x, centre.y);
       await page.mouse.down();
       await page.mouse.move(centre.x - 75, centre.y, { steps: 5 });
@@ -464,7 +459,6 @@ export function createPanesSections({ check, note, report, runAxe }) {
       await page.mouse.up();
       const moved = await until(async () => near(widthsOf(await bodies(page))[0], startWidths[0] - 150, 2));
       const after = widthsOf(await bodies(page));
-      const colsBefore = [colsOf(host, 0), colsOf(host, 1)];
       const followed = await until(() => colsOf(host, 0) !== colsBefore[0] || colsOf(host, 1) !== colsBefore[1]);
       await settled(page, host, session);
       const colsAfter = [colsOf(host, 0), colsOf(host, 1)];
