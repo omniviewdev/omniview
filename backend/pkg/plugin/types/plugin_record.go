@@ -14,8 +14,24 @@ type PluginInfo struct {
 	Origin         string `json:"origin"`
 	FrontendModule string `json:"frontendModule"`
 	ReleaseChannel string `json:"releaseChannel"`
+	// HasPage is known only for an inventoried archive. A route-less package
+	// does not require discovery or evaluation of an ordinary page entry.
+	HasPage          *bool            `json:"hasPage,omitempty"`
+	Extension        *ExtensionSource `json:"extension,omitempty"`
+	ExtensionRefused bool             `json:"extensionRefused,omitempty"`
 	// Incompatible is set on a plugin the host refused because its process speaks a plugin protocol the host does not run: the two numbers the window words itself, and no text.
 	Incompatible *Incompatibility `json:"incompatible,omitempty"`
+}
+
+// ExtensionSource carries static facts, not authority to load or run a module.
+// The host's canonical decoder admits Manifest and checks the exact role exports.
+type ExtensionSource struct {
+	Pin        string   `json:"pin"`
+	PageDigest string   `json:"pageDigest,omitempty"`
+	Generation string   `json:"generation"`
+	Manifest   string   `json:"manifest"`
+	Features   []string `json:"features"`
+	Views      []string `json:"views"`
 }
 
 // PluginRecord is the host-side runtime state for a managed plugin.

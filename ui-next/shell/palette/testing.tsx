@@ -2,7 +2,7 @@ import { cleanup, render } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { Profiler, type ProfilerOnRenderCallback } from 'react';
 import { vi } from 'vitest';
-import { command, commands as manyCommands, makePalette, page, type Fixture } from '../core/palette/testing';
+import { command, commands as manyCommands, makePalette, page, tabsProvider, type Fixture } from '../core/palette/testing';
 import type { Candidate, PaletteOptions, PaletteStore, Provider } from '../core/palette';
 import { boot, type Harness } from '../core/tabs/testing';
 import { Palette } from './Palette';
@@ -43,14 +43,7 @@ export function providers(f: Fixture): Provider[] {
       section: 'commands',
       match: () => [command('host.tab.close', 'Close tab', { context: 'Tabs', icon: 'close', shortcut: '⌘W' }), command('host.panel.toggle', 'Toggle panel', { context: 'Panel', icon: 'panel-bottom' })],
     },
-    {
-      id: 'host:tabs',
-      plugin: 'host',
-      pluginName: 'Omniview',
-      title: 'Tabs',
-      section: 'tabs',
-      match: () => f.tabs.state().order.map((id) => ({ id, kind: 'tab' as const, title: f.tabs.state().tabs[id]?.face.title ?? '?', tab: id, context: 'Window 1', matchContext: '', route: f.tabs.state().tabs[id]?.location.route })),
-    },
+    tabsProvider(f),
   ];
 }
 

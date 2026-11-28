@@ -37,6 +37,7 @@ func newTestManagerWithState(t *testing.T) (*pluginManager, *appstate.Service) {
 		stateRoot:           svc.RootDir(),
 		pluginsRoot:         svc.Plugins(),
 		records:             make(map[string]*plugintypes.PluginRecord),
+		extensionsOff:       extensionStartupDisabled(),
 		connlessControllers: make(map[sdktypes.Capability]plugintypes.Controller),
 		connfullControllers: make(map[sdktypes.Capability]plugintypes.LifecycleController),
 		managers:            make(map[string]plugintypes.PluginManager),

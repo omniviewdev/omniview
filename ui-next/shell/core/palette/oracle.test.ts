@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { boot } from '../tabs/testing';
+import { boot, pageTabOf } from '../tabs/testing';
 import type { OpenHow } from '../tabs/types';
 import { createPaletteSaver } from './saver';
 import { command, makePalette, page, type Fixture } from './testing';
@@ -267,7 +267,7 @@ describe('P4: a setting is the Settings page with its row as the reveal (K1)', (
     const second = choose(f, 'theme');
     expect(second).toMatchObject({ status: 'opened', result: { status: 'done', change: 'activated', id } });
     expect(f.tabs.state().tabs[id]?.reveal?.payload).toEqual({ key: 'appearance.theme' });
-    expect(f.tabs.ids().filter((tab) => f.tabs.state().tabs[tab]?.location.route.contribution === 'settings')).toHaveLength(1);
+    expect(f.tabs.ids().filter((id) => pageTabOf(f.tabs, id).location.route.contribution === 'settings')).toHaveLength(1);
     expect(f.tabs.active()).toBe(id);
   });
 

@@ -6,6 +6,7 @@ package exec
 
 import (
 	"context"
+	"encoding/json"
 	"net"
 	"os"
 	osexec "os/exec"
@@ -17,15 +18,18 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+	"github.com/wailsapp/wails/v3/pkg/application"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	"github.com/omniviewdev/plugin-sdk/pkg/interceptors"
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	sdkexec "github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
@@ -90,11 +94,17 @@ func (w *aStdoutWindow) wrote(id string) string {
 // has not taken them yet, and the host's record of the session stays as it was.
 func startAShortCommandPlugin(t *testing.T, script string, forwarding bool) *aShortCommandPlugin {
 	t.Helper()
+	return startAShortCommandWithConnections(t, script, forwarding, aLeaseThatRunsTheCallback{})
+}
+
+func startAShortCommandWithConnections(t *testing.T, script string, forwarding bool, connections resourcev2.ConnectionContextProvider) *aShortCommandPlugin {
+	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 
 	handler := sdkexec.Handler{
 		Plugin: shortCommandProvider, Resource: shortCommandResource,
+		DefaultCommand: []string{"/bin/sh", "-c", script},
 		TTYHandler: func(pctx *sdktypes.PluginContext, _ sdkexec.SessionOptions, tty *os.File, stop chan error, _ <-chan sdkexec.SessionResizeInput) error {
 			command := osexec.CommandContext(pctx.Context, "/bin/sh", "-c", script)
 			command.Stdin, command.Stdout, command.Stderr = tty, tty, tty
@@ -115,7 +125,7 @@ func startAShortCommandPlugin(t *testing.T, script string, forwarding bool) *aSh
 	manager := sdkexec.NewManager(sdkexec.ManagerConfig{
 		Logger: logging.NewNop(), Handlers: map[string]sdkexec.Handler{handler.ID(): handler}, TerminalFactory: sdkexec.NewRealTerminalFactory(),
 	})
-	manager.BindConnectionContextProvider(aLeaseThatRunsTheCallback{})
+	manager.BindConnectionContextProvider(connections)
 	t.Cleanup(manager.Close)
 
 	listener := bufconn.Listen(1024 * 1024)
@@ -251,4 +261,81 @@ func TestClosingASessionThatJustEndedInAPluginIsNotAnError(t *testing.T) {
 
 	require.NoError(t, plugin.ctrl.CloseSession(id))
 	require.Zero(t, plugin.indexed())
+}
+
+// The source row is supplied by the admission seam (its native producer is tested in resource).
+// Everything after admission is the actual SDK connection lease, gRPC exec service and OS PTY.
+func TestResourceShellUsesRegisteredPTYAndPrivateReadOverGRPC(t *testing.T) {
+	directory := t.TempDir()
+	route := resourcev2.AccessRoute{Connection: shortCommandConnected}
+	registry, err := resourcev2.NewController(resourcev2.Config[os.Root]{
+		Catalog: func(context.Context, resourcev2.CatalogRequest) (resourcev2.Catalog, error) {
+			return resourcev2.Catalog{Provider: shortCommandProvider, Revision: "shell:1", Types: []resourcev2.ResourceType{}, Coverage: resourcev2.Coverage{Kind: "complete"}}, nil
+		},
+		Lifecycle: &resourcev2.Lifecycle[os.Root]{
+			LoadConnections: func(context.Context) ([]sdktypes.Connection, error) {
+				return []sdktypes.Connection{{ID: route.Connection}}, nil
+			},
+			CreateClient:  func(context.Context, sdktypes.Connection) (*os.Root, error) { return os.OpenRoot(directory) },
+			DestroyClient: func(_ context.Context, r *os.Root) error { return r.Close() },
+		},
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, registry.Close()) })
+	_, err = registry.LoadConnections(t.Context())
+	require.NoError(t, err)
+	_, err = registry.StartConnection(t.Context(), route.Connection)
+	require.NoError(t, err)
+	catalog, err := registry.Catalog(t.Context(), resourcev2.CatalogRequest{Route: route})
+	require.NoError(t, err)
+
+	p := startAShortCommandWithConnections(t, `printf 'ready\n'; IFS= read -r line; printf 'private:%s\n' "$line"`, true, registry)
+	page := &shellTestWindow{id: 1}
+	realm := invocation.NewWindowRealm(nil)
+	principal := realm.ScopeForWindow(page).Principal()
+	uid := "native-incarnation"
+	proof := resource.ExtensionRootProof{Owner: shortCommandPlugin, Connection: route.Connection, ViewID: "view", ViewGeneration: "generation", RowKey: "row",
+		Reference: resourcev2.ResourceReference{Address: resourcev2.ResourceAddress{Provider: shortCommandProvider, Type: shortCommandResource, ID: "object",
+			Authority: "authority", Scope: []resourcev2.ScopeEntry{}}, Incarnation: &uid}}
+	p.ctrl.resourceClient = &shellTestResources{rootCurrent: true, proof: proof}
+	boundary := invocation.NewBoundary(invocation.AuthorizeFunc(func(caller invocation.Principal, operation string, target invocation.Target) error {
+		require.Equal(t, principal, caller)
+		require.Equal(t, "exec.CreateSession", operation)
+		require.Equal(t, shortCommandPlugin, target.Provider)
+		require.Equal(t, route.Connection, target.Connection)
+		return nil
+	}))
+	p.ctrl.SetReferenceAdmitter(func(ctx context.Context, operation, owner string, requested resourcev2.AccessRoute, ref resourcev2.ResourceReference) (context.Context, error) {
+		require.Equal(t, proof.Reference, ref)
+		require.Equal(t, route, requested)
+		return boundary.Admit(resourcev2.WithCatalogRevisionForRoute(ctx, catalog.Provider, requested, catalog.Revision), operation, invocation.Target{Provider: owner, Connection: requested.Connection})
+	})
+	w := ServiceWrapper{Ctrl: p.ctrl, Realm: realm}
+	ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), application.WindowKey, page), 5*time.Second)
+	defer cancel()
+	id := uuid.NewString()
+	encoded, err := json.Marshal(resourceShellRequest{ID: id, Root: proof})
+	require.NoError(t, err)
+	attachment, err := w.CreateResourceShell(ctx, shortCommandPlugin, string(encoded))
+	require.NoError(t, err)
+	require.True(t, w.CheckResourceShell(ctx, id, attachment.Attachment, ""))
+	require.True(t, w.CheckResourceShell(ctx, id, attachment.Attachment, encodedShellRoot(t, proof)))
+	require.NoError(t, w.WriteResourceShell(ctx, id, attachment.Attachment, []byte("roundtrip\n")))
+	var transcript strings.Builder
+	transcript.Write(attachment.Replay)
+	for {
+		frame, readErr := w.ReadResourceShell(ctx, id, attachment.Attachment)
+		require.NoError(t, readErr)
+		transcript.Write(frame.Data)
+		if frame.State != shellRunning {
+			require.Equal(t, shellEnded, frame.State)
+			break
+		}
+	}
+	require.Equal(t, 1, strings.Count(transcript.String(), "ready"), "replay and live data do not overlap")
+	require.Contains(t, transcript.String(), "private:roundtrip")
+	require.False(t, w.CheckResourceShell(ctx, id, attachment.Attachment, encodedShellRoot(t, proof)))
+	p.window.mu.Lock()
+	defer p.window.mu.Unlock()
+	require.Empty(t, p.window.events, "no private bytes or signals reach the legacy event transport")
 }

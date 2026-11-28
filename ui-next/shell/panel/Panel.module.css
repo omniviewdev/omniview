@@ -93,6 +93,15 @@
     min-block-size: 0;
   }
 
+  .menuStatus {
+    flex: 0 1 auto;
+    max-block-size: 35%;
+    overflow: auto;
+    overflow-wrap: anywhere;
+    padding: var(--ov-spacing-8) var(--ov-spacing-12);
+    border-block-start: 1px solid var(--ov-border-subtle);
+  }
+
   /* A group of panes laid out as a column (stacked): the bodies and the sashes between them in a column, the model's `axis`. */
   .body[data-axis='column'] {
     flex-direction: column;

@@ -42,6 +42,14 @@ export function keptFilter(kept: unknown, filters: ReadonlyArray<{ readonly id: 
 /** What the page writes once the quick filter is `filter` (`null`: All): with the filter set in what the host held, or taken out. */
 export const keepFilter = (kept: unknown, filter: string | null): unknown => withMember(kept, 'filter', filter ?? undefined);
 
+/** Only restore a subtab that the owner's current definition still declares. */
+export function keptDetailTab(kept: unknown, tabs: ReadonlyArray<{ readonly id: string }>): string | undefined {
+  const value = memberOf(kept, 'detailTab');
+  return typeof value === 'string' && tabs.some(tab => tab.id === value) ? value : undefined;
+}
+
+export const keepDetailTab = (kept: unknown, tab: string): unknown => withMember(kept, 'detailTab', tab);
+
 /** A whole, positive offset, or 0 for what is not one: a negative number, a text, NaN and what no table is long enough for. */
 const offset = (value: unknown): number => (typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= SCROLL_KEPT_MAX ? Math.round(value) : 0);
 

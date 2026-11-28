@@ -222,11 +222,21 @@ func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (i
 
 	// Build the record directly.
 	record = newLoadRecord(id, metadata, opts)
+	var ui *extensionReceipt
+	if opts == nil || opts.archive == nil || opts.archiveRestore {
+		ui = pm.readExtensionReceipt(record)
+	} else {
+		// A candidate can reach Running before the durable marker is committed.
+		// Suppress its ordinary page import as well as all extension authority.
+		ui = new(extensionReceipt)
+		ui.ID = id
+	}
 	if !record.Enabled {
 		record.Phase = lifecycle.PhaseInstalled
 		record.StateMachine.ForcePhase(record.Phase, "plugin disabled")
 		pm.recordsMu.Lock()
 		pm.records[id] = record
+		pm.setExtensionLocked(record, ui)
 		pm.recordsMu.Unlock()
 		return record.ToInfo(), nil
 	}
@@ -236,6 +246,7 @@ func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (i
 	// Remove stale entry under write lock.
 	pm.recordsMu.Lock()
 	delete(pm.records, id)
+	pm.replaceExtensionLocked(id, nil)
 	pm.recordsMu.Unlock()
 
 	pm.logger.Debugw(pm.ctx, "found metadata",
@@ -257,6 +268,7 @@ func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (i
 	record.Backend = backend
 	pm.recordsMu.Lock()
 	pm.records[id] = record
+	pm.setExtensionLocked(record, ui)
 	pm.recordsMu.Unlock()
 	if ctrl, ok := pm.connlessControllers[sdktypes.CapabilityTools].(interface{ Refresh() }); ok {
 		ctrl.Refresh()
@@ -762,6 +774,7 @@ func (pm *pluginManager) unloadPluginLocked(id string) error {
 		pm.records[id] = record
 	} else {
 		delete(pm.records, id)
+		pm.replaceExtensionLocked(id, nil)
 	}
 	pm.recordsMu.Unlock()
 	if record.Origin == "builtin" {
@@ -939,6 +952,7 @@ func (pm *pluginManager) stopPlugin(record *plugintypes.PluginRecord) error {
 
 	ctx := context.Background()
 	pluginID := record.ID
+	pm.retireExtension(pluginID)
 	pm.retireConnectionSharing(pluginID)
 	pm.retireActivities(pluginID)
 
@@ -972,6 +986,7 @@ func (pm *pluginManager) shutdownPlugin(pluginID string, record *plugintypes.Plu
 	if record == nil {
 		return errors.New("record is nil")
 	}
+	pm.retireExtension(pluginID)
 	pm.retireConnectionSharing(pluginID)
 	pm.retireActivities(pluginID)
 

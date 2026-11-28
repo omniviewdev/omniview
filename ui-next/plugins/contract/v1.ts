@@ -1,6 +1,6 @@
 import type { ComponentType, ReactNode } from 'react';
 import type { IconName, LogFeed, LogFeedSnapshot, StatusRole } from '@omniviewdev/kit';
-import type { ResourceReference, Value } from '@omniviewdev/runtime/ui/v1';
+import type { ExtensionRootV1, HostRecord, ResourceReference, Value } from '@omniviewdev/runtime/ui/v1';
 import type { DetailPageDefinition, DetailSource, DetailTab, ListPageDefinition, ListSource } from '../../page';
 import type { ShellAccent, ShellScopeFace, ShellTreeNode } from '../../shell';
 
@@ -481,6 +481,8 @@ export type SidebarV1 = {
   readonly title: string;
   /** What the sidebar is called on a page that is read in no connection, where that is not what it is called on a page of a connection (KL7). Absent: it is called as it is everywhere. */
   readonly pluginScope?: SidebarPluginScopeV1 | undefined;
+  /** Local ID of the owner's sidebar extension point. This declaration does not grant or mount an offer. */
+  readonly outlet?: string | undefined;
   readonly nodes: readonly SidebarNodeV1[];
   readonly useNodes?: ((context: SidebarContextV1) => readonly SidebarNodeV1[] | undefined) | undefined;
 };
@@ -598,10 +600,42 @@ export type PanelSessionsV1 = {
   readonly card?: ((session: PanelSessionV1) => PanelCardV1 | undefined) | undefined;
 };
 
+/** The resource owner's locator, captured at the verified launch. No terminal handle, bytes or launch options. */
+export type TerminalMenuOriginV1 = {
+  readonly surface: 'session-tab' | 'terminal-body';
+  readonly route: Pick<RouteV1, 'page' | 'params'>;
+  readonly connection: string;
+  readonly extensionScopeKey: string;
+};
+
+/** Return a point only after a current authorized record matches this session's origin. */
+export type TerminalMenuOutletV1 = {
+  readonly extensionScopeKey: string;
+  /** Opaque witness for the current row used to derive these facts. Host-only; never part of the contributor's input. */
+  readonly extensionRoot: ExtensionRootV1;
+  readonly outlet: { readonly point: string; readonly context: Readonly<Record<string, string | number>> };
+};
+
+type TerminalSessionsV1 = PanelSessionsV1 & {
+  readonly useMenuOutlet?: ((origin: TerminalMenuOriginV1) => TerminalMenuOutletV1 | undefined) | undefined;
+};
+
+/** Open the producer's integrated resource shell, never an arbitrary command. The host supplies the connection. */
+export type ResourceShellRequestV1 = {
+  readonly record: HostRecord;
+  readonly route: Pick<RouteV1, 'page' | 'params'>;
+  /** Producer-specific selectors (for example, a selected child). Each must agree with the original route parameters. */
+  readonly params?: Readonly<Record<string, string>>;
+};
+
 /** What a plugin brings to the bottom panel. At most two tools of its own (ch16 S114); the sessions it opens in a tool of the host, by the host tool's id. */
 export type PanelV1 = {
   readonly tools?: Readonly<Record<string, PanelToolV1>> | undefined;
-  readonly sessions?: Readonly<Record<string, PanelSessionsV1>> | undefined;
+  /** Session cards remain open to host tool IDs. Only the actual terminal slot admits a menu hook at runtime. */
+  readonly sessions?: (Readonly<Record<string, PanelSessionsV1 | TerminalSessionsV1>> & {
+    readonly terminal?: TerminalSessionsV1;
+    readonly logs?: PanelSessionsV1 & { readonly useMenuOutlet?: never };
+  }) | undefined;
 };
 
 /** A source a feed has heard of, as far as the card names it: its id (what a line's `source` says; `orders-api/app`) and the labels the backend gave it. */
@@ -770,6 +804,8 @@ export type PortForwardErrorV1 = Error & {
  */
 export type PanelHostV1 = {
   readonly logs: { readonly open: (target: LogTargetV1) => LogSessionV1 | undefined };
+  /** User-initiated, owner-only launch on an attested resource. No session or I/O capability is returned. */
+  readonly terminal?: { readonly open: (request: ResourceShellRequestV1) => Promise<void> } | undefined;
   /**
    * PF1, PF2. `forward` forwards a port of one of the plugin's resources to this computer and answers the forward (`PortForwardSessionV1`: its id, the port it listens on and a way to stop it, and the address when the producer states one) once the
    * host has started it, and the Ports tool is shown then. It is bound to the plugin and to the connection the page is read in, and fills both in: the request names neither. It rejects with a `PortForwardErrorV1`, in the host's own code and plain

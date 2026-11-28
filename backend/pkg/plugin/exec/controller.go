@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -33,6 +34,7 @@ var tracer = otel.Tracer("omniview.exec")
 
 type Controller interface {
 	internaltypes.Controller
+	resourceShellController
 	ServiceStartup(ctx context.Context, options application.ServiceOptions) error
 	ServiceShutdown() error
 	SetReferenceAdmitter(resource.ReferenceAdmitter)
@@ -98,6 +100,8 @@ type Controller interface {
 }
 
 const (
+	localPluginID = "local"
+
 	// endedSessionTTL is how long the host keeps the record of a session that ended by itself with nobody attached: longer
 	// than the plugin keeps the session's output for the first attach (plugin-sdk v0.22.1: a minute), so that the host never
 	// forgets a session whose output is still there.
@@ -140,6 +144,7 @@ func NewController(
 		clients:          nil,
 		sessionIndex:     make(map[string]sessionIndex),
 		channelMaking:    make(map[string]bool),
+		resourceShells:   make(map[string]*resourceShell),
 		endedFirst:       make(map[endedFirst]time.Time),
 		inChans:          make(map[string]chan exec.StreamInput),
 		inputMux:         make(chan exec.StreamInput),
@@ -164,6 +169,8 @@ type controller struct {
 	mu           sync.RWMutex
 	clients      map[string]Provider
 	sessionIndex map[string]sessionIndex
+	// Resource shell event IDs reserve the same namespace, but never enter the legacy ID-only index.
+	resourceShells map[string]*resourceShell
 	// channelMaking holds the id of each channel terminal whose shell is being started: the manager does not hold it yet and the
 	// index never will, and the id is not free (see idHeldLocked). Guarded by mu.
 	channelMaking map[string]bool
@@ -198,6 +205,8 @@ type execProviderStream struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	done   chan struct{}
+	// Protect a blocking resource-shell input send against channel closure on retirement.
+	inputLock *sync.RWMutex
 }
 
 type execProviderOutput struct {
@@ -258,7 +267,7 @@ func (c *controller) safeSend(ch chan exec.StreamInput, input exec.StreamInput) 
 	return nil
 }
 
-// dispatchOutput emits a session output or signal to the UI. pluginID is the plugin the frame came from.
+// dispatchOutput emits a legacy session output or signal. Resource shells use their private read lane.
 func (c *controller) dispatchOutput(output exec.StreamOutput, pluginID string) {
 	if c.events == nil {
 		c.logger.Errorw(context.Background(), "event emitter is nil, cannot dispatch output")
@@ -285,12 +294,10 @@ func (c *controller) dispatchOutput(output exec.StreamOutput, pluginID string) {
 		return
 	case exec.StreamSignalClose:
 		c.logger.Debugw(context.Background(), "closing session")
-		eventkey = "core/exec/signal/" + output.Signal.String() + "/" + output.SessionID
-		// The session is over: its record goes, unless it ended by itself with nobody attached, when the plugin
-		// keeps its output for the first attach and so does the host.
 		if !c.sessionClosed(output.SessionID, pluginID) {
-			return // the session is another plugin's: this plugin's CLOSE is not its end, and no window is told it was
+			return
 		}
+		eventkey = "core/exec/signal/" + output.Signal.String() + "/" + output.SessionID
 	case exec.StreamSignalSigint, exec.StreamSignalSigquit, exec.StreamSignalSigterm,
 		exec.StreamSignalSigkill, exec.StreamSignalSighup, exec.StreamSignalSigusr1,
 		exec.StreamSignalSigusr2, exec.StreamSignalSigwinch:
@@ -328,13 +335,20 @@ func (c *controller) runMux() {
 }
 
 func (c *controller) dispatchProviderOutput(output execProviderOutput) {
+	if isResourceProcessID(output.SessionID) {
+		id, _, wellFormed := strings.Cut(output.SessionID[len(resourceProcessPrefix):], "/")
+		if wellFormed {
+			c.dispatchResourceOutput(output, id)
+		}
+		return
+	}
 	c.outputMu.Lock()
 	defer c.outputMu.Unlock()
 
 	c.mu.RLock()
 	stream, active := c.streams[output.pluginID]
 	record, recorded := c.sessionIndex[output.SessionID]
-	channelHeld := c.channelHoldsLocked(output.SessionID)
+	channelHeld := c.channelHoldsLocked(output.SessionID) || c.resourceShells[output.SessionID] != nil
 	c.mu.RUnlock()
 	if !active || stream.done != output.done || stream.ctx.Err() != nil {
 		// Output from a replaced or stopped provider stream is discarded.
@@ -449,7 +463,7 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 	if c.streams == nil {
 		c.streams = make(map[string]execProviderStream)
 	}
-	c.streams[pluginID] = execProviderStream{ctx: streamCtx, cancel: cancel, done: done}
+	c.streams[pluginID] = execProviderStream{ctx: streamCtx, cancel: cancel, done: done, inputLock: &sync.RWMutex{}}
 	c.clients[pluginID] = provider
 	// Installation ownership is separate from the handler's canonical selector.
 	c.handlerMap[pluginID] = make(map[string]exec.Handler, len(handlers))
@@ -461,6 +475,8 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 
 	go func() {
 		defer close(done)
+		defer c.endResourceShellStream(pluginID, done)
+		defer cancel() // an unexpectedly closed stream cannot admit a new shell during retirement
 		first := true
 		for {
 			select {
@@ -507,6 +523,11 @@ func (c *controller) cleanupPluginLocked(pluginID string) (Provider, bool, execP
 		stream.cancel()
 	}
 	if ch, ok := c.inChans[pluginID]; ok {
+		if stream.inputLock != nil {
+			// cancel above wakes blocked sends before taking the exclusive lock.
+			stream.inputLock.Lock()
+			defer stream.inputLock.Unlock()
+		}
 		close(ch)
 		delete(c.inChans, pluginID)
 	}
@@ -681,12 +702,15 @@ func (c *controller) CreateSession(
 		attribute.String("plugin_id", plugin),
 		attribute.String("connection_id", connectionID),
 	)
-	if plugin == "local" {
+	if isResourceProcessID(opts.ID) {
+		return nil, invalidShellRequest()
+	}
+	if plugin == localPluginID {
 		// The host's own shell is not a plugin's session. CreateTerminal starts it, for the window that owns
 		// it; this route started one that no window owned and nothing would ever end.
 		return nil, resourcev2.NewError("INVALID_REQUEST", "A local terminal starts with CreateTerminal.")
 	}
-	ctx, err = c.admitSessionReference(ctx, plugin, connectionID, opts)
+	ctx, err = c.admitSessionReference(ctx, plugin, connectionID, opts.Reference, opts.Route)
 	if err != nil {
 		return nil, err
 	}
@@ -717,8 +741,12 @@ func (c *controller) CreateSession(
 		return nil, err
 	}
 
+	if session == nil || isResourceProcessID(session.ID) {
+		// A malformed answer does not grant ownership of the process whose ID it names.
+		return nil, resourcev2.NewError("PROVIDER_ERROR", "Invalid exec session identity.")
+	}
 	c.mu.Lock()
-	if held, taken := c.sessionIndex[session.ID]; taken || c.channelHoldsLocked(session.ID) {
+	if held := c.sessionIndex[session.ID]; c.idHeldLocked(session.ID) {
 		c.mu.Unlock()
 		c.closeRefusedSession(ctx, pctx, client, plugin, held.pluginID, session.ID)
 		return nil, terminal.IDInUse(session.ID)
@@ -758,7 +786,7 @@ func (c *controller) hasSession(sessionID string) bool {
 // the index of the events lane has a record of the id, or a channel terminal holds it. Of two creates of one id there is one
 // winner, whatever lanes they come from, because each decides here, under the same lock, from the same places.
 func (c *controller) idHeldLocked(id string) bool {
-	if _, found := c.sessionIndex[id]; found {
+	if _, found := c.sessionIndex[id]; found || c.resourceShells[id] != nil {
 		return true
 	}
 	return c.channelHoldsLocked(id)
@@ -833,7 +861,11 @@ func (c *controller) ListSessions() (_ []*exec.Session, err error) {
 		if listErr != nil {
 			return nil, listErr
 		}
-		sessions = append(sessions, clientSessions...)
+		for _, session := range clientSessions {
+			if session != nil && !isResourceProcessID(session.ID) {
+				sessions = append(sessions, session)
+			}
+		}
 	}
 
 	// add the local terminal sessions

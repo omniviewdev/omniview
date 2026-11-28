@@ -12,11 +12,12 @@ import {
   type Json,
   type KeepAlive,
   type Location,
+  type NavigationOrigin,
   type Noop,
   type Refused,
   type RefusedReason,
   type Reveal,
-  type Route,
+  type TabRoute,
   type Tab,
   type TabId,
   type TabsState,
@@ -38,6 +39,7 @@ export function emptyState(keepAlive: KeepAlive): TabsState {
     tabs: Object.freeze({}),
     order: Object.freeze([]),
     active: null,
+    activeVisit: 0,
     mounted: Object.freeze([]),
     closed: Object.freeze([]),
     keepAlive,
@@ -60,7 +62,7 @@ export const flagsOf = (flags: Partial<Flags> = {}): Flags =>
  * A history of these routes, with what the page of each kept when it was left (`History.states`). The states are taken only when there is one for every entry and one of them is something: a history that
  * saved nothing is `{ entries, index }`, as it always was.
  */
-export function historyOf(entries: readonly Route[], index: number, states?: readonly Json[]): History {
+export function historyOf(entries: readonly TabRoute[], index: number, states?: readonly Json[]): History {
   const kept = states?.length === entries.length && states.some((held) => held !== null) ? Object.freeze(states.slice()) : undefined;
   return Object.freeze({ entries: Object.freeze(entries.slice()), index, ...(kept === undefined ? {} : { states: kept }) });
 }
@@ -73,7 +75,7 @@ export const fits = (state: Json): boolean => state === null || jsonBytes(state)
 
 export type TabInput = {
   readonly id: TabId;
-  readonly route: Route;
+  readonly route: TabRoute;
   readonly key: string;
   readonly face: Face;
   readonly generation?: number;
@@ -130,6 +132,13 @@ export function pinnedCount(state: TabsState, order: readonly TabId[] = state.or
 
 export const activeTab = (state: TabsState): Tab | undefined => (state.active === null ? undefined : state.tabs[state.active]);
 
+export const navigationOrigin = (state: TabsState): NavigationOrigin => ({ id: state.active, location: activeTab(state)?.location, visit: state.activeVisit });
+
+/** Reference equality also detects a reload or a traversal away and back to an equal route. */
+export function staleOrigin(state: TabsState, origin: NavigationOrigin | undefined, target = state.active): boolean {
+  return origin !== undefined && (state.activeVisit !== origin.visit || state.active !== origin.id || target !== origin.id || activeTab(state)?.location !== origin.location);
+}
+
 /** The state with `id` on screen: it leads the mounted pages, attention is read, and the cap evicts from the other end. The same state when it already is. */
 export function show(state: TabsState, id: TabId): TabsState {
   const tab = state.tabs[id];
@@ -144,7 +153,7 @@ export function show(state: TabsState, id: TabId): TabsState {
 
   const tabs = cleared ? Object.freeze({ ...state.tabs, [id]: changeTab(tab, { flags: flagsOf({ ...tab.flags, attention: NO_ATTENTION }) }) }) : state.tabs;
   const mounted = enforce([id, ...state.mounted.filter((other) => other !== id)], tabs, state.keepAlive);
-  return patch(state, { tabs, active: id, mounted, started: true });
+  return patch(state, { tabs, active: id, activeVisit: state.active === id ? state.activeVisit : state.activeVisit + 1, mounted, started: true });
 }
 
 /** The state after the policy: used when a flag or the cap changed what may stay mounted. */
@@ -182,12 +191,16 @@ export function checkInvariants(state: TabsState): string[] {
       bad.push('a tab is open in a window that has not started');
     }
 
-    if (state.active === null || !state.order.includes(state.active)) {
+    if (state.active !== null && !state.order.includes(state.active)) {
       bad.push('the tab on screen is not in the strip');
     }
   }
 
   checkTabs(state, bad);
+  if (state.active === null && state.mounted.length > 0) {
+    bad.push('pages are mounted with no tab on screen');
+  }
+
   if (state.active !== null && state.mounted[0] !== state.active) {
     bad.push('the tab on screen does not lead the mounted pages');
   }

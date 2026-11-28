@@ -1,4 +1,4 @@
-import type { LinkActivation, MenuItem } from '@omniviewdev/kit';
+import type { LinkActivation, MenuItem, MenuSource } from '@omniviewdev/kit';
 import type { ReactElement } from 'react';
 import type { PanelStore, Route, Session, SessionId, ToolId } from '../core/panel';
 import type { ToolBadges } from './badge';
@@ -46,8 +46,13 @@ export type PanelEmpty = { readonly title: string; readonly hint: string };
 /** Where a resource link of a card goes: the address it shows (a real anchor, so the platform can copy it) and what choosing it does, as the tab model decides where it opens. */
 export type PanelLink = { readonly href: string; readonly open: (activation: LinkActivation) => void };
 
+/** The host composes only the invoking session's menu. Built-in actions stay under the control of the shell. */
+export type TerminalMenuPlacement = (id: SessionId, surface: 'session-tab' | 'terminal-body', items: readonly MenuItem[]) => readonly MenuItem[] | MenuSource;
+
 export type PanelBindings = {
   readonly store: PanelStore;
+  readonly terminalMenu?: TerminalMenuPlacement | undefined;
+  readonly terminalMenuContent?: ReactElement | undefined;
   /**
    * Draws the body of a session. Called for every mounted body, `visible` for the one on screen. The host puts it in its own boundary: a body that throws loses that body only. An element or
    * nothing, never a `ReactNode`: that type includes a promise, which React suspends on, outside the boundary and with no fallback of the panel's own.

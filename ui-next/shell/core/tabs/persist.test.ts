@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { checkInvariants, createSaver, createTabsStore, LIMITS, migrate, restoreTabs, serialise, STATE_VERSION, type Contributions, type PersistedTabs, type Route } from './index';
-import { boot, cloudPage, hostPage, makeWorld, stackPage, tabOf, type Harness, type World } from './testing';
+import { boot, cloudPage, hostPage, makeWorld, pageTabOf as tab, stackPage, type Harness, type World } from './testing';
 
 // The saved session (ch16 S32, S150) and what a damaged one becomes. The state carries a version and `migrate` exists from the first release: the old app has 36
 // stores that were never versioned. Ported from the design lab's harness (tests/shell-model-harness/R2Store/unit.cjs): the round trip, the foreign-version and
@@ -10,7 +10,6 @@ const sound = (h: Harness) => {
   expect(checkInvariants(h.state())).toEqual([]); 
 };
 
-const tab = tabOf;
 const restore = (raw: unknown, world: World) => restoreTabs(raw, { contributions: world.contributions });
 const restored = (raw: unknown, world: World) => {
   const result = restore(raw, world);
@@ -198,7 +197,7 @@ describe('a damaged session is repaired, never discarded (ch16 S32, CO-20)', () 
     const entries = [route('instances'), 'junk', route('instances', { item: 'i-1' }), { plugin: 5 }, route('instances', { item: 'i-2' })];
     const kept = restored(doc([{ id: 'a', route: route('instances', { item: 'i-2' }), history: { entries, index: 4 } }], 'a'), world);
     const a = kept.state.tabs.a;
-    expect(a?.history.entries.map((entry) => entry.params.item)).toEqual([undefined, 'i-1', 'i-2']);
+    expect(a?.history.entries).toEqual([route('instances'), route('instances', { item: 'i-1' }), route('instances', { item: 'i-2' })]);
     expect(a?.history.index).toBe(2);
 
     // The entry at `index` is not the tab's route: the history starts over at the route.

@@ -1,0 +1,90 @@
+{
+  "network": "none",
+  "checkedAt": "2026-11-27T20:57:40.592Z",
+  "inputs": {
+    "@omniviewdev/kit": {
+      "name": "@omniviewdev/kit",
+      "version": "0.7.4",
+      "filename": "omniviewdev-kit-0.7.4.tgz",
+      "sha256": "97b3009f73bc4a728acadf993071b3ca6d53ae4fd34ad31aca88441d0e11c1e3"
+    },
+    "@omniviewdev/kubernetes-extension-points": {
+      "name": "@omniviewdev/kubernetes-extension-points",
+      "version": "1.0.0",
+      "filename": "omniviewdev-kubernetes-extension-points-1.0.0.tgz",
+      "sha256": "458d617ce643ccbf244ea757f0bac94f8115031fd84ebb04e36a6e23e26695c6"
+    },
+    "@omniviewdev/runtime": {
+      "name": "@omniviewdev/runtime",
+      "version": "0.7.4",
+      "filename": "omniviewdev-runtime-0.7.4.tgz",
+      "sha256": "4375dce3daddd93c909c471470b82190bf9c5ae2c0607bf8043aca8b9a7c91c3"
+    },
+    "@omniviewdev/vite-plugin": {
+      "name": "@omniviewdev/vite-plugin",
+      "version": "0.7.4",
+      "filename": "omniviewdev-vite-plugin-0.7.4.tgz",
+      "sha256": "60c15b132f46f4c3c0ad47abc9fdeab8a3c887316cb1418966569670a094d1ad"
+    }
+  },
+  "outcomes": {
+    "gateway-tools": {
+      "project": "gateway-tools",
+      "compiler": "7.0.2",
+      "typechecked": true,
+      "negativeExpectations": 6,
+      "fixtureSHA256": "72dd86bfe76ed9c1ae2418e90633affd52bb1a9b7a84918c0eeb2ceb77ceecbb",
+      "lockSHA256": "efb313c1dacdd2f8f0a45598ee00a307057c11c544636ac2c76845b53a328ac7",
+      "manifestSHA256": "201b2dab24eb934d7ecbcd8e2e78adc3a406c4ebd66f29b0016b4c1197b0ee8d",
+      "roles": {
+        "features": {
+          "exports": [
+            "describe"
+          ],
+          "imports": [],
+          "sha256": "7b7098b9a9070f72623e39f28fc82eaa2cbd700738942ad4dee4b85959843652"
+        },
+        "views": {
+          "exports": [
+            "admin",
+            "topology",
+            "workload"
+          ],
+          "imports": [
+            "react/jsx-runtime",
+            "@omniviewdev/kit"
+          ],
+          "sha256": "11e3a094a32cec4b6b341b92f0badfd352f4571ed4b67949822cb8c809a53a22"
+        }
+      }
+    },
+    "workload-summary": {
+      "project": "workload-summary",
+      "compiler": "7.0.2",
+      "typechecked": true,
+      "negativeExpectations": 3,
+      "fixtureSHA256": "ebaf98ad70bc777851520dca98ad0f61bc40d6ef1f9b18ffa4321769adb0b86d",
+      "lockSHA256": "efb313c1dacdd2f8f0a45598ee00a307057c11c544636ac2c76845b53a328ac7",
+      "manifestSHA256": "2f487e2448a597b7c1e877ed0cc6794c6c01a067178d697ba698118f045bffd7",
+      "roles": {
+        "features": {
+          "exports": [
+            "classify"
+          ],
+          "imports": [],
+          "sha256": "b0caddd50366d74ff9fd84a70d54772f0fae2ee3af107636b9b3276c4bd841c1"
+        },
+        "views": {
+          "exports": [
+            "replicas"
+          ],
+          "imports": [
+            "react/jsx-runtime",
+            "@omniviewdev/kit"
+          ],
+          "sha256": "29351d44bece0b6d3bb2ebf8b70c9455a0127173553d6664085fc8fd8c98e49e"
+        }
+      }
+    }
+  }
+}

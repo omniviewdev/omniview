@@ -653,6 +653,19 @@ importers:
         version: 5.1.2(@microsoft/api-extractor@7.60.1(@types/node@26.6.5))(@typescript/typescript6@6.0.2)(esbuild@0.28.2)(rolldown@1.2.19)(rollup@4.65.1)(supports-color@8.1.1)(vite@7.3.7(patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b)(@types/node@26.6.5)(lightningcss@1.33.0)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/omniviewdev-vite-plugin:
+    dependencies:
+      '@omniviewdev/runtime':
+        specifier: workspace:*
+        version: link:../omniviewdev-runtime
+      rollup:
+        specifier: 4.65.1
+        version: 4.65.1
+      typescript:
+        specifier: npm:@typescript/typescript6@6.0.2
+        version: '@typescript/typescript6@6.0.2'
+      yaml:
+        specifier: 2.9.1
+        version: 2.9.1
     devDependencies:
       '@typescript/native':
         specifier: npm:typescript@7.0.2
@@ -666,9 +679,6 @@ importers:
       tsx:
         specifier: 4.23.15
         version: 4.23.15
-      typescript:
-        specifier: npm:@typescript/typescript6@6.0.2
-        version: '@typescript/typescript6@6.0.2'
       vite:
         specifier: 7.3.7
         version: 7.3.7(patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b)(@types/node@26.6.5)(lightningcss@1.33.0)(tsx@4.23.15)(yaml@2.9.1)

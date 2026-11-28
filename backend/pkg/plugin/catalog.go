@@ -292,6 +292,10 @@ func (pm *pluginManager) SetPluginEnabled(id string, enabled bool) (_ plugintype
 	record.Enabled = enabled
 	visible := *record
 	pm.recordsMu.Lock()
+	if !enabled {
+		// Cancel reads before observers or provider teardown can block.
+		pm.retireExtensionLocked(id)
+	}
 	pm.records[id] = &visible
 	pm.recordsMu.Unlock()
 	stateMu.Unlock()

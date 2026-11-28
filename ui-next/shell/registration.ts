@@ -61,6 +61,8 @@ export type ShellSidebar = {
   /** The title of the sidebar's header. */
   readonly title: string;
   readonly nodes: readonly ShellTreeNode[];
+  /** The host-owned group, excluded from the ordinary node hook's open groups. Its leaves also support middle-button activation. */
+  readonly auxiliary?: { readonly group: string; readonly leaves: readonly string[] } | undefined;
   /** The groups open at first. Every ancestor of `current` is open as well. */
   readonly open?: readonly string[];
   /** The entry of the page on screen: selected, and where the tree's tab stop starts. Absent when the page on screen is not this sidebar's (the rail shows another plugin's sidebar): no entry is selected. */

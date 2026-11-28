@@ -217,6 +217,8 @@ export default defineConfig({
       '@omniviewdev/runtime/models': path.resolve(__dirname, 'packages/omniviewdev-runtime/src/models.ts'),
       '@omniviewdev/runtime/runtime': path.resolve(__dirname, 'packages/omniviewdev-runtime/src/runtime.ts'),
       '@omniviewdev/runtime/ui/v1': path.resolve(__dirname, 'packages/omniviewdev-runtime/src/ui/v1.ts'),
+      '@omniviewdev/runtime/ui/extensions/v1': path.resolve(__dirname, 'packages/omniviewdev-runtime/src/ui/extensions/v1.ts'),
+      '@omniviewdev/runtime/internal/extensions-v1': path.resolve(__dirname, 'packages/omniviewdev-runtime/src/ui/extensions/wire.ts'),
       '@omniviewdev/runtime': path.resolve(__dirname, 'packages/omniviewdev-runtime/src/index.ts'),
     },
   },

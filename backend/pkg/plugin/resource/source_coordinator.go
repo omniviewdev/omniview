@@ -72,6 +72,9 @@ type HostSourceViewEvent struct {
 	Removes        []HostRecordRemoval  `json:"removes,omitempty"`
 	Status         *HostSourceStatus    `json:"status,omitempty"`
 	Reset          *HostSourceViewReset `json:"reset,omitempty"`
+
+	// Aligned with Records or Upserts. These native receipts are never part of the resource.
+	MemberRevisions []string `json:"memberRevisions,omitempty"`
 }
 type HostSourceStates struct {
 	Route resourcev2.AccessRoute      `json:"route"`

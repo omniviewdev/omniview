@@ -791,7 +791,7 @@ export type MenuCheckbox = MenuEntry & {
 };
 
 // @public
-export type MenuDefinition = readonly MenuItem[] | ((contextKey: string | undefined) => readonly MenuItem[] | null | undefined);
+export type MenuDefinition = readonly MenuItem[] | ((contextKey: string | undefined) => readonly MenuItem[] | MenuSource | null | undefined);
 
 // @public (undocumented)
 export type MenuEntry = {
@@ -858,6 +858,12 @@ export type MenuRegistry = Readonly<Record<string, MenuDefinition>>;
 export type MenuSeparator = {
     readonly kind: 'separator';
     readonly id: string;
+};
+
+// @public
+export type MenuSource = {
+    readonly items: readonly MenuItem[];
+    readonly subscribe: (update: (items: readonly MenuItem[] | null) => void) => (selected?: string) => void;
 };
 
 // @public (undocumented)

@@ -149,9 +149,8 @@ export function stableJson(value: Json): string {
   return `{${Object.keys(object).sort().map((key) => `${JSON.stringify(key)}:${stableJson(object[key] ?? null)}`).join(',')}}`;
 }
 
-/** The size of `value` as JSON text in UTF-8, in bytes: one for ASCII, two up to U+07FF, three for the rest of the BMP, four for a surrogate pair (`JSON.stringify` escapes a lone surrogate, which then counts as its six characters). */
-export function jsonBytes(value: Json): number {
-  const text = JSON.stringify(value);
+/** The UTF-8 byte length of well-formed text. Infinity rejects unpaired surrogates rather than silently replacing them. */
+function utf8Bytes(text: string): number {
   let bytes = 0;
   for (let i = 0; i < text.length; i += 1) {
     const unit = text.charCodeAt(i);
@@ -159,7 +158,11 @@ export function jsonBytes(value: Json): number {
       bytes += 1;
     } else if (unit < 0x800) {
       bytes += 2;
-    } else if (unit >= 0xd800 && unit <= 0xdbff && (text.charCodeAt(i + 1) & 0xfc00) === 0xdc00) {
+    } else if (unit >= 0xd800 && unit <= 0xdfff) {
+      if (unit > 0xdbff || (text.charCodeAt(i + 1) & 0xfc00) !== 0xdc00) {
+        return Infinity;
+      }
+
       bytes += 4;
       i += 1;
     } else {
@@ -169,6 +172,12 @@ export function jsonBytes(value: Json): number {
 
   return bytes;
 }
+
+/** A UTF-16 unit takes at least one byte. Reject large input before scanning or decoding it. */
+export const fitsUtf8 = (text: string, limit: number): boolean => text.length <= limit && utf8Bytes(text) <= limit;
+
+/** JSON.stringify escapes lone surrogates, so these bytes match the JSON on the wire. */
+export const jsonBytes = (value: Json): number => utf8Bytes(JSON.stringify(value));
 
 /** The same list when `next` holds the same items in the same order, so a selector can hand back an answer that did not change. */
 export function sameItems<T>(previous: readonly T[] | undefined, next: readonly T[]): readonly T[] {

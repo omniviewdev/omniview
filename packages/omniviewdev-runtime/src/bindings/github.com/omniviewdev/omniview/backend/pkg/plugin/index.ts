@@ -8,6 +8,7 @@ export {
 
 export {
     DeprecatedProtocolPayload,
+    InventoryChangedPayload,
     LoadPluginOptions,
     PluginErrorPayload,
     PluginProfilingStatus,

@@ -13,6 +13,7 @@ export type Params = Readonly<Record<string, Json>>;
  * object, in canonical form, is what identifies a tab; nothing else of the host knows what a parameter means.
  */
 export type Route = {
+  readonly kind?: undefined;
   readonly plugin: string;
   readonly contribution: string;
   readonly params: Params;
@@ -20,16 +21,31 @@ export type Route = {
 
 /** A route as a caller writes it: `params` may be left out, and a member that is `undefined` is left out. */
 export type RouteInput = {
+  readonly kind?: undefined;
   readonly plugin: string;
   readonly contribution: string;
   readonly params?: Readonly<Record<string, Json | undefined>> | undefined;
 };
+
+/** Host-only address of a Body in an owner's sidebar. All IDs are locators, not proof of admission or authority. */
+export type ExtensionViewRoute = {
+  readonly kind: 'extension-view';
+  readonly plugin: string;
+  readonly point: string;
+  readonly offer: string;
+  readonly connection?: string | undefined;
+};
+
+export type TabRoute = Route | ExtensionViewRoute;
 
 /** Somewhere to go (ch16 S63): a route, and what the page is asked to show once it draws it (never part of the route, the key or the history). */
 export type Destination = {
   readonly route: RouteInput;
   readonly reveal?: Json | undefined;
 };
+
+/** Plugin-facing destinations remain ordinary pages. A mounted Body cannot receive a reveal payload. */
+export type TabDestination = Destination | { readonly route: RouteInput | ExtensionViewRoute; readonly reveal?: never };
 
 export type TabId = string;
 
@@ -81,13 +97,15 @@ export type Availability =
 export type Contributions = {
   /** What a plugin says about a route. `undefined`: it says nothing, and the title comes from the route. */
   readonly describe: (route: Route) => Description | undefined;
+  /** Static host metadata only. Never call a page hook, load a Body, or grant access to describe a place. */
+  readonly describeView?: ((route: ExtensionViewRoute) => Description | undefined) | undefined;
   /** Default: available. A route no plugin can serve (not installed, disabled, built for another version) is unavailable. */
   readonly availability?: ((route: Route) => Availability) | undefined;
   /**
    * Fills in what a route leaves out, from the route the user is working in (the connection a sidebar entry did not name). Returns the
    * route to open; `undefined` refuses it. It runs before the route is described, so a plugin's defaults are part of its identity.
    */
-  readonly complete?: ((route: Route, context: { readonly from: Route | undefined; readonly source: string }) => Route | undefined) | undefined;
+  readonly complete?: ((route: Route, context: { readonly from: TabRoute | undefined; readonly source: string }) => Route | undefined) | undefined;
   /** Runs on a saved or recently closed tab before it comes back: the plugin may rewrite its route or drop the tab (`false`) (ch16 DM1). */
   readonly restore?: ((route: Route) => Route | false) | undefined;
   /**
@@ -115,7 +133,7 @@ export type Face = {
 
 /** Where the page on screen is: all a page host needs to draw a tab's page. It changes when the route does, not when a title does. */
 export type Location = {
-  readonly route: Route;
+  readonly route: TabRoute;
   /** `{plugin}:{scope}:{page}`: two tabs with one key show one place (ch16 S26). Derived; recomputed with the face. */
   readonly key: string;
   /** Raised by a reload: a page host that keys its page by `id` and `generation` draws it again. */
@@ -123,7 +141,7 @@ export type Location = {
 };
 
 /** The routes of a tab's back and forward stack (ch16 S60): at most 50, the current one at `index`. This is all of a history that is saved to disk. */
-export type PersistedHistory = { readonly entries: readonly Route[]; readonly index: number };
+export type PersistedHistory = { readonly entries: readonly TabRoute[]; readonly index: number };
 
 /**
  * A tab's own back and forward stack (ch16 S60) with what each page kept when the tab LEFT it (H7): a history entry carries the page state of the page it left, and Back and Forward give it back.
@@ -199,15 +217,17 @@ export type KeepAlive = {
   readonly keepUnsaved: boolean;
 };
 
-export const STATE_VERSION = 1;
+export const STATE_VERSION = 2;
 
 export type TabsState = {
   readonly version: typeof STATE_VERSION;
   readonly tabs: Readonly<Record<TabId, Tab>>;
   /** The strip, left to right. Pinned tabs lead: the pinned zone is never interleaved (ch16 S38). This is also the order of the All tabs list (ch16 S49). */
   readonly order: readonly TabId[];
-  /** The tab on screen; null while the strip is empty: before the window's home page opens, or after the user closed the last tab (decision A17). */
+  /** The tab on screen; null in an empty strip or when only background views have opened and none was selected. */
   readonly active: TabId | null;
+  /** Changes when another tab is shown, even if the user returns to the same tab and location. Never saved. */
+  readonly activeVisit: number;
   /**
    * The tabs whose page is mounted, most recently shown first; the tab on screen leads (ch16 S29, S32). A tab enters when it is shown, never before (a tab restored or opened in the
    * background has no page); it leaves when it is closed or when `keepAlive` evicts it, the least recently shown first. A tab that left is mounted again only when it is shown again:
@@ -220,8 +240,8 @@ export type TabsState = {
   /** Counts reveal requests. */
   readonly serial: number;
   /**
-   * A tab has been on screen in this window. Until then an empty strip opens the window's home page by itself (the start of a window: ch16 S30, `ensureHome`); from then on an empty strip
-   * stays empty, because the user emptied it, and nothing opens a page for them (decision A17: closing the last tab leaves an empty window with a way out, and no page comes back by itself).
+   * A tab has been opened in this window, including a background view that has not been shown. Until then an empty strip opens the window's home page by itself (ch16 S30,
+   * `ensureHome`); from then on an empty strip stays empty because the user emptied it (decision A17).
    * Not saved: a window restored from tabs has started, and one restored from none has not.
    */
   readonly started: boolean;
@@ -261,6 +281,8 @@ export type RefusedReason =
   | 'nothing-closed'
   /** The plugin dropped the closed tab when it was asked to restore it. */
   | 'dropped'
+  /** The initiating tab is no longer on screen at the captured location. */
+  | 'stale'
   /** No such tab. */
   | 'missing';
 
@@ -284,7 +306,7 @@ export type OpenResult =
   | Confirm
   | Refused
   /** The destination wants a window of its own (ch16 S64) and the model has none: nothing changed. `existing` is the singleton that is already open. */
-  | { readonly status: 'window'; readonly route: Route; readonly existing?: TabId | undefined };
+  | { readonly status: 'window'; readonly route: TabRoute; readonly existing?: TabId | undefined };
 
 export type CloseScope = 'others' | 'right' | 'left' | 'unpinned';
 
@@ -298,17 +320,19 @@ export type Preferences = {
   readonly reusePreview: boolean;
 };
 
-export type OpenOptions = {
+/** Captured at a user gesture; the same token must also guard any later confirmation of that gesture. */
+export type NavigationOrigin = { readonly id: TabId | null; readonly location: Location | undefined; readonly visit: number };
+
+export type Guard = { readonly confirmed?: boolean | undefined };
+export type NavigationGuard = Guard & { readonly origin?: NavigationOrigin | undefined };
+
+export type OpenOptions = NavigationGuard & {
   readonly how?: OpenHow | undefined;
   /** Where the destination came from; `search` opens a preview tab (ch16 S24) and follows the setting. */
   readonly source?: string | undefined;
   /** A new tab goes directly after this one (ch16 S28). Default: after the tab on screen. */
   readonly after?: TabId | undefined;
-  /** The user was asked about unsaved changes and chose to discard them. */
-  readonly confirmed?: boolean | undefined;
 };
-
-export type Guard = { readonly confirmed?: boolean | undefined };
 
 /** A point in a window's own pixels (the client space of its page). */
 export type WindowPoint = { readonly x: number; readonly y: number };
@@ -338,7 +362,7 @@ export type TabWindows = {
   readonly receive: (strip: TabReceiver) => () => void;
 };
 
-export type NavigateOptions = Guard & {
+export type NavigateOptions = NavigationGuard & {
   /** `push` (the default) adds an entry to the tab's history; `replace` swaps the current one, as a change of scope does (ch16 S60). */
   readonly history?: 'push' | 'replace' | undefined;
   readonly source?: string | undefined;
@@ -370,7 +394,7 @@ export type ModifierEvent = {
 };
 
 /** One entry of Back and Forward's list (ch16 S50), nearest first. */
-export type HistoryItem = { readonly index: number; readonly route: Route; readonly title: string };
+export type HistoryItem = { readonly index: number; readonly route: TabRoute; readonly title: string };
 
 /** The answer for every surface that names a tab: its label, accessible name, tooltip and path (ch16 TI1). No surface builds its own. */
 export type Identity = {
@@ -429,9 +453,10 @@ export type Selectors = {
 /** What a saved tab holds: no page state (not the page on screen's, and none of its history's), no flags that mean "now" (unsaved, attention), no reveal request. */
 export type PersistedTab = {
   readonly id: TabId;
-  readonly route: Route;
-  readonly key: string;
-  readonly face: Face;
+  readonly route: TabRoute;
+  /** Only ordinary pages save a presentation. A mount is always described anew. */
+  readonly key?: string;
+  readonly face?: Face;
   readonly pinned: boolean;
   readonly preview: boolean;
   readonly history: PersistedHistory;

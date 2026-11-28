@@ -3,12 +3,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SHARED_PACKAGES } from './sharedPackages';
 import { safeFilename } from './safeFilename';
-import { workspaceViteCacheDirectory, workspaceVitePort, workspaceViteRoots } from './workspace';
+import { configureWorkspaceOutput, workspaceViteCacheDirectory, workspaceVitePort, workspaceViteRoots } from './workspace';
 import { attachManagedViteFeedback } from './feedback';
 
 export { SHARED_PACKAGES } from './sharedPackages';
 export { safeFilename } from './safeFilename';
 export { managedViteFeedback } from './feedback';
+export { omniviewExtensionsV1 } from './extensions/vite';
 
 const moduleDirectory = typeof __dirname === 'string'
   ? __dirname
@@ -113,15 +114,8 @@ export function omniviewExternals(options: OmniviewExternalsOptions = {}): Plugi
         config.cacheDir = cache;
       }
 
-      const output = process.env.OMNIVIEW_BUILD_OUTPUT_DIRECTORY;
-      if (command === 'build' && output) {
-        const root = path.resolve(config.root ?? process.cwd());
-        const configured = config.build?.outDir && path.resolve(root, config.build.outDir);
-        if (configured && configured !== path.join(root, 'dist') && configured !== path.resolve(output)) {
-          throw new Error('Plugin distribution path conflicts with controlled workspace output');
-        }
-
-        config.build = { ...config.build, outDir: output };
+      if (command === 'build') {
+        configureWorkspaceOutput(config);
       }
 
       // In dev mode, prevent the dep optimizer from bundling shared packages

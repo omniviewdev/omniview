@@ -5,3 +5,8 @@ import * as ServiceWrapper from "./servicewrapper.js";
 export {
     ServiceWrapper
 };
+
+export {
+    ResourceShellAttachment,
+    ResourceShellRead
+} from "./models.js";

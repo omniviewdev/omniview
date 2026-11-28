@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { checkInvariants, dispositionOf, restoreTabs, type Json } from './index';
-import { boot, cloudPage, dest, doneId, hostPage, makeWorld, stackPage, type Harness } from './testing';
+import { boot, cloudPage, dest, doneId, hostPage, makeWorld, pageTabOf as tab, stackPage, type Harness } from './testing';
 
 // A function is not JSON and the types forbid one in a route: the cast stands in for a plugin that ignores the types.
 const notJson = (() => 1) as unknown as Json;
@@ -10,15 +10,6 @@ const notJson = (() => 1) as unknown as Json;
 
 const sound = (h: Harness) => {
   expect(checkInvariants(h.state())).toEqual([]); 
-};
-
-const tab = (h: Harness, id: string) => {
-  const found = h.state().tabs[id];
-  if (!found) {
-    throw new Error(`no tab ${id}`);
-  }
-
-  return found;
 };
 
 describe('the strip at the start', () => {

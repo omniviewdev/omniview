@@ -34,6 +34,20 @@ const open = (socket: unknown): void => {
 };
 
 describe('the events connection of the page', () => {
+  it('withdraws authority on disconnect without waiting for the next open', () => {
+    const scope = scopeOf();
+    const changes: boolean[] = [];
+    const unsubscribe = createEventsReconnect(scope).observeTransport(connected => changes.push(connected));
+    const first = new scope.WebSocket('ws://localhost/wails/events');
+    const second = new scope.WebSocket('ws://localhost/wails/events');
+    open(first);
+    open(second);
+    first.dispatchEvent(new Event('close'));
+    second.dispatchEvent(new Event('close'));
+    expect(changes).toEqual([false, true, true, false]);
+    unsubscribe();
+  });
+
   it('tells its listeners each time an events socket opens, and nothing for any other socket', () => {
     const scope = scopeOf();
     const heard = vi.fn();

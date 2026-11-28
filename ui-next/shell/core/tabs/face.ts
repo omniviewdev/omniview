@@ -1,6 +1,6 @@
 import { isObject } from './json';
 import { normaliseRoute, paramsText } from './route';
-import { LIMITS, type Crumb, type CrumbInput, type Description, type Face, type Route, type Scope } from './types';
+import { LIMITS, type Crumb, type CrumbInput, type Description, type Face, type Route, type Scope, type TabRoute } from './types';
 
 // What a plugin says about a route, made into what a tab keeps: every field present, text trimmed, the scope label short (ch16 S10, S17, DM1).
 
@@ -10,7 +10,11 @@ const text = (value: unknown): string => (typeof value === 'string' ? value.trim
 export const clip = (value: string, length: number): string => (value.length > length ? `${value.slice(0, length - 1).trimEnd()}…` : value);
 
 /** The title a route gives itself when its plugin says none: the page's id, as a sentence. */
-function titleOf(route: Route): string {
+function titleOf(route: TabRoute): string {
+  if (route.kind === 'extension-view') {
+    return 'View unavailable';
+  }
+
   const leaf = route.contribution.split('/').at(-1) ?? '';
   const words = leaf.replace(/[-_]+/g, ' ').trim();
   return words === '' ? route.plugin : words.charAt(0).toUpperCase() + words.slice(1);
@@ -37,7 +41,7 @@ function crumbOf(input: unknown): Crumb | undefined {
 }
 
 /** The face of a route from its plugin's description; `undefined` for the description when the plugin said nothing. */
-export function faceOf(route: Route, description: Description | undefined): Face {
+export function faceOf(route: TabRoute, description: Description | undefined): Face {
   const source: Partial<Record<keyof Description, unknown>> = isObject(description) ? description : {};
   const path = Array.isArray(source.path) ? (source.path as readonly CrumbInput[]).map((crumb) => crumbOf(crumb)).filter((crumb): crumb is Crumb => crumb !== undefined) : [];
   const facets = Array.isArray(source.facets) ? [...new Set((source.facets as readonly unknown[]).map(text).filter((facet) => facet !== ''))].slice(0, LIMITS.facets) : [];
@@ -50,8 +54,8 @@ export function faceOf(route: Route, description: Description | undefined): Face
     path: Object.freeze(path),
     facets: Object.freeze(facets),
     pluginName,
-    singleton: source.singleton === true,
-    identity: source.identity === 'none' ? ('none' as const) : ('key' as const),
+    singleton: route.kind === undefined && source.singleton === true,
+    identity: route.kind === undefined && source.identity === 'none' ? ('none' as const) : ('key' as const),
   });
 }
 
@@ -59,7 +63,11 @@ export function faceOf(route: Route, description: Description | undefined): Face
  * Which place a tab shows (ch16 S26): `{plugin}:{scope}:{page}`. A singleton page is one place whatever its parameters. For any other page the plugin's own `key` says
  * what is identity (a sub-tab is not), and without one the contribution and its parameters do.
  */
-export function keyOf(route: Route, description: Description | undefined, face: Face): string {
+export function keyOf(route: TabRoute, description: Description | undefined, face: Face): string {
+  if (route.kind === 'extension-view') {
+    return JSON.stringify([route.kind, route.plugin, route.point, route.offer, route.connection ?? null]);
+  }
+
   if (face.singleton) {
     return `${route.plugin}:${route.contribution}`;
   }

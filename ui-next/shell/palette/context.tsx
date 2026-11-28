@@ -6,7 +6,7 @@ import type { PaletteBindings } from './host';
 
 const PaletteContext = createContext<PaletteBindings | null>(null);
 
-export function PaletteProvider({ palette, children }: { readonly palette: PaletteBindings; readonly children: ReactNode }) {
+export function PaletteProvider({ palette, children }: { readonly palette: PaletteBindings | null; readonly children: ReactNode }) {
   return <PaletteContext value={palette}>{children}</PaletteContext>;
 }
 

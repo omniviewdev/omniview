@@ -359,10 +359,20 @@ func delegatedAllowed(grant *invocation.Delegation, operation string, target inv
 	return grant.Grant.Allows(right, target.ResourceType)
 }
 
+func unfilteredLocalPrincipal(p invocation.Principal) bool {
+	return p.Origin() == invocation.Host || p.Origin() == invocation.TrustedUI
+}
+
+// CoversResourceGets describes the same unconditional local policy branch as
+// Authorize. It certifies no plugin, connection credential or backend rights.
+func (*Authority) CoversResourceGets(p invocation.Principal, _ invocation.Target) bool {
+	return unfilteredLocalPrincipal(p)
+}
+
 // Authorize is the single native invocation authorizer. Relay policy is checked
 // here against the actual operation and target, not against an MCP tool hint.
 func (a *Authority) Authorize(p invocation.Principal, operation string, target invocation.Target) error {
-	if p.Origin() == invocation.Host || p.Origin() == invocation.TrustedUI {
+	if unfilteredLocalPrincipal(p) {
 		return nil
 	}
 	if p.Origin() != invocation.ExternalAgent {

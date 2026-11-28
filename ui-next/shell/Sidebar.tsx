@@ -38,7 +38,7 @@ export function Sidebar({ sidebar, owner, onChoose, onOpen, memory }: SidebarPro
       <div className={styles.header} data-shell-part="sidebarHeader">
         {sidebar === undefined ? null : <Text as="h2" variant="title">{sidebar.title}</Text>}
       </div>
-      {sidebar === undefined ? null : <Tree key={treeKey} label={sidebar.label} nodes={sidebar.nodes} open={sidebar.open} current={sidebar.current} accent={sidebar.accent} memory={memory} memoryKey={treeKey} onChoose={onChoose} onOpenChange={onOpen === undefined ? undefined : report} />}
+      {sidebar === undefined ? null : <Tree key={treeKey} label={sidebar.label} nodes={sidebar.nodes} auxiliary={sidebar.auxiliary} open={sidebar.open} current={sidebar.current} accent={sidebar.accent} memory={memory} memoryKey={treeKey} onChoose={onChoose} onOpenChange={onOpen === undefined ? undefined : report} />}
     </nav>
   );
 }

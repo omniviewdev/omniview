@@ -70,6 +70,7 @@ func (consumer *archiveCommitModuleConsumer) Emit(event string, data ...any) {
 			durableVersion: "0.4.0", phase: lifecycle.PhaseRunning,
 		}, consumer.module, "notification must not precede canonical and durable candidate publication")
 	case EventInventoryChanged:
+		require.Equal(consumer.t, []any{InventoryChangedPayload{PluginID: "flux"}}, data)
 		consumer.invalidations++
 		inventory := consumer.pm.ListPlugins()
 		require.Len(consumer.t, inventory, 1)

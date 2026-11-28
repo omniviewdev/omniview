@@ -93,9 +93,12 @@ const deep = (name: string, bay = 'east'): HostRoute => ({ plugin: 'acme', page:
 // One snapshot for every read, as a store gives: a new array on each read would never settle.
 const entries: readonly PluginEntry[] = [ready()];
 const plugins = { getSnapshot: () => entries, subscribe: () => () => undefined };
+const noShells = Object.freeze([]);
 
 function mount(over: Partial<PluginHostProps> = {}) {
-  const props: PluginHostProps = { plugins, inventory: 'ready', link: NO_ROUTE, onRetry: vi.fn(), onRetryInventory: vi.fn(), session: over.link === undefined ? startedOn(entries) : undefined, ...over };
+  const props: PluginHostProps = { plugins, inventory: 'ready', link: NO_ROUTE, onRetry: vi.fn(), onRetryInventory: vi.fn(),
+    terminals: { shells: { getSnapshot: () => noShells, subscribe: () => () => undefined } },
+    session: over.link === undefined ? startedOn(entries) : undefined, ...over };
   return { ...render(<PluginHost {...props} />), user: userEvent.setup() };
 }
 

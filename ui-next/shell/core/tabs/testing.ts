@@ -174,7 +174,7 @@ export function makeWorld(): World {
     complete: (route, context) => {
       calls.complete += 1;
       const plugin = plugins.get(route.plugin);
-      return plugin?.complete ? plugin.complete(route, context.from) : route;
+      return plugin?.complete ? plugin.complete(route, context.from?.kind === undefined ? context.from : undefined) : route;
     },
     restore: (route) => {
       calls.restore += 1;
@@ -255,6 +255,23 @@ export function tabOf(h: { readonly state: () => TabsState }, id: TabId): Tab {
   }
 
   return found;
+}
+
+type PageTab = Omit<Tab, 'location' | 'history'> & {
+  readonly location: Omit<Tab['location'], 'route'> & { readonly route: Route };
+  readonly history: Omit<Tab['history'], 'entries'> & { readonly entries: readonly Route[] };
+};
+
+const hasOnlyPages = (tab: Tab): tab is PageTab => tab.location.route.kind === undefined && tab.history.entries.every((route) => route.kind === undefined);
+
+/** The stock page fixtures should never produce a mounted view, including in their histories. */
+export function pageTabOf(h: { readonly state: () => TabsState }, id: TabId): PageTab {
+  const tab = tabOf(h, id);
+  if (!hasOnlyPages(tab)) {
+    throw new Error(`tab ${id} contains an extension view`);
+  }
+
+  return tab;
 }
 
 export type Harness = {

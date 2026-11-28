@@ -16,10 +16,12 @@
 //      older host's entry lacks the name and a plugin that imports it gets `undefined`, so a plugin that needs a newer name says which host
 //      version has it. Anything else is `./v2`.
 //
-// The VALUES are the data layer the new shell's plugins read through (the Pods list first), eleven functions and constants, and the log viewer's data contract, one
-// function: `openLogStream`. No component, no router, no raw RPC.
+// The values are the owner's data accessors and helpers, the log stream and the opaque native-root accessor. No component, no router, no raw RPC.
 // The TYPES are the closure of their signatures: every type a hook's parameters or results mention is exported here, so the API report holds the
 // whole shape a plugin compiles against and a change to any of them shows in its diff (the build fails on a type that is mentioned and not exported).
+
+import { collectionRootOf, type ExtensionRootV1 } from '../resource/v2/extensionRoot';
+import type { HostRecord } from '../resource/v2/host';
 
 // The connection a page reads through: its readiness, and the list of the plugin's connections.
 export { useConnectionReadiness } from '../hooks/connection/useConnectionReadiness';
@@ -48,6 +50,11 @@ export { useResourceTypes } from '../hooks/resource/useResourceTypes';
 export { useResolvedResourceTarget } from '../hooks/resource/useResolvedResourceTarget';
 export { useResources } from '../hooks/resource/useResources';
 export type { AcquiredResourcePage, UseResourcesOptions } from '../hooks/resource/useResources';
+/** Returns an opaque handle only for the original record of a currently following native collection view. */
+export function extensionRootOf(record: HostRecord): ExtensionRootV1 | undefined {
+  return collectionRootOf(record);
+}
+export type { ExtensionRootV1 } from '../resource/v2/extensionRoot';
 export type {
   AuthorityDisclosure,
   HostEnumerateRequest,

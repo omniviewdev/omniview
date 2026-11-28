@@ -1,14 +1,16 @@
 import { Icon, Status, Text, tip } from '@omniviewdev/kit';
 import { useLayoutEffect, useState, type KeyboardEvent } from 'react';
 import { countText, type CountText } from './core/count';
-import type { ModifierEvent } from './core/tabs';
+import { platformOf } from './core/chords';
+import { dispositionOf, type ModifierEvent } from './core/tabs';
 import { expandedIds, hasNode, press, revealed, startingOpen, stopOf, toggled, visibleRows, type TreeMemory } from './core/tree';
-import type { ShellAccent, ShellCount, ShellRowStatus, ShellTreeNode } from './registration';
+import type { ShellAccent, ShellCount, ShellRowStatus, ShellSidebar, ShellTreeNode } from './registration';
 import styles from './Tree.module.css';
 
 type TreeProps = {
   readonly label: string;
   readonly nodes: readonly ShellTreeNode[];
+  readonly auxiliary?: ShellSidebar['auxiliary'];
   /** The groups open at first, and the entry that is current: read once, when the tree mounts. A tree that was on screen before under its key (`memory`) starts where its user left it instead of from `open`. */
   readonly open: readonly string[] | undefined;
   readonly current: string | undefined;
@@ -42,6 +44,7 @@ type RowProps = {
   readonly level: number;
   readonly position: number;
   readonly setSize: number;
+  readonly auxiliary: boolean;
   readonly expandable: boolean;
   readonly expanded: boolean;
   readonly selected: boolean;
@@ -98,7 +101,7 @@ function StatusBadge({ role, label }: ShellRowStatus) {
 }
 
 // A row is named by its text, the label, the count and the badge's label (WCAG 2.5.3: the name contains the visible text), and so a screen reader hears "Label 89", for an approximate count "Label about 89", and for a badge "Label 89 Needs sign-in".
-function Row({ id, label, icon, count, status, tone, level, position, setSize, expandable, expanded, selected, isStop, onToggle, onFocusRow, onChoose }: RowProps) {
+function Row({ id, label, icon, count, status, tone, level, position, setSize, expandable, expanded, selected, isStop, auxiliary, onToggle, onFocusRow, onChoose }: RowProps) {
   const text = count === undefined ? undefined : countText(count);
   return (
     <li
@@ -117,7 +120,22 @@ function Row({ id, label, icon, count, status, tone, level, position, setSize, e
       onFocus={() => {
         onFocusRow(id);
       }}
+      onMouseDown={auxiliary ? (event) => {
+        if (dispositionOf(event, { platform: platformOf(navigator) }) === 'background') {
+          event.preventDefault();
+        }
+      } : undefined}
+      onAuxClick={auxiliary ? (event) => {
+        if (event.button === 1) {
+          event.preventDefault();
+          onChoose?.(id, event);
+        }
+      } : undefined}
       onClick={(event) => {
+        if (auxiliary && event.button !== 0) {
+          return;
+        } // Middle-button activation belongs only to auxclick.
+
         if (expandable) {
           onToggle(id);
         } else {
@@ -155,7 +173,7 @@ const NO_GROUPS: ReadonlySet<string> = new Set();
  * Choosing an entry (a click, Enter or Space) tells the host which one; the tree does not move the current entry itself: the host registers the page
  * it opened, and that entry becomes current. Kit part it should become: Tree.
  */
-export function Tree({ label, nodes, open, current, accent, memory, memoryKey = label, onChoose, onOpenChange }: TreeProps) {
+export function Tree({ label, nodes, auxiliary, open, current, accent, memory, memoryKey = label, onChoose, onOpenChange }: TreeProps) {
   const [state, setState] = useState<TreeState>(() => {
     const recalled = memory?.recall(memoryKey);
     return { open: recalled?.open ?? revealed(nodes, open ?? [], current), stop: undefined, seeded: recalled?.seeded ?? NO_GROUPS };
@@ -192,7 +210,8 @@ export function Tree({ label, nodes, open, current, accent, memory, memoryKey = 
   const stop = stopOf(rows, state.stop, current);
 
   // What is on screen is told to the host: the key stands for the list, so the host hears of a change of the groups and not of a render. The tree that goes away tells it that nothing is open.
-  const expandedKey = JSON.stringify(expandedIds(rows));
+  const expanded = expandedIds(rows);
+  const expandedKey = JSON.stringify(auxiliary === undefined ? expanded : expanded.filter(id => id !== auxiliary.group));
   useLayoutEffect(() => {
     onOpenChange?.(JSON.parse(expandedKey) as string[]);
   }, [expandedKey, onOpenChange]);
@@ -249,6 +268,7 @@ export function Tree({ label, nodes, open, current, accent, memory, memoryKey = 
           level={row.level}
           position={row.position}
           setSize={row.setSize}
+          auxiliary={auxiliary?.leaves.includes(row.id) === true}
           expandable={row.expandable}
           expanded={row.expanded}
           selected={row.id === current}

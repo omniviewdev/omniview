@@ -35,6 +35,8 @@ export interface HostSourceViewEvent {
   kind: 'snapshot' | 'snapshotEnd' | 'changes' | 'status' | 'reset';
   records?: HostRecord[];
   upserts?: HostRecord[];
+  /** Native member receipts aligned with records or upserts, independent of provider data. */
+  memberRevisions?: string[];
   removes?: HostRecordRemoval[];
   status?: HostSourceStatus;
   reset?: HostSourceViewReset;

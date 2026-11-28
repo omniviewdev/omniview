@@ -1,8 +1,8 @@
 import { lenientJson } from './json';
 import { normaliseRoute, routeSays, sameRoute } from './route';
 import { pushed, replaced, resolveDestination, type Context, type Moved, type Resolved } from './resolve';
-import { activeTab, applyKeepAlive, changeTab, flagsOf, freshId, makeTab, patch, pinnedCount, refuse, show, unchanged, withTab, type Step } from './state';
-import type { Destination, Json, NavigateOptions, OpenChange, OpenHow, OpenOptions, OpenResult, Reveal, RouteInput, Scope, Tab, TabId, TabResult, TabsState } from './types';
+import { activeTab, applyKeepAlive, changeTab, flagsOf, freshId, makeTab, patch, pinnedCount, refuse, show, staleOrigin, unchanged, withTab, type Step } from './state';
+import type { Json, NavigateOptions, OpenChange, OpenHow, OpenOptions, OpenResult, Reveal, RouteInput, Scope, Tab, TabDestination, TabId, TabResult, TabRoute, TabsState } from './types';
 
 // The open model (ch16 S26, S28, S63 to S65): where a destination lands. Smart open goes where the page already is, else stays in the plugin it is in, else opens a tab.
 
@@ -21,15 +21,15 @@ type Plan = {
 const sameScope = (a: Scope | undefined, b: Scope | undefined): boolean => (a?.id ?? null) === (b?.id ?? null);
 
 /** The tab that shows a key: the one on screen, else the first in the strip. */
-export function findByKey(state: TabsState, key: string): Tab | undefined {
+export function findByKey(state: TabsState, key: string, kind: TabRoute['kind']): Tab | undefined {
   const active = activeTab(state);
-  if (active?.location.key === key) {
+  if (active?.location.key === key && active.location.route.kind === kind) {
     return active;
   }
 
   for (const id of state.order) {
     const tab = state.tabs[id];
-    if (tab?.location.key === key) {
+    if (tab?.location.key === key && tab.location.route.kind === kind) {
       return tab;
     }
   }
@@ -44,13 +44,13 @@ export function insertIndex(state: TabsState, after: TabId | undefined): number 
 }
 
 /** A request asks something of the page when it names more than the page, or carries a payload; a plain open of a page asks nothing. */
-const asked = (destination: Destination, resolved: Resolved, how: OpenHow, source: string): Ask | undefined =>
-  destination.reveal !== undefined || Object.keys(resolved.route.params).length > 0 ? { payload: lenientJson(destination.reveal), source, how } : undefined;
+const asked = (destination: TabDestination, resolved: Resolved, how: OpenHow, source: string): Ask | undefined =>
+  resolved.route.kind === undefined && (destination.reveal !== undefined || Object.keys(resolved.route.params).length > 0) ? { payload: lenientJson(destination.reveal), source, how } : undefined;
 
 /** The state with a request left on a tab for its page to answer. */
 function request(state: TabsState, id: TabId, ask: Ask, resolved: Resolved, kind: { readonly fresh: boolean; readonly navigated: boolean }): TabsState {
   const tab = state.tabs[id];
-  if (!tab) {
+  if (!tab || resolved.route.kind !== undefined) {
     return state;
   }
 
@@ -112,7 +112,7 @@ function openExisting(state: TabsState, plan: Plan, tab: Tab): Step<OpenResult> 
   }
 
   const background = plan.how === 'background';
-  const moves = routeSays(plan.resolved.route, tab.location.route);
+  const moves = plan.resolved.route.kind === undefined && tab.location.route.kind === undefined && routeSays(plan.resolved.route, tab.location.route);
   if (moves && tab.flags.unsaved && !plan.confirmed) {
     return background ? done(state, tab.id, 'activated', false) : { state: show(state, tab.id), result: { status: 'confirm', action: 'navigate', tabs: [tab.id] } };
   }
@@ -139,8 +139,8 @@ function createTab(state: TabsState, plan: Plan, kind: { readonly background?: b
     Reflect.deleteProperty(tabs, old);
   }
 
-  let next = patch(state, { tabs: Object.freeze(tabs), order: Object.freeze(order), mounted: Object.freeze(state.mounted.filter((other) => other !== old)), active: state.active === old ? null : state.active });
-  const background = kind.background === true && next.active !== null;
+  let next = patch(state, { tabs: Object.freeze(tabs), order: Object.freeze(order), mounted: Object.freeze(state.mounted.filter((other) => other !== old)), active: state.active === old ? null : state.active, started: true });
+  const background = kind.background === true && (next.active !== null || route.kind === 'extension-view');
   if (!background) {
     next = show(next, id);
   }
@@ -153,7 +153,11 @@ function createTab(state: TabsState, plan: Plan, kind: { readonly background?: b
  * it is in the same plugin and scope, else opens a tab, a preview one when it came from search results. `here` replaces the page of the tab on screen, `new` opens a tab
  * that is not deduplicated, `background` opens it after the tab on screen and leaves the focus, and `window` is handed back: the model has no windows.
  */
-export function open(state: TabsState, ctx: Context, destination: Destination, options: OpenOptions = {}): Step<OpenResult> {
+export function open(state: TabsState, ctx: Context, destination: TabDestination, options: OpenOptions = {}): Step<OpenResult> {
+  if (staleOrigin(state, options.origin)) {
+    return refuse(state, 'stale', 'The tab or its location changed.');
+  }
+
   const source = options.source ?? 'api';
   const current = activeTab(state);
   const resolution = resolveDestination(ctx, destination.route, source, current?.location.route);
@@ -163,6 +167,10 @@ export function open(state: TabsState, ctx: Context, destination: Destination, o
 
   const { resolved } = resolution;
   let how = options.how ?? 'smart';
+  if (how === 'smart' && resolved.route.kind === 'extension-view') {
+    how = 'here';
+  }
+
   if (how === 'smart' && source === 'search') {
     const { openResults } = ctx.preferences();
     how = openResults === 'new-tab' ? 'new' : openResults === 'current-tab' ? 'here' : how;
@@ -170,7 +178,7 @@ export function open(state: TabsState, ctx: Context, destination: Destination, o
 
   const plan: Plan = { ctx, resolved, how, ask: asked(destination, resolved, how, source), confirmed: options.confirmed === true, after: options.after };
   if (resolved.face.singleton) {
-    const hit = findByKey(state, resolved.key);
+    const hit = findByKey(state, resolved.key, resolved.route.kind);
     if (hit) {
       return openExisting(state, plan, hit);
     }
@@ -189,7 +197,7 @@ export function open(state: TabsState, ctx: Context, destination: Destination, o
   }
 
   if (resolved.face.identity !== 'none') {
-    const hit = findByKey(state, resolved.key);
+    const hit = findByKey(state, resolved.key, resolved.route.kind);
     if (hit) {
       return activateExisting(state, plan, hit);
     }
@@ -206,7 +214,11 @@ export function open(state: TabsState, ctx: Context, destination: Destination, o
  * Navigates a tab: pushes a new entry in its history, or replaces the current one (a change of scope), after asking about unsaved changes. A place that another tab already shows is shown, and this tab stays where it is, when the page is a singleton (ch16 S26) and when the request
  * says `reuse` (`NavigateOptions`): a change of scope to a place that is open is not a second copy of it.
  */
-export function navigate(state: TabsState, ctx: Context, id: TabId, destination: Destination, options: NavigateOptions = {}): Step<TabResult> {
+export function navigate(state: TabsState, ctx: Context, id: TabId, destination: TabDestination, options: NavigateOptions = {}): Step<TabResult> {
+  if (staleOrigin(state, options.origin, id)) {
+    return refuse(state, 'stale', 'The tab or its location changed.');
+  }
+
   const tab = state.tabs[id];
   if (!tab) {
     return refuse(state, 'missing', `There is no tab ${id}.`);
@@ -223,7 +235,7 @@ export function navigate(state: TabsState, ctx: Context, id: TabId, destination:
 
   // A singleton page is one tab in the whole app (ch16 S26): going to it shows the tab that holds it, and this tab stays where it is. A request that says `reuse` asks the same of any place another tab already shows (N4 of the review of HM3b); with no other tab on it, the tab
   // moves, as it was told to.
-  const elsewhere = resolution.resolved.face.singleton || options.reuse === true ? findByKey(state, resolution.resolved.key) : undefined;
+  const elsewhere = resolution.resolved.face.singleton || options.reuse === true ? findByKey(state, resolution.resolved.key, resolution.resolved.route.kind) : undefined;
   if (elsewhere && elsewhere.id !== id) {
     return { state: show(state, elsewhere.id), result: { status: 'done', id: elsewhere.id } };
   }
@@ -246,6 +258,10 @@ export function replace(state: TabsState, ctx: Context, id: TabId, input: RouteI
     return refuse(state, 'missing', `There is no tab ${id}.`);
   }
 
+  if (tab.location.route.kind === 'extension-view') {
+    return refuse(state, 'invalid', 'A mounted view does not have page parameters.');
+  }
+
   const asked = normaliseRoute(input);
   const route = asked ? ctx.plugins.complete(asked, tab.location.route, 'page') : undefined;
   if (!route) {
@@ -257,7 +273,7 @@ export function replace(state: TabsState, ctx: Context, id: TabId, input: RouteI
   }
 
   const { face, key } = ctx.plugins.look(route);
-  const elsewhere = face.singleton ? findByKey(state, key) : undefined;
+  const elsewhere = face.singleton ? findByKey(state, key, route.kind) : undefined;
   if (elsewhere && elsewhere.id !== id) {
     return refuse(state, 'singleton', `Only one ${face.title} tab can exist`);
   }
@@ -268,7 +284,7 @@ export function replace(state: TabsState, ctx: Context, id: TabId, input: RouteI
 
 /**
  * The window opens with something to show when it can: at its start, with no tab, the home page opens (ch16 S30). It does nothing when a tab is open, when no home page is offered, and when
- * the plugin that offers it cannot serve it now (a later change of the plugins tries again). It does nothing once the window has started, that is once a tab has been on screen: a strip
+ * the plugin that offers it cannot serve it now (a later change of the plugins tries again). It does nothing once the window has opened any tab, even one in the background: a strip
  * the user emptied stays empty (decision A17, which amends ch16 S8 and S30: "closing the last tab opens Home"), because a page that comes back by itself is a trap, and the window
  * has its empty state and a way out.
  */

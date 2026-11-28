@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ShellTreeNode } from '../../shell';
 import { ContractError } from '../loader/failure';
 import { admit, admitOrThrow, openable, CONTRIBUTION_EXPORT_V1 } from './admit';
-import type { ContributionV1, ListPageDefinition, PageV1, SidebarNodeV1 } from './v1';
+import type { ContributionV1, ListPageDefinition, PageV1, PanelV1, SidebarNodeV1 } from './v1';
 
 // Admission reads what a bundle hands the host as `unknown`. Each test breaks one thing in an otherwise good contribution, and the problem must name it:
 // that is what a plugin author reads in the log. The names are invented (Acme, widgets); the host knows no plugin.
@@ -73,6 +73,7 @@ describe('admit', () => {
     ['a rail that is not an entry', contribution({ rail: 1 }), 'rail is neither absent, true, nor an entry'],
     ['a sidebar without a title', contribution({ sidebar: sidebar({ title: '' }) }), 'sidebar needs a label and a title'],
     ['a sidebar hook that is not a function', contribution({ sidebar: sidebar({ useNodes: 'yes' }) }), 'sidebar.useNodes is not a function'],
+    ['a sidebar naming another owner’s point', contribution({ sidebar: sidebar({ outlet: 'peer/tools' }) }), 'sidebar.outlet is not a local extension point ID'],
     ['a home that is not a page', contribution({ home: 'gadgets' }), 'home "gadgets" is not one of the pages'],
     ['no pages', contribution({ pages: {} }), 'pages is not an object with a page in it'],
     ['a page of a kind this version does not draw', contribution({ pages: { widgets: page({ kind: 'dashboard' }) } }), 'pages.widgets.kind is "dashboard", and this version draws "list", "detail", "overview" and "custom" pages'],
@@ -627,6 +628,11 @@ describe('admit: the panel (a minor addition to version 1)', () => {
     expect(Object.hasOwn(value, 'panel')).toBe(false);
     expect(admit(exportsOf(value))).toMatchObject({ ok: true, contribution: value });
     expect(admit(exportsOf(withPanel(undefined))).ok).toBe(true);
+    const panel: PanelV1 = { sessions: { terminal: { useMenuOutlet: () => undefined }, anotherTool: { card: () => undefined } } };
+    expect(admit(exportsOf(withPanel(panel))).ok).toBe(true);
+    // @ts-expect-error A Logs session cannot declare the resource terminal's owner hook.
+    const misplaced: PanelV1 = { sessions: { logs: { useMenuOutlet: () => undefined } } };
+    expect(admit(exportsOf(withPanel(misplaced))).ok).toBe(false);
   });
 
   it.each([
@@ -645,6 +651,8 @@ describe('admit: the panel (a minor addition to version 1)', () => {
     ['sessions that are a list', { sessions: [] }, 'panel.sessions is not an object'],
     ['a session kind that is not an object', { sessions: { logs: 3 } }, 'panel.sessions.logs is not an object'],
     ['a session card that is not a function', { sessions: { logs: { card: 'x' } } }, 'panel.sessions.logs.card is not a function'],
+    ['a terminal menu hook that is not a function', { sessions: { terminal: { useMenuOutlet: 1 } } }, 'panel.sessions.terminal.useMenuOutlet must be a terminal session hook'],
+    ['a terminal hook declared on a different tool', { sessions: { logs: { useMenuOutlet: () => undefined } } }, 'panel.sessions.logs.useMenuOutlet must be a terminal session hook'],
   ])('refuses %s', (_name, panel, expected) => {
     expect(problemsOf(withPanel(panel))).toContain(expected);
   });

@@ -22,7 +22,7 @@ import (
 type WindowRealm interface {
 	invocation.ContextScope
 	AdmitWindow(window application.Window) (*invocation.Scope, error)
-	OnRetire(fn func(invocation.WindowIdentity))
+	OnScopeRetire(fn func(invocation.WindowIdentity, *invocation.Scope))
 }
 
 // ServiceWrapper is an explicit delegation wrapper around exec.Controller.
@@ -161,20 +161,27 @@ func (s *ServiceWrapper) createChannelTerminal(ctx context.Context, opts execsdk
 
 // terminalOwner admits the window and names it as the owner of the terminals it opens.
 func (s *ServiceWrapper) terminalOwner(window application.Window) (invocation.WindowIdentity, error) {
-	var none invocation.WindowIdentity
+	if _, err := s.admitTerminalWindow(window); err != nil {
+		return invocation.WindowIdentity{}, err
+	}
+	return invocation.IdentityOf(window), nil
+}
+
+func (s *ServiceWrapper) admitTerminalWindow(window application.Window) (*invocation.Scope, error) {
 	if s.Realm == nil || window == nil {
-		return none, apperror.Forbidden("Access denied", "A terminal belongs to the window that opens it.")
+		return nil, apperror.Forbidden("Access denied", "A terminal belongs to the window that opens it.")
 	}
-	if _, err := s.Realm.AdmitWindow(window); err != nil {
-		return none, err
-	}
-	// Subscribed before the first session is made, so no retirement can fall before it.
+	// Subscribe both lanes before admission. A provider that blocks while closing its shell
+	// must not delay local terminal retirement, and only the retired scope owns the resource shell.
 	s.retire.Do(func() {
-		s.Realm.OnRetire(func(key invocation.WindowIdentity) {
+		s.Realm.OnScopeRetire(func(key invocation.WindowIdentity, scope *invocation.Scope) {
+			s.Ctrl.releaseResourceShells(shellOwner{window: key, scope: scope})
+		})
+		s.Realm.OnScopeRetire(func(key invocation.WindowIdentity, _ *invocation.Scope) {
 			s.Ctrl.ReleaseOwnedTerminals(key, terminal.ClosedByWindow)
 		})
 	})
-	return invocation.IdentityOf(window), nil
+	return s.Realm.AdmitWindow(window)
 }
 func (s *ServiceWrapper) ListSessions() ([]*execsdk.Session, error) {
 	return s.Ctrl.ListSessions()

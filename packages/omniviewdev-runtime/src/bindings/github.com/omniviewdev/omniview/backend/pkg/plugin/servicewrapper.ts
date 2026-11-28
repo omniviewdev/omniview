@@ -145,6 +145,10 @@ export function LoadPlugin(id: string, opts: $models.LoadPluginOptions | null): 
     });
 }
 
+export function ReadExtensionAsset(id: string, pin: string, generation: string, role: string): $CancellablePromise<string> {
+    return $Call.ByID(242585811, id, pin, generation, role);
+}
+
 export function ReloadPlugin(id: string): $CancellablePromise<types$0.PluginInfo> {
     return $Call.ByID(1771013494, id).then(($result: any) => {
         return $$createType0($result);

@@ -136,6 +136,12 @@ func (pm *pluginManager) InstallDevPluginFromPath(path string) (info plugintypes
 			emitUnloaded(pm.emitter, metadata.ID, UnloadFailed)
 		}
 	}()
+	// A development build can reuse this directory. It cannot inherit the
+	// completed archive's signing receipt, even across a restart.
+	if err = pm.removeExtensionReceipt(metadata.ID); err != nil {
+		pm.emitter.Emit(EventDevInstallError, metadata)
+		return info, err
+	}
 	if err = pm.prepareDevInstallDir(path, metadata); err != nil {
 		pm.emitter.Emit(EventDevInstallError, metadata)
 		return info, err
@@ -379,7 +385,7 @@ func (pm *pluginManager) installPluginVersionLocked(pluginID, version, channel s
 
 	pm.syncRegistryURL()
 	downloadCtx, downloadSpan := installSpanChild(ctx, "plugin.Download", pluginID, attribute.String("version", version))
-	tmpPath, err := pm.registryClient.DownloadPlugin(downloadCtx, pluginID, version)
+	tmpPath, digest, err := pm.registryClient.DownloadPlugin(downloadCtx, pluginID, version)
 	if err != nil {
 		installSpanEnd(downloadSpan, err)
 		pm.installLogger().Errorw(ctx, "plugin download failed", "pluginID", pluginID, "version", version,
@@ -396,7 +402,7 @@ func (pm *pluginManager) installPluginVersionLocked(pluginID, version, channel s
 	defer os.Remove(tmpPath) // DownloadPlugin transfers ownership of this temporary archive.
 
 	pm.installLogger().Debugw(ctx, "installing plugin from downloaded archive", "pluginID", pluginID, "version", version)
-	meta, err = pm.installPluginArchive(ctx, tmpPath, pluginID, version, channel)
+	meta, err = pm.installPluginArchive(ctx, tmpPath, pluginID, version, channel, digest)
 	if err != nil {
 		pm.emitter.Emit(EventUpdateError, UpdateErrorPayload{PluginID: pluginID, Error: err.Error()})
 		return meta, err
@@ -418,13 +424,13 @@ func (pm *pluginManager) InstallPluginFromPath(path string) (meta *config.Plugin
 		}
 		install.finish(err)
 	}()
-	return pm.installPluginArchive(ctx, path, "", "", "")
+	return pm.installPluginArchive(ctx, path, "", "", "", "")
 }
 
 // installPluginArchive requires the requested marketplace identity lock, held
 // since before download. Local archives acquire their manifest identity lock.
 func (pm *pluginManager) installPluginArchive(
-	ctx context.Context, path, requestedID, version, channel string,
+	ctx context.Context, path, requestedID, version, channel, verifiedDigest string,
 ) (*config.PluginMeta, error) {
 	log := pm.installLogger()
 	if !isGzippedTarball(path) {
@@ -470,7 +476,7 @@ func (pm *pluginManager) installPluginArchive(
 		return nil, err
 	}
 
-	statePublished, err := pm.installArchiveCandidate(ctx, path, metadata, version, channel)
+	statePublished, err := pm.installArchiveCandidate(ctx, path, metadata, version, channel, verifiedDigest)
 	if err != nil {
 		var problem *apperror.AppError
 		if !errors.As(err, &problem) || problem.Type != apperror.TypePluginCommittedCleanupPending {
@@ -637,7 +643,7 @@ func (pm *pluginManager) uninstallPlugin(ctx context.Context, id string) (plugin
 		return restore(err, true)
 	}
 	installSpanPhase(ctx, "recovery_removed")
-	pm.emitter.Emit(EventInventoryChanged)
+	pm.emitter.Emit(EventInventoryChanged, InventoryChangedPayload{PluginID: id})
 	log.Infow(ctx, "plugin uninstalled", "pluginID", id, "durationMs", time.Since(started).Milliseconds())
 	return info, nil
 }

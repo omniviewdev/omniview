@@ -109,7 +109,6 @@ func newTerminalFixture(t *testing.T) *terminalFixture {
 func newTerminalFixtureLogged(t *testing.T, logger logging.Logger) *terminalFixture {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
-	ctx, cancel := context.WithCancel(context.Background())
 	pages := &terminalPages{open: map[string]bool{}}
 	realm := invocation.NewWindowRealm(nil, invocation.WithPageSweep(pages.connected, 5*time.Millisecond))
 	ctrl, ok := NewController(logger, nil, nil).(*controller)
@@ -121,13 +120,8 @@ func newTerminalFixtureLogged(t *testing.T, logger logging.Logger) *terminalFixt
 		fx.events = append(fx.events, execTestEvent{name: name, data: data[0]})
 		return true
 	})
-	ctrl.startTerminals(ctx)
-	t.Cleanup(func() {
-		for _, session := range ctrl.terminalManager.ListSessions() {
-			_ = ctrl.CloseSession(session.ID)
-		}
-		cancel()
-	})
+	ctrl.startTerminals(t.Context())
+	t.Cleanup(ctrl.terminalManager.Shutdown)
 	return fx
 }
 
@@ -309,6 +303,29 @@ func TestCreateTerminalRefusesAWindowThatIsAlreadyRetired(t *testing.T) {
 	_, err := fx.openAs(page, terminal.Options{Command: shell(t)})
 	require.ErrorIs(t, err, invocation.ErrWindowUnavailable, "a closed page is refused, not served a shell nobody can reach")
 	assert.Empty(t, fx.ctrl.terminalManager.ListSessions())
+}
+
+func TestLocalTerminalRetiresWhileResourceShellProviderIsBlocked(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	s := newShellTest(t)
+	t.Cleanup(s.ctrl.terminalManager.Shutdown)
+	s.launch()
+	local, err := s.w.CreateTerminal(s.ctx, execsdk.SessionOptions{Command: append(shell(t), "-c", "read value")}, terminal.Launch{})
+	require.NoError(t, err)
+
+	closing, allowClose := make(chan struct{}), make(chan struct{})
+	s.p.getHook = func() { close(closing); <-allowClose }
+	retired := make(chan struct{})
+	go func() { defer close(retired); s.page.retire(nil) }()
+	t.Cleanup(func() { close(allowClose); <-retired })
+
+	select {
+	case <-closing:
+	case <-time.After(5 * time.Second):
+		t.Fatal("window retirement did not reach the resource shell provider")
+	}
+	require.Eventually(t, func() bool { return s.window.told(localCloseEvent + local.ID) }, 5*time.Second, 5*time.Millisecond,
+		"the local terminal must close without waiting for the provider")
 }
 
 // What the page sends is checked before anything starts: a local terminal runs no resource request (it

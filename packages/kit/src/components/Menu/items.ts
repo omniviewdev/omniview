@@ -71,8 +71,15 @@ export type MenuSeparator = {
 
 export type MenuItem = MenuAction | MenuCheckbox | MenuRadioGroup | MenuSubmenu | MenuGroup | MenuSeparator;
 
-/** A list or a resolver called only on invocation. The open menu keeps that opening's item snapshot. */
-export type MenuDefinition = readonly MenuItem[] | ((contextKey: string | undefined) => readonly MenuItem[] | null | undefined);
+/** A single menu opening. Subscribe after the initial items are visible; publish replacement items or null to dismiss. */
+export type MenuSource = {
+  readonly items: readonly MenuItem[];
+  /** Cleanup runs on every dismissal, before the selected row's callback. Only selection supplies an entry ID. */
+  readonly subscribe: (update: (items: readonly MenuItem[] | null) => void) => (selected?: string) => void;
+};
+
+/** A list or a resolver called only on invocation. An array is a snapshot; a source can update only its own opening. */
+export type MenuDefinition = readonly MenuItem[] | ((contextKey: string | undefined) => readonly MenuItem[] | MenuSource | null | undefined);
 
 export type MenuRegistry = Readonly<Record<string, MenuDefinition>>;
 

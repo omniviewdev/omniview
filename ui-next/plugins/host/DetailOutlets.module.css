@@ -1,0 +1,8 @@
+@layer ov.shell {
+  /* Keep one local result row while a fact or an explicitly selected action is pending. */
+  .result {
+    min-block-size: var(--ov-row-height);
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+  }
+}

@@ -2,7 +2,11 @@ package registry
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"hash"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -179,7 +183,13 @@ type versionDiscovery struct {
 
 // Each DownloadPlugin call resolves one artifact URL before fetching it.
 type artifactRequest struct {
-	url string
+	url    string
+	digest hash.Hash
+}
+
+type artifactBody struct {
+	io.Reader
+	io.Closer
 }
 
 // RoundTrip traces every registry request. Only the URL path is recorded (never the
@@ -198,6 +208,12 @@ func (t *compatibilityTransport) RoundTrip(req *http.Request) (*http.Response, e
 		attribute.Bool("artifact", isArtifact))
 	started := time.Now()
 	resp, err := t.roundTrip(req.WithContext(ctx))
+	if err == nil && artifact != nil && artifact.digest != nil &&
+		req.Header.Get("Range") != "" && resp.StatusCode == http.StatusPartialContent {
+		// These are the exact ranged bytes the registry client hashes and verifies
+		// against its trusted signing keys. A later pathname read is not that proof.
+		resp.Body = artifactBody{io.TeeReader(resp.Body, artifact.digest), resp.Body}
+	}
 	elapsed := time.Since(started).Milliseconds()
 	switch {
 	case err != nil:
@@ -530,22 +546,23 @@ func (c *Client) GetPluginDownloadStats(ctx context.Context, pluginID string) (s
 	return stats, nil
 }
 
-// DownloadPlugin downloads and verifies a plugin artifact.
-// Returns the path to the downloaded temp file.
+// DownloadPlugin returns the temporary archive and the digest authenticated by the
+// registry download. Neither the destination path nor a registry version is a pin.
 //
 //nolint:nonamedreturns // Deferred telemetry records the returned error.
-func (c *Client) DownloadPlugin(ctx context.Context, pluginID, version string) (path string, err error) {
+func (c *Client) DownloadPlugin(ctx context.Context, pluginID, version string) (path, digest string, err error) {
 	ctx, span := startSpan(ctx, "registry.DownloadPlugin",
 		attribute.String("plugin_id", pluginID), attribute.String("version", version))
 	defer func() { endSpan(span, err) }()
-	ctx = context.WithValue(ctx, artifactRequestKey{}, &artifactRequest{})
+	artifact := &artifactRequest{url: "", digest: sha256.New()}
+	ctx = context.WithValue(ctx, artifactRequestKey{}, artifact)
 	path, err = c.snapshot().DownloadPlugin(ctx, pluginID, version)
 	if err != nil {
-		return path, err
+		return path, "", err
 	}
 	if info, statErr := os.Stat(path); statErr == nil {
 		span.SetAttributes(attribute.Int64("bytes", info.Size()))
 		c.debug(ctx, "registry artifact downloaded", "pluginID", pluginID, "version", version, "bytes", info.Size())
 	}
-	return path, nil
+	return path, hex.EncodeToString(artifact.digest.Sum(nil)), nil
 }

@@ -1,5 +1,6 @@
 import { Activity, Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
-import type { Location, TabId } from '../core/tabs';
+import { keepScroll, keptScroll } from '../../page/kept';
+import type { Location, TabId, TabsStore } from '../core/tabs';
 import { useTabs } from './context';
 import { useActiveId, useLocation, useMountedIds } from './hooks';
 import styles from './PageHost.module.css';
@@ -82,14 +83,55 @@ function useScrollRestore(root: RefObject<HTMLDivElement | null>, memory: Map<st
   }, [visible, root, memory]);
 }
 
+/** Only the visible slot owns the shared document offset. Its location subscription also covers Back and Forward within the tab. */
+function useDocumentScroll(store: TabsStore, id: TabId, location: Location | undefined, visible: boolean, layout: Slot['layout']) {
+  const root = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const region = root.current?.parentElement;
+    if (!visible || !location || !region) {
+      return;
+    }
+
+    const keep = layout === 'document' && location.route.kind !== 'extension-view';
+    const saved = keep ? keptScroll(store.getSnapshot().tabs[id]?.pageState) : undefined;
+    region.scrollTop = saved?.top ?? 0;
+    region.scrollLeft = saved?.left ?? 0;
+    if (!keep) {
+      return;
+    }
+
+    const onScroll = (event: Event) => {
+      const state = store.getSnapshot();
+      const tab = state.tabs[id];
+      if (event.target === region && state.active === id && tab?.location === location) {
+        store.setPageState(id, keepScroll(tab.pageState, { top: region.scrollTop, left: region.scrollLeft }));
+      }
+    };
+
+    region.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      region.removeEventListener('scroll', onScroll);
+    };
+  }, [visible, location, layout, store, id]);
+  return root;
+}
+
+/** Visibility belongs to the slot, not its page. Switching ordinary tabs doesn't call the page renderer again. */
+function PageContent({ id, location, renderPage, pageKey }: PageTab & Pick<Slot, 'renderPage' | 'pageKey'>) {
+  const tab = { id, location };
+  return <Fragment key={`${pageKey?.(tab) ?? location.key}|${String(location.generation)}`}>{renderPage(tab)}</Fragment>;
+}
+
 /** One mounted page. It reads its own tab's location, so a route change in another tab does not render it. */
 function PageSlot({ id, visible, layout, renderPage, pageKey }: Slot) {
   const store = useTabs();
   const location = useLocation(store, id);
-  const root = useRef<HTMLDivElement>(null);
+  const root = useDocumentScroll(store, id, location, visible, layout);
   const [memory] = useState(() => new Map<string, Remembered>());
-  useScrollRestore(root, memory, visible);
-  if (location === undefined) {
+  const ordinary = location?.route.kind !== 'extension-view';
+  useScrollRestore(root, memory, visible && ordinary);
+  // Activity keeps hidden DOM and state. A mounted peer must actually unmount when its tab is no longer in front.
+  if (location === undefined || (location.route.kind === 'extension-view' && !visible)) {
     return null;
   }
 
@@ -104,12 +146,12 @@ function PageSlot({ id, visible, layout, renderPage, pageKey }: Slot) {
         data-page-slot=""
         data-tab-id={id}
         onScrollCapture={(event) => {
-          if (event.target instanceof Element && event.target !== event.currentTarget) {
+          if (ordinary && event.target instanceof Element && event.target !== event.currentTarget) {
             remember(event.currentTarget, event.target, memory);
           }
         }}
       >
-        <Fragment key={`${pageKey?.({ id, location }) ?? location.key}|${String(location.generation)}`}>{renderPage({ id, location })}</Fragment>
+        <PageContent id={id} location={location} renderPage={renderPage} pageKey={pageKey} />
       </div>
     </Activity>
   );
@@ -127,26 +169,6 @@ export function PageHost({ renderPage, empty, layout, prefix, panelId, pageKey }
   const store = useTabs();
   const mounted = useMountedIds(store);
   const active = useActiveId(store);
-  const panel = useRef<HTMLDivElement>(null);
-  const [memory] = useState(() => new Map<TabId, Position>());
-
-  // The region shows the offset of the tab that is on screen: the one it was left at, or the top of a page that was not shown before.
-  useLayoutEffect(() => {
-    const element = panel.current;
-    if (element === null || active === null) {
-      return;
-    }
-
-    for (const id of memory.keys()) {
-      if (!mounted.includes(id)) {
-        memory.delete(id);
-      }
-    }
-
-    const saved = memory.get(active);
-    element.scrollTop = saved?.top ?? 0;
-    element.scrollLeft = saved?.left ?? 0;
-  }, [active, mounted, memory]);
 
   // A press or a key in the page is use: a preview tab becomes permanent (S24); a permanent tab is no change.
   const keep = () => {
@@ -156,7 +178,6 @@ export function PageHost({ renderPage, empty, layout, prefix, panelId, pageKey }
   const hosted = active !== null && mounted.length > 0;
   return (
     <div
-      ref={panel}
       id={panelId}
       className={styles.page}
       role={hosted ? 'tabpanel' : undefined}
@@ -166,11 +187,6 @@ export function PageHost({ renderPage, empty, layout, prefix, panelId, pageKey }
       data-layout={layout}
       onPointerDownCapture={keep}
       onKeyDownCapture={keep}
-      onScroll={(event) => {
-        if (active !== null) {
-          memory.set(active, { top: event.currentTarget.scrollTop, left: event.currentTarget.scrollLeft });
-        }
-      }}
     >
       {hosted ? (
         mounted.map((id) => <PageSlot key={id} id={id} visible={id === active} layout={layout} renderPage={renderPage} pageKey={pageKey} />)

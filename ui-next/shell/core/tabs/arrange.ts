@@ -3,8 +3,8 @@ import { normaliseKeepAlive } from './keepAlive';
 import { ensureHome, findByKey } from './open';
 import { replaced, stepped, type Context } from './resolve';
 import { sameRoute } from './route';
-import { applyKeepAlive, changeTab, fits, flagsOf, patch, pinnedCount, refuse, show, unchanged, withTab, type Step } from './state';
-import { LIMITS, type Attention, type Guard, type HistoryDirection, type HistoryItem, type KeepAlive, type Tab, type TabId, type TabResult, type TabsState } from './types';
+import { applyKeepAlive, changeTab, fits, flagsOf, patch, pinnedCount, refuse, show, staleOrigin, unchanged, withTab, type Step } from './state';
+import { LIMITS, type Attention, type HistoryDirection, type HistoryItem, type KeepAlive, type NavigationGuard, type Tab, type TabId, type TabResult, type TabsState } from './types';
 
 // Showing a tab, pinning, reordering, and the small facts a page reports about its tab: its state, its draft, its attention (ch16 S22, S29, S38, S45, S47, S48).
 // And a tab's history (S50, S60), and the model describing its tabs again when the plugins changed.
@@ -25,8 +25,12 @@ export function activate(state: TabsState, id: TabId | null): Step<TabResult> {
 /** Positional, wrapping, in the strip (ch16 S48). */
 export function activateOffset(state: TabsState, delta: number): Step<TabResult> {
   const { order, active } = state;
-  if (order.length === 0 || active === null) {
+  if (order.length === 0) {
     return missing(state, null);
+  }
+
+  if (active === null) {
+    return activate(state, (delta < 0 ? order.at(-1) : order[0]) ?? null);
   }
 
   const at = order.indexOf(active);
@@ -140,7 +144,11 @@ export function consumeReveal(state: TabsState, id: TabId, seq: number): Step<bo
 }
 
 /** Draws the page again without changing where it is (ch16 S44): the generation rises. A tab with unsaved changes asks first. */
-export function reload(state: TabsState, id: TabId | null, guard: Guard = {}): Step<TabResult> {
+export function reload(state: TabsState, id: TabId | null, guard: NavigationGuard = {}): Step<TabResult> {
+  if (staleOrigin(state, guard.origin, id)) {
+    return refuse(state, 'stale', 'The tab or its location changed.');
+  }
+
   const tab = id === null ? undefined : state.tabs[id];
   if (!tab || id === null) {
     return missing(state, id);
@@ -158,7 +166,11 @@ export const canGo = (tab: Tab | undefined, direction: HistoryDirection): boolea
   tab !== undefined && (direction === 'back' ? tab.history.index > 0 : tab.history.index < tab.history.entries.length - 1);
 
 /** One step in a tab's history (ch16 S50): the page of that entry, given what that page kept when the tab left it, and nothing asked of the page. The page it leaves keeps its state with its entry (H7). Asks about unsaved changes. */
-export function step(state: TabsState, ctx: Context, id: TabId | null, direction: HistoryDirection, guard: Guard = {}): Step<TabResult> {
+export function step(state: TabsState, ctx: Context, id: TabId | null, direction: HistoryDirection, guard: NavigationGuard = {}): Step<TabResult> {
+  if (staleOrigin(state, guard.origin, id)) {
+    return refuse(state, 'stale', 'The tab or its location changed.');
+  }
+
   const tab = id === null ? undefined : state.tabs[id];
   if (!tab || id === null) {
     return missing(state, id);
@@ -176,7 +188,7 @@ export function step(state: TabsState, ctx: Context, id: TabId | null, direction
 
   // A singleton page is one tab in the whole app (ch16 S26): the entry that is that page shows the tab that holds it, and this tab stays where it is.
   const looked = ctx.plugins.look(route);
-  const elsewhere = looked.face.singleton ? findByKey(state, looked.key) : undefined;
+  const elsewhere = looked.face.singleton ? findByKey(state, looked.key, route.kind) : undefined;
   if (elsewhere && elsewhere.id !== id) {
     return done(show(state, elsewhere.id), elsewhere.id);
   }
@@ -229,7 +241,8 @@ export function refresh(state: TabsState, ctx: Context, plugin?: string): TabsSt
       continue;
     }
 
-    if (plugin !== undefined && tab.location.route.plugin !== plugin) {
+    const current = tab.location.route;
+    if (plugin !== undefined && current.plugin !== plugin && !(current.kind === 'extension-view' && current.offer.startsWith(`${plugin}/`))) {
       continue;
     }
 

@@ -26,7 +26,7 @@ type PanelProps = { readonly platform: Platform };
  * the default, or the one custom property `--_size` that holds what the user chose. See `./splitter.ts` for what a drag costs.
  */
 export function Panel({ platform }: PanelProps) {
-  const { store } = usePanel();
+  const { store, terminalMenuContent } = usePanel();
   const ids = useId();
   const prefix = `${ids}-panel`;
   const deck = `${ids}-deck`;
@@ -82,6 +82,7 @@ export function Panel({ platform }: PanelProps) {
       >
         <PanelHeader prefix={prefix} controls={deck} maximized={maximized} platform={platform} />
         <PanelBody prefix={prefix} id={deck} />
+        {open ? terminalMenuContent : null}
       </section>
     </>
   );

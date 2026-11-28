@@ -16,6 +16,56 @@ import * as config$0 from "../../../../../plugin-sdk/pkg/config/models.js";
 import * as types$0 from "../../../../../plugin-sdk/pkg/types/models.js";
 
 /**
+ * ExtensionSource carries static facts, not authority to load or run a module.
+ * The host's canonical decoder admits Manifest and checks the exact role exports.
+ */
+export class ExtensionSource {
+    "pin": string;
+    "pageDigest"?: string;
+    "generation": string;
+    "manifest": string;
+    "features": string[];
+    "views": string[];
+
+    /** Creates a new ExtensionSource instance. */
+    constructor($$source: Partial<ExtensionSource> = {}) {
+        if (!("pin" in $$source)) {
+            this["pin"] = "";
+        }
+        if (!("generation" in $$source)) {
+            this["generation"] = "";
+        }
+        if (!("manifest" in $$source)) {
+            this["manifest"] = "";
+        }
+        if (!("features" in $$source)) {
+            this["features"] = [];
+        }
+        if (!("views" in $$source)) {
+            this["views"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ExtensionSource instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ExtensionSource {
+        const $$createField4_0 = $$createType0;
+        const $$createField5_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("features" in $$parsedSource) {
+            $$parsedSource["features"] = $$createField4_0($$parsedSource["features"]);
+        }
+        if ("views" in $$parsedSource) {
+            $$parsedSource["views"] = $$createField5_0($$parsedSource["views"]);
+        }
+        return new ExtensionSource($$parsedSource as Partial<ExtensionSource>);
+    }
+}
+
+/**
  * Incompatibility is why the host refused a plugin by protocol number, as numbers and nothing else: public-safe values that travel to the window with the event (`plugin/unloaded`) and in the plugin's inventory
  * entry, where the window words them. Nothing of go-plugin's, the plugin's or an error's text is in it.
  */
@@ -46,7 +96,7 @@ export class Incompatibility {
      * Creates a new Incompatibility instance from a string or object.
      */
     static createFrom($$source: any = {}): Incompatibility {
-        const $$createField1_0 = $$createType0;
+        const $$createField1_0 = $$createType1;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("accepted" in $$parsedSource) {
             $$parsedSource["accepted"] = $$createField1_0($$parsedSource["accepted"]);
@@ -70,6 +120,14 @@ export class PluginInfo {
     "origin": string;
     "frontendModule": string;
     "releaseChannel": string;
+
+    /**
+     * HasPage is known only for an inventoried archive. A route-less package
+     * does not require discovery or evaluation of an ordinary page entry.
+     */
+    "hasPage"?: boolean | null;
+    "extension"?: ExtensionSource | null;
+    "extensionRefused"?: boolean;
 
     /**
      * Incompatible is set on a plugin the host refused because its process speaks a plugin protocol the host does not run: the two numbers the window words itself, and no text.
@@ -113,9 +171,10 @@ export class PluginInfo {
      * Creates a new PluginInfo instance from a string or object.
      */
     static createFrom($$source: any = {}): PluginInfo {
-        const $$createField1_0 = $$createType1;
-        const $$createField6_0 = $$createType2;
-        const $$createField11_0 = $$createType4;
+        const $$createField1_0 = $$createType2;
+        const $$createField6_0 = $$createType3;
+        const $$createField12_0 = $$createType5;
+        const $$createField14_0 = $$createType7;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("metadata" in $$parsedSource) {
             $$parsedSource["metadata"] = $$createField1_0($$parsedSource["metadata"]);
@@ -123,8 +182,11 @@ export class PluginInfo {
         if ("capabilities" in $$parsedSource) {
             $$parsedSource["capabilities"] = $$createField6_0($$parsedSource["capabilities"]);
         }
+        if ("extension" in $$parsedSource) {
+            $$parsedSource["extension"] = $$createField12_0($$parsedSource["extension"]);
+        }
         if ("incompatible" in $$parsedSource) {
-            $$parsedSource["incompatible"] = $$createField11_0($$parsedSource["incompatible"]);
+            $$parsedSource["incompatible"] = $$createField14_0($$parsedSource["incompatible"]);
         }
         return new PluginInfo($$parsedSource as Partial<PluginInfo>);
     }
@@ -176,7 +238,7 @@ export class PluginStateRecord {
      * Creates a new PluginStateRecord instance from a string or object.
      */
     static createFrom($$source: any = {}): PluginStateRecord {
-        const $$createField2_0 = $$createType1;
+        const $$createField2_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("metadata" in $$parsedSource) {
             $$parsedSource["metadata"] = $$createField2_0($$parsedSource["metadata"]);
@@ -214,8 +276,11 @@ export class ProtocolRange {
 }
 
 // Private type creation functions
-const $$createType0 = ProtocolRange.createFrom;
-const $$createType1 = config$0.PluginMeta.createFrom;
-const $$createType2 = $Create.Array($Create.Any);
-const $$createType3 = Incompatibility.createFrom;
-const $$createType4 = $Create.Nullable($$createType3);
+const $$createType0 = $Create.Array($Create.Any);
+const $$createType1 = ProtocolRange.createFrom;
+const $$createType2 = config$0.PluginMeta.createFrom;
+const $$createType3 = $Create.Array($Create.Any);
+const $$createType4 = ExtensionSource.createFrom;
+const $$createType5 = $Create.Nullable($$createType4);
+const $$createType6 = Incompatibility.createFrom;
+const $$createType7 = $Create.Nullable($$createType6);

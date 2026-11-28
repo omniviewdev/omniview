@@ -53,6 +53,9 @@ func (s *ServiceWrapper) GetPlugin(id string) (plugintypes.PluginInfo, error) {
 func (s *ServiceWrapper) ListPlugins() []plugintypes.PluginInfo {
 	return s.Mgr.ListPlugins()
 }
+func (s *ServiceWrapper) ReadExtensionAsset(id, pin, generation, role string) (string, error) {
+	return s.Mgr.ReadExtensionAsset(id, pin, generation, role)
+}
 func (s *ServiceWrapper) GetPluginMeta(id string) (config.PluginMeta, error) {
 	return s.Mgr.GetPluginMeta(id)
 }

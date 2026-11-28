@@ -97,8 +97,8 @@ function Hints({ hints }: { readonly hints: readonly MenuKeyHint[] | undefined }
 type PanelProps = {
   readonly controller: MenuController;
   readonly level: MenuLevel;
-  readonly child: MenuLevel | undefined;
-  readonly view: Pick<MenuView, 'ownerId' | 'mode' | 'rtl'>;
+  readonly view: MenuView;
+  readonly parentPlaced?: boolean;
 };
 
 function positionOf(level: MenuLevel, mode: MenuView['mode'], popup: HTMLDivElement): MenuPosition {
@@ -140,14 +140,18 @@ function describeClippedRows(popup: HTMLDivElement, level: MenuLevel) {
 
     if (tip !== undefined && button.getAttribute('data-ov-tip') !== tip) {
       button.setAttribute('data-ov-tip', tip);
+    } else if (tip === undefined && button.hasAttribute('data-ov-tip')) {
+      button.removeAttribute('data-ov-tip');
     }
   }
 }
 
-export function MenuPanel({ controller, level, child, view: { ownerId, mode, rtl } }: PanelProps): ReactElement {
+export function MenuPanel({ controller, level, view, parentPlaced = true }: PanelProps): ReactElement {
+  const { ownerId, mode, rtl } = view;
+  const child = view.levels[level.depth + 1];
   const ref = useRef<HTMLDivElement>(null);
-  const shown = useRef(false);
-  const [placement, setPlacement] = useState<MenuPlacement>();
+  const measured = useRef<MenuLevel>(undefined);
+  const [layout, setLayout] = useState<{ level: MenuLevel; placement: MenuPlacement }>();
   const [focused, setFocused] = useState<number>();
 
   useLayoutEffect(() => {
@@ -156,36 +160,50 @@ export function MenuPanel({ controller, level, child, view: { ownerId, mode, rtl
       return undefined;
     }
 
-    const detach = controller.attachPanel(level, popup);
-    // React replays layout effects in Strict Mode. A single mounted panel only enters the top layer once.
-    if (!shown.current) {
-      popup.showPopover?.();
-      shown.current = true;
-      const viewport = popup.ownerDocument.documentElement;
-      setPlacement(placeMenu(positionOf(level, mode, popup), popup.getBoundingClientRect(), {
-        width: viewport.clientWidth, height: viewport.clientHeight,
-      }, rtl));
-    }
-
-    return detach;
-  }, [controller, level, mode, rtl]);
+    return controller.attachPanel(level, popup);
+  }, [controller, level]);
 
   useLayoutEffect(() => {
-    if (placement !== undefined) {
-      const popup = ref.current;
-      if (popup !== null) {
-        describeClippedRows(popup, level);
-      }
-
-      controller.focusInitial(level);
+    const popup = ref.current;
+    if (!parentPlaced || popup === null || measured.current === level) {
+      return;
     }
-  }, [controller, level, placement]);
+
+    // Enter the top layer once per opening, including Strict Mode replays. Measure children after their parent is placed.
+    if (measured.current === undefined) {
+      popup.showPopover?.();
+    }
+
+    measured.current = level;
+    const viewport = popup.ownerDocument.documentElement;
+    const position = positionOf(level, mode, popup);
+    const size = popup.getBoundingClientRect();
+    // Keep an already-capped body scrolled. Its clipped content still counts toward the natural height used to place it.
+    const body = popup.style.getPropertyValue('--_max-height') === '' ? null : popup.firstElementChild;
+    const natural = body === null ? size : { width: size.width, height: size.height + Math.max(0, body.scrollHeight - body.clientHeight) };
+    setLayout({ level, placement: placeMenu(position, natural, {
+      width: viewport.clientWidth, height: viewport.clientHeight,
+    }, rtl) });
+  }, [level, mode, parentPlaced, rtl]);
+
+  useLayoutEffect(() => {
+    const popup = ref.current;
+    if (layout?.level === level && popup !== null) {
+      describeClippedRows(popup, level);
+      controller.panelReady(level);
+      if (level.focus === 'none') {
+        const active = popup.ownerDocument.activeElement;
+        setFocused(popup.contains(active) ? rowAt(level, active)?.index : undefined);
+      }
+    }
+  }, [controller, layout, level]);
 
   const expanded = child?.position.kind === 'branch' ? { index: child.position.parentIndex, id: child.id } : undefined;
   const active = focused ?? expanded?.index;
   const { model } = level;
+  const placement = layout?.placement;
 
-  return (
+  const panel = (
     <div
       ref={ref}
       id={level.id}
@@ -266,4 +284,10 @@ export function MenuPanel({ controller, level, child, view: { ownerId, mode, rtl
       )}
     </div>
   );
+  return <>
+    {panel}
+    {child === undefined ? null : (
+      <MenuPanel key={child.epoch} controller={controller} level={child} view={view} parentPlaced={parentPlaced && layout?.level === level} />
+    )}
+  </>;
 }

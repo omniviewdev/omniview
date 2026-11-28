@@ -12,12 +12,13 @@ import type {
   CloseResult,
   CloseScope,
   Contributions,
-  Destination,
+  TabDestination,
   Guard,
   HistoryDirection,
   HistoryItem,
   KeepAlive,
   NavigateOptions,
+  NavigationGuard,
   OpenOptions,
   OpenResult,
   PersistedTabs,
@@ -59,9 +60,9 @@ export type TabsStore = {
   readonly selectors: Selectors;
 
   /** Where a destination lands (ch16 S64); see `OpenResult`. */
-  readonly open: (destination: Destination, options?: OpenOptions) => OpenResult;
+  readonly open: (destination: TabDestination, options?: OpenOptions) => OpenResult;
   /** Moves a tab to a destination: pushes history (or replaces the current entry), clears the page. */
-  readonly navigate: (id: TabId, destination: Destination, options?: NavigateOptions) => TabResult;
+  readonly navigate: (id: TabId, destination: TabDestination, options?: NavigateOptions) => TabResult;
   /** A change inside the page that is part of its route: replaces the current history entry and keeps the page. */
   readonly replace: (id: TabId, route: RouteInput) => TabResult;
 
@@ -89,13 +90,13 @@ export type TabsStore = {
   /** Makes a preview tab permanent. */
   readonly keep: (id?: TabId) => TabResult;
 
-  readonly back: (id?: TabId, guard?: Guard) => TabResult;
-  readonly forward: (id?: TabId, guard?: Guard) => TabResult;
+  readonly back: (id?: TabId, guard?: NavigationGuard) => TabResult;
+  readonly forward: (id?: TabId, guard?: NavigationGuard) => TabResult;
   readonly canBack: (id?: TabId) => boolean;
   readonly canForward: (id?: TabId) => boolean;
   /** The titles in a direction, nearest first, at most 10. */
   readonly historyList: (id?: TabId, direction?: HistoryDirection) => readonly HistoryItem[];
-  readonly reload: (id?: TabId, guard?: Guard) => TabResult;
+  readonly reload: (id?: TabId, guard?: NavigationGuard) => TabResult;
 
   /** What a page reports about its tab. Each answers whether anything changed. */
   readonly setPageState: (id: TabId, state: unknown) => boolean;

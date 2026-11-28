@@ -13,17 +13,19 @@ import (
 
 // admitSessionReference keeps built-in and native resource execution on the same
 // host authorization path. Native planning does not grant broader permissions.
-func (c *controller) admitSessionReference(ctx context.Context, plugin, connectionID string, opts execsdk.SessionOptions) (context.Context, error) {
-	if opts.Reference == nil {
+func (c *controller) admitSessionReference(
+	ctx context.Context, plugin, connectionID string, ref *resourcev2.ResourceReference, route *resourcev2.AccessRoute,
+) (context.Context, error) {
+	if ref == nil {
 		return ctx, nil
 	}
 	if c.referenceAdmitter == nil {
 		return nil, resourcev2.NewError("UNSUPPORTED", "Resource reference admission is unavailable.")
 	}
-	if opts.Route == nil || opts.Route.Connection != connectionID {
+	if route == nil || route.Connection != connectionID {
 		return nil, resourcev2.NewError("INVALID_REQUEST", "Resource route does not match the selected connection.")
 	}
-	return c.referenceAdmitter(ctx, "exec.CreateSession", plugin, *opts.Route, *opts.Reference)
+	return c.referenceAdmitter(ctx, "exec.CreateSession", plugin, *route, *ref)
 }
 
 func (c *controller) launcher() nativeTerminalLauncher {
@@ -55,7 +57,7 @@ func (c *controller) OpenNativeSession(
 	if err := execsdk.ValidateNativeCommandOptions(opts); err != nil {
 		return err
 	}
-	if plugin == "local" {
+	if plugin == localPluginID {
 		return resourcev2.NewError("INVALID_REQUEST", "Native resource shells require a resource plugin.")
 	}
 	launcher := c.launcher()
@@ -64,7 +66,7 @@ func (c *controller) OpenNativeSession(
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	ctx, err = c.admitSessionReference(ctx, plugin, connectionID, opts)
+	ctx, err = c.admitSessionReference(ctx, plugin, connectionID, opts.Reference, opts.Route)
 	if err != nil {
 		return err
 	}

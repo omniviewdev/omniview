@@ -1,3 +1,4 @@
+import type { MenuSource } from '@omniviewdev/kit';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { StrictMode, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -326,6 +327,186 @@ describe('delegated MenuHost', () => {
     expect(screen.getByRole('menuitemradio', { name: 'Local' }).getAttribute('aria-checked')).toBe('true');
     key('ArrowDown');
     expect(panel().querySelector('[data-ov-menu-footer]')?.lastElementChild?.textContent ?? '').not.toContain('Change visibility');
+  });
+
+  it('subscribes after showing the initial rows and resizes without replacing the focused button', () => {
+    metrics().mockImplementation(function measure(this: Element) {
+      return new DOMRect(0, 0, 200, 40 * this.querySelectorAll('[role="menuitem"]').length);
+    });
+    const stale = vi.fn();
+    const unsubscribe = vi.fn();
+    const selected = vi.fn(() => {
+      expect(unsubscribe).toHaveBeenCalledExactlyOnceWith('keep');
+      expect(screen.queryByRole('menu')).toBeNull();
+      expect(document.activeElement).toBe(trigger);
+    });
+    const subscribe = vi.fn<MenuSource['subscribe']>(() => {
+      expect(panel().getAttribute('data-ov-side')).toBe('bottom');
+      expect(document.activeElement).toBe(panel());
+      return unsubscribe;
+    });
+    const source: MenuSource = { items: [action('remove', 'Withdrawn', stale), action('keep', 'Keep', stale)], subscribe };
+    render(
+      <StrictMode>
+        <MenuHost menus={{ actions: () => source }}>
+          <button {...menuTrigger('actions', 'row', 'context')}>Actions</button>
+        </MenuHost>
+      </StrictMode>,
+    );
+    const trigger = screen.getByRole('button');
+    expect(subscribe).not.toHaveBeenCalled();
+    fireEvent.contextMenu(trigger, { button: 2, clientX: 100, clientY: 500 });
+    expect(subscribe).toHaveBeenCalledOnce();
+    const popup = panel();
+    const keep = item('Keep');
+    const removed = item('Withdrawn');
+    fireEvent.pointerMove(keep, { pointerType: 'mouse' });
+    expect(document.activeElement).toBe(keep);
+    act(() => {
+      subscribe.mock.calls[0]?.[0]([
+        action('keep', 'Keep', selected), action('other', 'Other'), action('new', 'New'),
+      ]);
+      // The old React handler can still be mounted until this batch commits.
+      removed.click();
+    });
+    expect(stale).not.toHaveBeenCalled();
+    expect(panel()).toBe(popup);
+    expect(popup.getAttribute('data-ov-side')).toBe('top');
+    expect(popup.style.getPropertyValue('--_y')).toBe('380px');
+    expect(item('Keep')).toBe(keep);
+    expect(document.activeElement).toBe(keep);
+    fireEvent.click(removed);
+    expect(unsubscribe).not.toHaveBeenCalled();
+    key('ArrowDown');
+    expect(document.activeElement).toBe(item('Other'));
+    key('ArrowUp');
+    key('Enter');
+    expect(selected).toHaveBeenCalledOnce();
+    expect(stale).not.toHaveBeenCalled();
+  });
+
+  it('retains a focused submenu across a refresh by group and entry ID, not index', () => {
+    const stale = vi.fn();
+    const choose = vi.fn();
+    const unsubscribe = vi.fn();
+    const subscribe = vi.fn<MenuSource['subscribe']>(() => unsubscribe);
+    const group = (id: string, leaf: MenuAction, label = `${id} choices`): MenuItem => ({
+      kind: 'group', id, items: [{ kind: 'submenu', id: 'more', label, items: [leaf] }],
+    });
+    const left = group('Left', action('leaf', 'Left item', stale));
+    render(
+      <MenuHost menus={{ actions: () => ({ items: [left, group('Right', action('leaf', 'Right item', stale))], subscribe }) }}>
+        <button {...menuTrigger('actions')}>Actions</button>
+      </MenuHost>,
+    );
+    fireEvent.keyDown(screen.getByRole('button'), { key: 'ArrowUp' });
+    key('ArrowRight');
+    const focused = item('Right item');
+    expect(document.activeElement).toBe(focused);
+    act(() => {
+      subscribe.mock.calls[0]?.[0]([group('Right', action('leaf', 'Renamed', choose), 'Updated choices'), left]);
+    });
+    expect(item('Renamed')).toBe(focused);
+    expect(document.activeElement).toBe(focused);
+    expect(panel('Updated choices').contains(focused)).toBe(true);
+    expect(item('Updated choices').getAttribute('aria-expanded')).toBe('true');
+    key('Escape');
+    expect(document.activeElement).toBe(item('Updated choices'));
+    expect(unsubscribe).not.toHaveBeenCalled();
+    key('ArrowRight');
+    fireEvent.click(item('Renamed'));
+    expect(unsubscribe).toHaveBeenCalledExactlyOnceWith('leaf');
+    expect(choose).toHaveBeenCalledOnce();
+    expect(stale).not.toHaveBeenCalled();
+  });
+
+  it('honors pending pointer intent only while its submenu button survives an update', () => {
+    vi.useFakeTimers();
+    const branch: MenuItem = { kind: 'submenu', id: 'more', label: 'More', items: [action('child', 'Child')] };
+    const subscribe = vi.fn<MenuSource['subscribe']>(() => vi.fn());
+    render(
+      <MenuHost menus={{ actions: () => ({ items: [branch], subscribe }) }}>
+        <button {...menuTrigger('actions')}>Actions</button>
+      </MenuHost>,
+    );
+    fireEvent.click(screen.getByRole('button'), { detail: 1 });
+    const button = item('More');
+    fireEvent.pointerMove(button, { pointerType: 'mouse' });
+    act(() => {
+      subscribe.mock.calls[0]?.[0]([action('first', 'First'), branch]);
+    });
+    act(() => {
+      vi.advanceTimersByTime(250);
+    });
+    expect(panel('More').contains(item('Child'))).toBe(true);
+    expect(document.activeElement).toBe(button);
+    key('Escape');
+    fireEvent.pointerMove(button, { pointerType: 'mouse' });
+    act(() => {
+      subscribe.mock.calls[0]?.[0]([action('first', 'First'), { ...branch, id: 'different', label: 'Replacement' }]);
+    });
+    act(() => {
+      vi.advanceTimersByTime(250);
+    });
+    expect(screen.getAllByRole('menu')).toEqual([panel('Actions')]);
+    expect(document.activeElement).toBe(panel());
+  });
+
+  it('retires each source on replacement, null, Escape and host teardown; a late update cannot affect another opening', () => {
+    const retire = vi.fn();
+    const subscribe = vi.fn<MenuSource['subscribe']>(() => retire);
+    function Triggers() {
+      const id = useMenu((key) => ({ items: [action('native', key ?? 'Native')], subscribe }));
+      return <>
+        <button {...menuTrigger(id, 'First', 'context')}>A</button>
+        <button {...menuTrigger(id, 'Second', 'context')}>B</button>
+      </>;
+    }
+
+    const { unmount } = render(<MenuHost><Triggers /></MenuHost>);
+    const first = screen.getByRole('button', { name: 'A' });
+    const second = screen.getByRole('button', { name: 'B' });
+    fireEvent.keyDown(first, { key: 'ContextMenu' });
+    fireEvent.contextMenu(second, { button: 2 });
+    expect(retire).toHaveBeenCalledExactlyOnceWith(undefined);
+    act(() => {
+      subscribe.mock.calls[0]?.[0]([action('old', 'Old')]);
+      subscribe.mock.calls[0]?.[0](null);
+    });
+    expect(item('Second').isConnected).toBe(true);
+    expect(screen.queryByRole('menuitem', { name: 'Old' })).toBeNull();
+    act(() => {
+      subscribe.mock.calls[1]?.[0](null);
+    });
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(document.activeElement).toBe(second);
+    fireEvent.keyDown(first, { key: 'ContextMenu' });
+    key('Escape');
+    expect(document.activeElement).toBe(first);
+    fireEvent.keyDown(second, { key: 'ContextMenu' });
+    unmount();
+    expect(subscribe).toHaveBeenCalledTimes(4);
+    expect(retire.mock.calls).toEqual([[undefined], [undefined], [undefined], [undefined]]);
+  });
+
+  it('releases a source that dismisses synchronously before subscribe returns', () => {
+    const unsubscribe = vi.fn();
+    const subscribe: MenuSource['subscribe'] = (update) => {
+      update(null);
+      update([action('stale', 'Stale')]);
+      return unsubscribe;
+    };
+
+    render(
+      <MenuHost menus={{ actions: () => ({ items: [action('first', 'First')], subscribe }) }}>
+        <button {...menuTrigger('actions')}>Actions</button>
+      </MenuHost>,
+    );
+    const trigger = screen.getByRole('button');
+    fireEvent.click(trigger);
+    expect(unsubscribe).toHaveBeenCalledExactlyOnceWith(undefined);
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
   });
 
   it('updates a scoped registration for the next opening, not the visible snapshot', () => {

@@ -5,9 +5,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/omniviewdev/omniview/internal/appstate"
 	logging "github.com/omniviewdev/plugin-sdk/log"
-	"github.com/stretchr/testify/require"
 )
 
 func TestPluginAssetUpgradeDoesNotCacheStableChunkNames(t *testing.T) {
@@ -27,5 +28,29 @@ func TestPluginAssetUpgradeDoesNotCacheStableChunkNames(t *testing.T) {
 				require.Equal(t, generation, response.Body.String())
 			}
 		})
+	}
+}
+
+func TestPinnedPageDoesNotFallBackToOrdinaryChunks(t *testing.T) {
+	root := appstate.NewTestService(t).RootDir()
+	require.NoError(t, root.MkdirAll("plugins/owner/assets", 0755))
+	require.NoError(t, root.WriteFile("plugins/owner/assets/chunk.js", []byte("mutable"), 0644))
+	handler := NewPluginAssetHandler(logging.NewNop(), root)
+	handler.readPinnedPage = func(id, pin, generation, name string) ([]byte, error) {
+		if id == "owner" && pin == "pin" && generation == "running" && name == "assets/chunk.js" {
+			return []byte("verified"), nil
+		}
+		return nil, http.ErrMissingFile
+	}
+	for generation, status := range map[string]int{"running": http.StatusOK, "retired": http.StatusNotFound} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/_/plugins/owner/verified/pin/"+generation+"/assets/chunk.js", nil))
+		require.Equal(t, status, response.Code)
+		require.NotContains(t, response.Body.String(), "mutable")
+		if status == http.StatusOK {
+			require.Equal(t, "verified", response.Body.String())
+			require.Equal(t, "application/javascript", response.Header().Get("Content-Type"))
+			require.Equal(t, "nosniff", response.Header().Get("X-Content-Type-Options"))
+		}
 	}
 }

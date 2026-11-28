@@ -5,6 +5,9 @@ import { Browser, Events, Window } from '@omniviewdev/runtime/runtime';
 import { useEffect, useLayoutEffect, useState } from 'react';
 import { isNativeWindow, loadNotices, loadSession, noticesStorage, resolveWindowName, windowStorage, type LoadedNotices, type LoadedSession } from '../../shell';
 import { productionApi } from './connections';
+import { ExtensionAuthority } from './extensionAuthority';
+import { ExtensionWindow } from './extensionWindow';
+import { ExtensionAuthorityContext } from './extensionAuthorityContext';
 import { createActivityFeed, type ActivityFeedControl } from '../../shell/panel/activity';
 import { CLOSED_EVENT } from '../../shell/panel/ports/api';
 import { attachLocalTerminal, localRestartTarget, restoreLocalTerminals, type TerminalsOptions } from '../../shell/panel/terminal';
@@ -132,7 +135,9 @@ export function PluginHostScreen() {
   const [onCloseWindow] = useState(() => (isNativeWindow() ? closeWindow : undefined));
   const [windows] = useState(() => (isNativeWindow() ? windowService : undefined));
   const [openSettingsWindow] = useState(() => (isNativeWindow() ? showSettingsWindow : undefined));
-  const inventory = useInstalledPlugins();
+  const [authority] = useState(() => new ExtensionAuthority());
+  const [extensionWindow] = useState(() => new ExtensionWindow(authority, store));
+  const inventory = useInstalledPlugins(extensionWindow);
   const link = useHashLink();
   const [loaded, setLoaded] = useState<{ readonly session: LoadedSession; readonly notices: LoadedNotices; readonly terminals: TerminalsOptions } | undefined>(undefined);
   // What the two panel tools ask of the activity service besides reading it: stop a task the producer can stop, and keep that a record was read. The window's calls, through the runtime's client.
@@ -175,31 +180,33 @@ export function PluginHostScreen() {
   }, [plugins, store]);
 
   return (
-    <ActivityProvider>
-      <ActivityTap control={activity} />
-      {loaded === undefined ? null : (
-        <PluginHost
-          plugins={store}
-          inventory={inventory.state}
-          link={link}
-          onRetry={(id) => {
-            const plugin = plugins.find((candidate) => candidate.id === id);
-            if (plugin !== undefined) {
-              void store.retry(plugin);
-            }
-          }}
-          onRetryInventory={inventory.retry}
-          onCloseWindow={onCloseWindow}
-          windows={windows}
-          openSettingsWindow={openSettingsWindow}
-          session={loaded.session}
-          savedNotices={loaded.notices}
-          connections={productionApi}
-          terminals={loaded.terminals}
-          activity={activity.feed}
-          networker={networker}
-        />
-      )}
-    </ActivityProvider>
+    <ExtensionAuthorityContext.Provider value={authority}>
+      <ActivityProvider>
+        <ActivityTap control={activity} />
+        {loaded === undefined ? null : (
+          <PluginHost
+            plugins={store}
+            inventory={inventory.state}
+            link={link}
+            onRetry={(id) => {
+              const plugin = plugins.find((candidate) => candidate.id === id);
+              if (plugin !== undefined) {
+                void store.retry(plugin);
+              }
+            }}
+            onRetryInventory={inventory.retry}
+            onCloseWindow={onCloseWindow}
+            windows={windows}
+            openSettingsWindow={openSettingsWindow}
+            session={loaded.session}
+            savedNotices={loaded.notices}
+            connections={productionApi}
+            terminals={loaded.terminals}
+            activity={activity.feed}
+            networker={networker}
+          />
+        )}
+      </ActivityProvider>
+    </ExtensionAuthorityContext.Provider>
   );
 }

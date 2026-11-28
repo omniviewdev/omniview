@@ -87,6 +87,9 @@ type Controller interface {
 	ValidateReference(context.Context, string, resource.AccessRoute, resource.ResourceReference) error
 	SetConnectionChangeHook(func(pluginID, connectionID string) func())
 	AdmitReference(context.Context, string, string, resource.AccessRoute, resource.ResourceReference) (context.Context, error)
+	// AdmitExtensionRoot binds one live collection member to the invoking window. It is not a Wails method.
+	AdmitExtensionRoot(context.Context, string, ExtensionRootProof) (resource.ResourceReference, resource.AccessRoute, func(context.Context) error, error)
+	GuardExtensionRootRoute(context.Context, string, ExtensionRootProof) (func(context.Context) error, error)
 	ReadObservedResource(context.Context, string, resource.AccessRoute, resource.ResourceReference, []string) (*resource.Value, func(context.Context) error, error)
 	GuardObservedReference(context.Context, string, string, resource.AccessRoute, resource.ResourceReference) (func(context.Context) error, error)
 }

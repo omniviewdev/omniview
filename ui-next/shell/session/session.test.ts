@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { checkInvariants, createPanelStore, RESTORED_CAUSE, type PanelStore } from '../core/panel';
-import { createTabsStore, type TabsStore } from '../core/tabs';
+import { createTabsStore, STATE_VERSION as TABS_VERSION, type TabsStore } from '../core/tabs';
 import { cloudPage, FIXTURE_PLUGINS, makeWorld, stackPage, type World } from '../core/tabs/testing';
 import { createRailChoice, loadSession, MIGRATIONS, QUARANTINE_PREFIX, SESSION_VERSION, type Lifecycle, type LoadedSession, type RailChoice, type Restored, type SessionOptions, type SessionStorage } from './index';
 import { flag, memoryStorage, type Flag, type Memory } from './testing';
@@ -114,7 +114,7 @@ describe('a window that is saved and comes back', () => {
 
     expect(memory.writes).toHaveLength(1);
     const document: unknown = JSON.parse(memory.writes[0] ?? '');
-    expect(document).toMatchObject({ version: SESSION_VERSION, rail: 'cloud', tabs: { version: 1 }, panel: { version: 1, open: true, height: 333, tool: 'cloud:streams' } });
+    expect(document).toMatchObject({ version: SESSION_VERSION, rail: 'cloud', tabs: { version: TABS_VERSION }, panel: { version: 1, open: true, height: 333, tool: 'cloud:streams' } });
 
     const second = live(await loadSession(memory.storage, optionsOf(notes().log)));
     expect(titles(second.tabs)).toEqual(['Instances', 'Services']);

@@ -37,7 +37,7 @@ func (c *controller) sessionClosed(sessionID, pluginID string) bool {
 	now := c.clock()
 	c.mu.Lock()
 	record, recorded := c.sessionIndex[sessionID]
-	if heldByAnother(record, recorded, pluginID, c.channelHoldsLocked(sessionID)) {
+	if c.resourceShells[sessionID] != nil || heldByAnother(record, recorded, pluginID, c.channelHoldsLocked(sessionID)) {
 		c.mu.Unlock()
 		return false
 	}

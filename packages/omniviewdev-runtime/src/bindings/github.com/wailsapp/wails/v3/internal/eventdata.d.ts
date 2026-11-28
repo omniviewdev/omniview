@@ -7,6 +7,9 @@ import type { Events } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as extensionpolicy$0 from "../../../../omniviewdev/omniview/backend/extensionpolicy/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as plugin$0 from "../../../../omniviewdev/omniview/backend/pkg/plugin/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -67,7 +70,7 @@ declare module "@wailsio/runtime" {
             "plugin/install_error": config$0.PluginMeta | null;
             "plugin/install_finished": config$0.PluginMeta | null;
             "plugin/install_started": config$0.PluginMeta | null;
-            "plugin/inventory_changed": void;
+            "plugin/inventory_changed": plugin$0.InventoryChangedPayload;
             "plugin/process/log": pluginlog$0.LogEntry;
             "plugin/recovered": plugin$0.PluginErrorPayload;
             "plugin/state_change": plugin$0.StateChangePayload;
@@ -80,6 +83,7 @@ declare module "@wailsio/runtime" {
             "settings/changed": settings$0.Scope;
             "settings/state": window$0.SettingsState;
             "source/STATE": resource$0.HostSourceStateEvent;
+            "ui-extensions:policy-invalidated": extensionpolicy$0.Change;
             "windows/changed": window$0.WindowsChangedEvent;
             "windows/closed": window$0.WindowClosedEvent;
             "windows/drag/begin": window$0.DragBeginEvent;

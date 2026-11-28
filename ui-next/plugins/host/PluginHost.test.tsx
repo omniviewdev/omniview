@@ -6,7 +6,7 @@ import type { ContextV1, SidebarContextV1, SidebarNodeV1 } from '../contract/v1'
 import { acme, answering, startedOn, widgetPage, WIDGETS } from '../testing';
 import { PluginHost, type PluginHostProps } from './PluginHost';
 import type { PluginEntry } from './pluginStore';
-import { NO_ROUTE, type HostRoute } from './route';
+import { NO_ROUTE, type PageLink } from './route';
 
 // jsdom lays nothing out: the table's region gets the size a browser would give it, so rows are in view.
 Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: function get(this: HTMLElement) {
@@ -28,7 +28,7 @@ const failed = (kind: 'missing' | 'incompatible', id = 'broken'): PluginEntry =>
   failure: { kind, message: kind === 'missing' ? 'The plugin\'s interface could not be read.' : 'This plugin was built for another version of the app. Update it.', detail: 'SECRET detail for the log' },
 });
 
-const link = (plugin: string, page?: string, connection?: string): HostRoute => ({ plugin, page, connection, params: {} });
+const link = (plugin: string, page?: string, connection?: string): PageLink => ({ plugin, page, connection, params: {} });
 const nav = (nodes: readonly SidebarNodeV1[]) => ({ label: 'Acme navigation', title: 'Acme', nodes });
 
 /** The plugins the host reads: the entries now, and `set` to change them, which tells the host as the plugin store does. */

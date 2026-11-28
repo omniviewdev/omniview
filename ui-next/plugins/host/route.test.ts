@@ -1,8 +1,17 @@
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { addressOf, NO_PARAMS, NO_ROUTE, parseRoute, useHashLink } from './route';
+import { addressOf, NO_PARAMS, NO_ROUTE, parseRoute, useHashLink, type PageLink } from './route';
 
 // The window opens with no URL, so every part of a route is optional, and what the hash cannot say is absent, never an error.
+
+const pageLink = (hash: string): PageLink => {
+  const link = parseRoute(hash);
+  if (link.kind !== undefined) {
+    throw new Error('Expected an ordinary page link');
+  }
+
+  return link;
+};
 
 describe('parseRoute', () => {
   it('reads a plugin, a page and a connection', () => {
@@ -31,15 +40,15 @@ describe('parseRoute', () => {
   });
 
   it('keeps the first of a name given twice, leaves out an empty one, and reads a name such as __proto__ as data', () => {
-    const route = parseRoute('#/acme/widget?name=a&name=b&bay=');
+    const route = pageLink('#/acme/widget?name=a&name=b&bay=');
 
     expect(route.params).toEqual({ name: 'a' });
-    expect(Object.hasOwn(parseRoute('#/acme/widget?__proto__=x').params, '__proto__')).toBe(true);
-    expect(Object.getPrototypeOf(parseRoute('#/acme/widget?__proto__=x').params)).toBe(Object.prototype);
+    expect(Object.hasOwn(pageLink('#/acme/widget?__proto__=x').params, '__proto__')).toBe(true);
+    expect(Object.getPrototypeOf(pageLink('#/acme/widget?__proto__=x').params)).toBe(Object.prototype);
   });
 
   it('shares one frozen object for a route with no parameters', () => {
-    expect(parseRoute('#/acme/widgets').params).toBe(NO_PARAMS);
+    expect(pageLink('#/acme/widgets').params).toBe(NO_PARAMS);
     expect(Object.isFrozen(NO_PARAMS)).toBe(true);
   });
 });
@@ -63,8 +72,46 @@ describe('addressOf: the address a link carries is the one parseRoute reads', ()
 
   it('reads a connection that holds a literal percent escape as it was written: the query is decoded once, by the URL parser, not twice', () => {
     for (const connection of ['north%2Fwest', '100%', 'a%25b']) {
-      expect(parseRoute(addressOf({ plugin: 'acme', page: 'widgets', params: { connection } })).connection, connection).toBe(connection);
+      expect(pageLink(addressOf({ plugin: 'acme', page: 'widgets', params: { connection } })).connection, connection).toBe(connection);
     }
+  });
+});
+
+describe('the host-only sidebar view address', () => {
+  const base = '#~view/1/owner/sidebar/peer/manager';
+  const route = { kind: 'extension-view', plugin: 'owner', point: 'sidebar', offer: 'peer/manager' } as const;
+
+  it('round trips the entire tuple without turning literal escapes, plus signs, or delimiters into a different scope', () => {
+    expect(addressOf(route)).toBe(base);
+    expect(parseRoute(base)).toEqual(route);
+    for (const connection of ['west', 'kind/west%2Fnorth', '雪😀 +#&?=%']) {
+      const target = { ...route, connection };
+      expect(addressOf(target)).toBe(`${base}?connection=${encodeURIComponent(connection)}`);
+      expect(parseRoute(addressOf(target))).toEqual(target);
+    }
+
+    expect(parseRoute('#~view/1/ow%6Eer/sidebar/peer/manager?%63onnection=west')).toEqual({ ...route, connection: 'west' });
+    expect(parseRoute('#/owner/manager')).toEqual({ plugin: 'owner', page: 'manager', params: {}, connection: undefined });
+  });
+
+  it.each([
+    '#~view', '~view/1/owner/sidebar/peer/manager', '#~view/2/owner/sidebar/peer/manager', '#~view/01/owner/sidebar/peer/manager', `${base}/`, `${base}/extra`,
+    '#~view/1//sidebar/peer/manager', '#~view/1/owner/sidebar/peer%2Fother/manager', '#~view/1/owner/sidebar/peer/%252F',
+    '#~view/1/host/sidebar/peer/manager', '#~view/1/owner/sidebar/navigation/manager', '#~view/1/owner/prototype/peer/manager',
+    '#~view/1/owner/sidebar/%FF/manager', '#~view/1/owner/sidebar/peer/odd%', `${base}?`, `${base}?connection=`,
+    `${base}?other=west`, `${base}?connection=west&connection=east`, `${base}?connection=west&%63onnection=east`,
+    `${base}?connection=west&`, `${base}?connection=west?other=east`, `${base}?connection=%C3%28`, `${base}?connection=%`,
+  ])('rejects %s without falling through to ordinary routing', (hash) => {
+    expect(parseRoute(hash)).toEqual({ kind: 'invalid-view' });
+  });
+
+  it('enforces the pre-decode 8 KiB address and decoded 2 KiB connection bounds in bytes', () => {
+    const exact = '😀'.repeat(512);
+    expect(parseRoute(addressOf({ ...route, connection: exact }))).toEqual({ ...route, connection: exact });
+    expect(parseRoute(`${base}?connection=${exact}a`)).toEqual({ kind: 'invalid-view' });
+    expect(() => addressOf({ ...route, connection: exact + 'a' })).toThrow(TypeError);
+    expect(parseRoute(`${base}?connection=${'é'.repeat(4096)}`)).toEqual({ kind: 'invalid-view' });
+    expect(parseRoute(`${base}?connection=${'%41'.repeat(3000)}`)).toEqual({ kind: 'invalid-view' });
   });
 });
 
@@ -96,6 +143,10 @@ describe('useHashLink', () => {
     rerender();
 
     expect(result.current).toBe(first);
+    if (result.current.kind !== undefined || first.kind !== undefined) {
+      throw new Error('Expected an ordinary page link');
+    }
+
     expect(result.current.params).toBe(first.params);
   });
 
@@ -110,7 +161,7 @@ describe('useHashLink', () => {
       await Promise.resolve();
     });
 
-    expect(result.current.page).toBe('gadgets');
+    expect(result.current).toEqual({ plugin: 'acme', page: 'gadgets', connection: undefined, params: {} });
   });
 
   it('never writes the hash: it is a request from outside, not where the window is', () => {

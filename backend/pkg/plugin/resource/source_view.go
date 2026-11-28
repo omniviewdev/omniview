@@ -38,6 +38,7 @@ type sourceView struct {
 	sequence            uint64
 	closed              bool
 	synced              bool
+	rootRead            *extensionRootWatch
 	snapshot            []sourceMember
 	snapshotArrayBytes  int
 	snapshotOffset      int
@@ -233,7 +234,10 @@ func (item queuedSourceViewEvent) materialize(owner, targetID string) (HostSourc
 		return event, nil
 	}
 	records := make([]HostRecord, 0, len(item.members))
-	for _, member := range item.members {
+	if h := item.members[0].header; h != nil && h.memberRevision != "" {
+		event.MemberRevisions = make([]string, len(item.members))
+	}
+	for i, member := range item.members {
 		record, err := materializeSourceRecord(member)
 		if err != nil {
 			return event, err
@@ -246,6 +250,9 @@ func (item queuedSourceViewEvent) materialize(owner, targetID string) (HostSourc
 			return event, err
 		}
 		records = append(records, envelope)
+		if event.MemberRevisions != nil {
+			event.MemberRevisions[i] = member.header.memberRevision
+		}
 	}
 	if event.Kind == "snapshot" {
 		event.Records = records
@@ -308,7 +315,9 @@ func (v *sourceView) retrySnapshotLocked(required int) {
 	}()
 }
 
-func (v *sourceView) cancelRetryLocked() {
+// Reset, replacement, failure and close all retire the previous delivery, including its selected root read.
+func (v *sourceView) retireDeliveryLocked() {
+	v.cancelRootReadLocked()
 	if v.retryCancel != nil {
 		close(v.retryCancel)
 		v.retryCancel = nil
@@ -331,7 +340,7 @@ func (v *sourceView) resetLocked(reason, message string) {
 			v.ctrl.logger.Warnw(ctx, "source view queue overflow", "pluginID", v.session.pluginID)
 		}
 	}
-	v.cancelRetryLocked()
+	v.retireDeliveryLocked()
 	if v.generation == "" {
 		v.generation = uuid.NewString()
 	}
@@ -361,7 +370,7 @@ func (v *sourceView) failSnapshotLocked(message string) {
 			"other",
 		)
 	}
-	v.cancelRetryLocked()
+	v.retireDeliveryLocked()
 	v.releaseSnapshotLocked()
 	v.snapshotBinding = resourcev2.Representation{}
 	v.snapshotTarget = resourcev2.ReadTarget{}
@@ -378,13 +387,29 @@ func (v *sourceView) failSnapshotLocked(message string) {
 	v.signal()
 }
 func (v *sourceView) snapshotMemberTransient(member sourceMember) (int, bool) {
-	return member.transient, member.transient >= 0 && member.transient <= maxSourceTransientBytes
+	cost := member.transient
+	if member.header != nil && member.header.memberRevision != "" {
+		// String header in the event array plus decimal JSON output and allocator rounding.
+		if cost < 0 || cost > maxSourceTransientBytes-64 {
+			return 0, false
+		}
+		cost += 64
+	}
+	return cost, cost >= 0 && cost <= maxSourceTransientBytes
 }
 
 func sourceViewRecordSize(member sourceMember, binding resourcev2.Representation, target resourcev2.ReadTarget, targetID string, limit int) (int, bool) {
 	h := member.header
 	if h == nil || member.bodyOutput < 0 || member.bodyOutput > limit {
 		return 0, false
+	}
+	output := member.bodyOutput
+	if h.memberRevision != "" {
+		stampBytes := len(h.memberRevision) + len(`"",`) // Decimal digits, quotes and array separator.
+		if stampBytes > limit-output {
+			return 0, false
+		}
+		output += stampBytes
 	}
 	// Row digests have a fixed length. The canonical address key is admitted
 	// once; no body reconstruction or view-specific key is needed for sizing.
@@ -396,8 +421,8 @@ func sourceViewRecordSize(member sourceMember, binding resourcev2.Representation
 			Coverage: h.coverage, SourceRevision: h.sourceRevision,
 		},
 	}
-	size, ok := sourceViewSize(record, limit-member.bodyOutput)
-	return size + member.bodyOutput, ok
+	size, ok := sourceViewSize(record, limit-output)
+	return size + output, ok
 }
 
 func (v *sourceView) logError(stage string, err error) {
@@ -448,7 +473,7 @@ func (v *sourceView) syncLocked(reason string) {
 	if v.closed {
 		return
 	}
-	v.cancelRetryLocked()
+	v.retireDeliveryLocked()
 	v.generation = uuid.NewString()
 	v.sequence = 0
 	v.synced = true
@@ -527,6 +552,9 @@ func (v *sourceView) syncLocked(reason string) {
 }
 func (v *sourceView) statusLocked() {
 	v.mu.Lock()
+	if v.rootRead != nil && (v.session.status.State != sourceStateFollowing || v.session.status.Error != nil) {
+		v.cancelRootReadLocked()
+	}
 	if v.closed {
 		v.mu.Unlock()
 		return
@@ -635,6 +663,9 @@ func (v *sourceView) changesLocked(members []sourceMember, refs []resourcev2.Res
 	overflow := func() bool {
 		v.mu.Lock()
 		defer v.mu.Unlock()
+		if w := v.rootRead; w != nil && v.session.members[w.header.key].header != w.header {
+			v.cancelRootReadLocked()
+		}
 		if v.closed || !v.synced {
 			return false
 		}
@@ -698,7 +729,7 @@ func (v *sourceView) close() {
 		v.mu.Unlock()
 		return
 	}
-	v.cancelRetryLocked()
+	v.retireDeliveryLocked()
 	if v.generation == "" {
 		v.generation = uuid.NewString()
 	}
@@ -719,7 +750,7 @@ func (v *sourceView) emitLoop() {
 	defer func() {
 		v.mu.Lock()
 		defer v.mu.Unlock()
-		v.cancelRetryLocked()
+		v.retireDeliveryLocked()
 		v.releaseQueueLocked()
 		v.closed = true
 		v.control = nil

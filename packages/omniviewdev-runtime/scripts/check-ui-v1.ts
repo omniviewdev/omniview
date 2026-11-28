@@ -69,6 +69,20 @@ if (problems.length === 0) {
   }
 }
 
+// Neither extension entry is a shared runtime. Contracts packed for a plugin build and outlets bundled for an owner page need no other package.
+for (const [subpath, source] of [['ui/extensions/v1', 'ui/extensions/v1'], ['internal/extensions-v1', 'ui/extensions/wire']] as const) {
+  const targets = manifest.exports[`./${subpath}`];
+  assert.ok(targets, `package.json has no exports["./${subpath}"]`);
+  assert.deepEqual(targets, { types: `./dist/ui-v1/${source}.d.ts`, import: `./dist/${subpath}.js`, require: `./dist/${subpath}.cjs` });
+  for (const file of [path.join(root, 'src', `${source}.ts`), ...Object.values(targets).map(inDist)]) {
+    if (!existsSync(file)) {
+      problems.push(`${subpath}: missing ${path.relative(root, file)}`);
+    } else {
+      problems.push(...violations(crawl(file), [], root).map((message) => `${subpath}: ${message}`));
+    }
+  }
+}
+
 if (problems.length > 0) {
-  throw new Error(`@omniviewdev/runtime/ui/v1 is not what it must be:\n  ${problems.join('\n  ')}`);
+  throw new Error(`Runtime subpath contract failed:\n  ${problems.join('\n  ')}`);
 }

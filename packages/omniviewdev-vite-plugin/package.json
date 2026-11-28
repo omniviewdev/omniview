@@ -40,11 +40,15 @@
     "plugin",
     "shared-dependencies"
   ],
-  "dependencies": {},
+  "dependencies": {
+    "@omniviewdev/runtime": "workspace:*",
+    "rollup": "4.65.1",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
+    "yaml": "2.9.1"
+  },
   "devDependencies": {
     "tsup": "9.0.0",
     "tsx": "4.23.15",
-    "typescript": "npm:@typescript/typescript6@6.0.2",
     "vite": "7.3.7",
     "@typescript/native": "npm:typescript@7.0.2",
     "esbuild": "0.28.2"

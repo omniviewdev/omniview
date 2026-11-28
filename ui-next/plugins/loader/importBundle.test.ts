@@ -37,6 +37,13 @@ afterEach(() => {
 });
 
 describe('importBundle', () => {
+  it('resolves an owner page and its relative chunks under the same verified artifact and generation', async () => {
+    const base = `${window.location.origin}/_/plugins/acme/verified/sha256%3Aabcd/one/assets/`;
+    files[`${base}entry.js`] = { body: 'System.register(["./part.js"],function(e){return{setters:[function(m){e("identity",m.identity)}],execute:function(){}}});' };
+    files[`${base}part.js`] = { body: 'System.register([],function(e){return{execute:function(){e("identity","verified")}}});' };
+    expect(await importBundle('acme', undefined, { pin: 'sha256:abcd', generation: 'one' })).toMatchObject({ identity: 'verified' });
+  });
+
   it('fetches a plugin\'s bundle where the Go host serves it and links it to the host\'s React', async () => {
     files[entryUrl('acme')] = { body: ANSWER };
 

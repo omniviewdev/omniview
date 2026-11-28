@@ -136,7 +136,9 @@ jobs:
             fi
 
             echo "📦 Publishing ${PKG_NAME}@${VERSION} (tag: ${TAG})"
-            npm publish "./packages/omniviewdev-${pkg}" \
+            # pnpm resolves workspace protocol dependencies to their stamped versions.
+            pnpm --dir "./packages/omniviewdev-${pkg}" pack --pack-destination "$RUNNER_TEMP"
+            npm publish "$RUNNER_TEMP/omniviewdev-${pkg}-${VERSION}.tgz" \
               --access public \
               --tag "${TAG}"
           done

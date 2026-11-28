@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event';
 import { useEffect, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { KeepAlive } from '../core/tabs';
+import type { KeepAlive, TabRoute } from '../core/tabs';
 import { boot, cloudPage } from '../core/tabs/testing';
 import { Shell } from '../Shell';
 
@@ -11,6 +11,14 @@ import { Shell } from '../Shell';
 
 const log: string[] = [];
 const ticks: Record<string, number> = {};
+
+function pageName(route: TabRoute): string {
+  if (route.kind === 'extension-view') {
+    throw new Error('Expected an ordinary cloud page');
+  }
+
+  return route.contribution;
+}
 
 function Page({ name }: { readonly name: string }) {
   const [count, setCount] = useState(0);
@@ -42,7 +50,7 @@ function mount(pages: readonly string[], options: { readonly keepAlive?: KeepAli
     <Shell
       registration={{ plugin: { name: 'Cloud' }, ...(options.layout ? { layout: options.layout } : {}) }}
       tabs={h.store}
-      renderPage={({ location }) => <Page name={location.route.contribution} />}
+      renderPage={({ location }) => <Page name={pageName(location.route)} />}
       empty={<p>Nothing open</p>}
     />,
   );
@@ -242,7 +250,7 @@ describe('keeping a page alive', () => {
       h.store.navigate(id ?? '', cloudPage('alpha', { item: 'one' }));
     });
     // The place of the tab holds the item, so a move to another item is another place; the key the host gives leaves the item out.
-    render(<Shell registration={{ plugin: { name: 'Cloud' } }} tabs={h.store} renderPage={({ location }) => <Page name={location.key} />} pageKey={({ location }) => location.route.contribution} empty={null} />);
+    render(<Shell registration={{ plugin: { name: 'Cloud' } }} tabs={h.store} renderPage={({ location }) => <Page name={location.key} />} pageKey={({ location }) => pageName(location.route)} empty={null} />);
     await userEvent.setup().click(screen.getByRole('button', { name: 'cloud:alpha|one 0' }));
     expect(screen.getByRole('button', { name: 'cloud:alpha|one 1' })).toBeInTheDocument();
 
@@ -264,6 +272,16 @@ describe('keeping a page alive', () => {
 });
 
 describe('the scroll offset of the region', () => {
+  it('restores a saved document offset on the first commit', () => {
+    const h = boot({ home: false });
+    const [id] = h.openAll(['alpha']);
+    h.store.setPageState(id, { scroll: { top: 174, left: 8 } });
+    render(<Shell registration={{ plugin: { name: 'Cloud' } }} tabs={h.store} renderPage={({ location }) => <Page name={pageName(location.route)} />} empty={null} />);
+    const region = screen.getByRole('tabpanel');
+    expect(region.scrollTop).toBe(174);
+    expect(region.scrollLeft).toBe(8);
+  });
+
   it('is kept for each tab: switch away and back, and the region is where it was left; a tab not shown before starts at the top', () => {
     const { h, ids } = mount(['alpha', 'beta']);
     const region = document.querySelector<HTMLElement>('[data-shell-part="page"]')!;
@@ -310,7 +328,7 @@ describe('a page that draws its scroller anew when it comes back', () => {
   it('has the offset it was left at put back in the new scroller', async () => {
     const h = boot({ home: false });
     const [one, two] = h.openAll(['alpha', 'beta']);
-    render(<Shell registration={{ plugin: { name: 'Cloud' } }} tabs={h.store} renderPage={({ location }) => (location.route.contribution === 'alpha' ? <Redrawn /> : <p>Other</p>)} empty={null} />);
+    render(<Shell registration={{ plugin: { name: 'Cloud' } }} tabs={h.store} renderPage={({ location }) => (pageName(location.route) === 'alpha' ? <Redrawn /> : <p>Other</p>)} empty={null} />);
     await act(async () => {
       h.store.activate(one ?? '');
     });

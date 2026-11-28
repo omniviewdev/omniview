@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"context"
 	"net"
 	"os"
 	"os/exec"
@@ -9,7 +10,9 @@ import (
 	"time"
 
 	goplugin "github.com/hashicorp/go-plugin"
+	"google.golang.org/grpc"
 
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/extensionread"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	resourceplugin "github.com/omniviewdev/plugin-sdk/pkg/resource/v2/plugin"
 	ep "github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
@@ -33,11 +36,19 @@ import (
 // words in the host log. A ceiling is a policy, and this one is generous (the host runs 1, and one bump is planned). The cure is the producer's: the plugin stating its protocol where the host reads it before go-plugin does (S4-01).
 const offeredProtocolCeiling = 16
 
+// The resource client retains every method of the published SDK client. Only
+// this host-side registration knows the separately versioned owner extension.
+type resourceClientPlugin struct{ resourceplugin.GRPCPlugin }
+
+func (*resourceClientPlugin) GRPCClient(_ context.Context, _ *goplugin.GRPCBroker, conn *grpc.ClientConn) (any, error) {
+	return extensionread.NewClient(conn), nil
+}
+
 // capabilityClients is the set of clients the host speaks to a plugin of an accepted protocol: one per capability the SDK serves. Every accepted protocol has the same set today; the step that makes the host read
 // a second protocol gives the plugin of that protocol the clients of its wire here.
 func capabilityClients() goplugin.PluginSet {
 	return goplugin.PluginSet{
-		"resource":  &resourceplugin.GRPCPlugin{NetRPCUnsupportedPlugin: goplugin.NetRPCUnsupportedPlugin{}, Impl: nil, SettingsProvider: nil},
+		"resource":  new(resourceClientPlugin),
 		"exec":      &ep.Plugin{Plugin: nil, Impl: nil},
 		"networker": &np.Plugin{Plugin: nil, Impl: nil},
 		"log":       &lp.Plugin{Plugin: nil, Impl: nil},

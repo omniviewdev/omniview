@@ -416,7 +416,7 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader, pr
       },
       available: feed.directory !== undefined,
     };
-  const menu = useTerminalMenu({ screen, status, openFind: find.open, copy, here });
+  const menu = useTerminalMenu({ sessionId: session.id, screen, status, openFind: find.open, copy, here });
   const links = useTerminalLinks({ screen, sessions, platform });
   // The marks of the shell's integration: the tooltip of a command's mark, and what a jump or a selection did said in the live region.
   const gutter = useCommandGutter({ screen, say });
@@ -451,7 +451,7 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader, pr
         />
       </div>
       <div className={styles.main}>
-        <div ref={host} className={styles.screen} data-shell-part="terminalScreen" {...menu.host} />
+        <div ref={host} className={styles.screen} data-shell-part="terminalScreen" tabIndex={-1} {...menu.host} />
         {find.element}
         {links.element}
         {gutter.element}

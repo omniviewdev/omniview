@@ -66,7 +66,7 @@ type WindowRealm struct {
 	closed   map[WindowIdentity]time.Time
 	onRetire func(string)
 	// subscribers hear of each retirement after onRetire: the registries keyed by window.
-	subscribers []func(WindowIdentity)
+	subscribers []func(WindowIdentity, *Scope)
 	// connected reports whether a client id has an events socket registered; every is the sweep's interval.
 	connected func(client string) bool
 	every     time.Duration
@@ -139,6 +139,14 @@ func NewWindowRealm(onRetire func(string), options ...WindowRealmOption) *Window
 // which a server-mode window never fires. fn may run at the same moment as the other subscribers for the same window and as the subscribers for
 // other windows that retire in the same sweep, so it must not rely on their order; it may take as long as it likes without holding them up.
 func (r *WindowRealm) OnRetire(fn func(WindowIdentity)) {
+	if fn != nil {
+		r.OnScopeRetire(func(key WindowIdentity, _ *Scope) { fn(key) })
+	}
+}
+
+// OnScopeRetire is the generation-aware retirement signal for native window-owned attachments.
+// A window ID can be reused while an earlier retirement callback is still releasing its resources.
+func (r *WindowRealm) OnScopeRetire(fn func(WindowIdentity, *Scope)) {
 	if fn == nil {
 		return
 	}
@@ -204,6 +212,11 @@ func (r *WindowRealm) grant(key WindowIdentity, window application.Window) (*Sco
 		return nil, nil
 	}
 	if entry := r.scopes[key]; entry != nil {
+		// A reconnected browser page is a different caller, even if Wails
+		// presents the same numeric ID before the old page's sweep retires it.
+		if page, ok := window.(interface{ ClientID() string }); ok && page.ClientID() != entry.client {
+			return nil, nil
+		}
 		return entry.scope, nil
 	}
 	switch {
@@ -268,7 +281,7 @@ func (r *WindowRealm) announce(key WindowIdentity, scope *Scope) {
 	r.mu.Lock()
 	subscribers := slices.Clone(r.subscribers)
 	r.mu.Unlock()
-	r.concurrently(len(subscribers), func(i int) { subscribers[i](key) })
+	r.concurrently(len(subscribers), func(i int) { subscribers[i](key, scope) })
 }
 
 // concurrently runs fn(0) to fn(n-1) each in its own goroutine, and returns when all have returned, so that none outlives the call. The number

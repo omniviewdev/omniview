@@ -54,7 +54,8 @@ export function failureNotice(store: NoticesStore, plugin: string, error: unknow
 /** The route of the tab on screen: the same object until the tab moves. */
 function activeRoute(tabs: TabsStore): Route | undefined {
   const state = tabs.getSnapshot();
-  return state.active === null ? undefined : state.tabs[state.active]?.location.route;
+  const route = state.active === null ? undefined : state.tabs[state.active]?.location.route;
+  return route?.kind === 'extension-view' ? undefined : route;
 }
 
 /** What a plugin is called: its contribution's name once it is ready, else the name its manifest gives it. */

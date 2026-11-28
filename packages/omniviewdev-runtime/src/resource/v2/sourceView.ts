@@ -2,6 +2,7 @@ import { replaceEqualDeep } from '@tanstack/react-query';
 import { Events } from '@wailsio/runtime';
 import { classifyFrontendError, recordFrontendSpan } from '../../telemetry/frontendSpans';
 import { CloseSourceView, OpenSourceView, RefreshSourceView, SyncSourceView } from './client';
+import { CollectionRootSource } from './extensionRoot';
 import type { HostRecord, HostRecordRemoval, HostSourceStatus, HostSourceViewEvent, HostSourceViewOpened, HostSourceViewRequest } from './host';
 import { MIN_DELIVERY_INTERVAL_MS } from './sourceViewLimits';
 
@@ -16,6 +17,23 @@ export interface SourceViewSnapshot {
   complete: boolean;
   /** Changes relevant to consumers that invalidate derived caches. */
   event?: { kind: 'snapshotEnd' | 'changes' | 'reset'; revision: number };
+}
+
+// ReadonlyMap alone does not hide a Map's mutators at run time. Never expose the native
+// membership index (including through forEach's third argument) or copy its rows for a reader.
+class PublishedRecords implements ReadonlyMap<string, HostRecord> {
+  readonly #rows: ReadonlyMap<string, HostRecord>;
+  constructor(rows: ReadonlyMap<string, HostRecord>) { this.#rows = rows; }
+  get size() { return this.#rows.size; }
+  get(key: string) { return this.#rows.get(key); }
+  has(key: string) { return this.#rows.has(key); }
+  keys() { return this.#rows.keys(); }
+  values() { return this.#rows.values(); }
+  entries() { return this.#rows.entries(); }
+  [Symbol.iterator]() { return this.#rows[Symbol.iterator](); }
+  forEach(callback: (value: HostRecord, key: string, map: ReadonlyMap<string, HostRecord>) => void, thisArg?: unknown) {
+    this.#rows.forEach((value, key) => callback.call(thisArg, value, key, this));
+  }
 }
 
 export interface SourceViewClient {
@@ -41,6 +59,8 @@ if (typeof window !== 'undefined') {
 
 export async function openSourceView(pluginID: string, request: HostSourceViewRequest): Promise<SourceViewClient> {
   const resourceType = request.target.type;
+  const { targetId, target: { provider, authority } } = request;
+  const connection = request.target.route?.connection;
   const openStart = Date.now();
   let opened: HostSourceViewOpened;
   try {
@@ -49,6 +69,10 @@ export async function openSourceView(pluginID: string, request: HostSourceViewRe
     recordSync('snapshot', 'initial', openStart, error);
     throw error;
   }
+  let roots = opened.mode === 'snapshotAndUpdates' && connection
+    ? new CollectionRootSource(pluginID, connection, opened.viewId, targetId, provider, authority, resourceType)
+    : undefined;
+  let witnessedGeneration: string | undefined;
   /** The synchronization in flight: a snapshot, resync or reset ends at the next snapshotEnd. */
   let pending: { mode: 'snapshot' | 'resync' | 'reset'; reason: SyncReason; start: number; attempt?: number } | undefined =
     { mode: 'snapshot', reason: 'initial', start: openStart };
@@ -72,6 +96,8 @@ export async function openSourceView(pluginID: string, request: HostSourceViewRe
     recordSync(mode, reason, start, error, { records, attempt });
   }
   let snapshot: SourceViewSnapshot = { records: new Map(), complete: false };
+  let published: SourceViewSnapshot | undefined;
+  let publishedRecords: PublishedRecords | undefined;
   /** The current records while no reader has received them yet: the only map a patch may edit in place. */
   let writable: Map<string, HostRecord> | undefined;
   let staging: Map<string, HostRecord> | undefined;
@@ -114,7 +140,18 @@ export async function openSourceView(pluginID: string, request: HostSourceViewRe
   }
 
   function update(patch: Partial<SourceViewSnapshot>, kind?: 'snapshotEnd' | 'changes' | 'reset') {
+    published = undefined;
+    if (patch.records && patch.records !== snapshot.records) publishedRecords = undefined;
+    if (patch.status) Object.freeze(patch.status);
     snapshot = { ...snapshot, ...patch, ...(kind ? { event: { kind, revision: ++revision } } : {}) };
+    if (roots) {
+      // Only a complete following snapshot can establish provenance. A status change alone must
+      // never re-authorize the old rows that a refreshing or recovering page keeps on screen.
+      if (kind === 'reset' || (patch.status && (patch.status.mode !== 'snapshotAndUpdates' ||
+        patch.status.state !== 'following' || patch.status.error))) witnessedGeneration = undefined;
+      else if (kind === 'snapshotEnd') witnessedGeneration = generation;
+      roots.publish(witnessedGeneration, witnessedGeneration ? snapshot.records : undefined);
+    }
     notify();
   }
 
@@ -135,6 +172,8 @@ export async function openSourceView(pluginID: string, request: HostSourceViewRe
     if (closed || failed) return;
     staging = undefined;
     awaitingGeneration = true;
+    witnessedGeneration = undefined;
+    roots?.publish();
     const now = Date.now();
     attempts = attempts.filter(time => now - time < 10_000);
     if (attempts.length >= 3) {
@@ -150,19 +189,32 @@ export async function openSourceView(pluginID: string, request: HostSourceViewRe
     void SyncSourceView(pluginID, opened.viewId).catch(error => fail(String(error), error));
   }
 
+  function shareRecord(record: HostRecord, held: HostRecord | undefined, revision: string | undefined): HostRecord {
+    // Distinct native member receipts retire the old object even when the UID and payload are identical.
+    if (held === undefined || (roots && !roots.sameRevision(held, revision))) {
+      roots?.remember(record, revision);
+      return record;
+    }
+    const shared = replaceEqualDeep(held, record);
+    if (shared !== held) roots?.remember(shared, revision);
+    return shared;
+  }
+
   /**
    * Apply one patch by host key. A record the patch repeats unchanged keeps its object, and a patch that
    * changes nothing keeps the map itself. A map a reader has received is never modified: the first change
    * after a read copies it once, and the patches that follow before the next read edit that copy.
    */
-  function applyChanges(removes: readonly HostRecordRemoval[], upserts: readonly HostRecord[]): ReadonlyMap<string, HostRecord> {
+  function applyChanges(removes: readonly HostRecordRemoval[], upserts: readonly HostRecord[], revisions?: readonly string[]): ReadonlyMap<string, HostRecord> {
     let draft = writable;
     for (const removal of removes) {
       if ((draft ?? snapshot.records).has(removal.key)) (draft ??= new Map(snapshot.records)).delete(removal.key);
     }
-    for (const record of upserts) {
+    const receipts = revisions?.length === upserts.length ? revisions : undefined;
+    for (let i = 0; i < upserts.length; i++) {
+      const record = upserts[i];
       const held = (draft ?? snapshot.records).get(record.key);
-      const shared = held === undefined ? record : replaceEqualDeep(held, record);
+      const shared = shareRecord(record, held, receipts?.[i]);
       if (shared !== held) (draft ??= new Map(snapshot.records)).set(record.key, shared);
     }
     writable = draft;
@@ -180,6 +232,7 @@ export async function openSourceView(pluginID: string, request: HostSourceViewRe
       }
       update({}, 'reset');
       if (event.reset?.reason === 'closed') {
+        roots = undefined;
         update({ status: { ...snapshot.status, state: 'closed', mode: snapshot.status?.mode ?? opened.mode,
           count: snapshot.status?.count ?? { kind: 'exact', value: String(snapshot.records.size) } } });
       }
@@ -203,27 +256,29 @@ export async function openSourceView(pluginID: string, request: HostSourceViewRe
     }
     sequence = next;
     switch (event.kind) {
-      case 'snapshot':
+      case 'snapshot': {
         if (!staging) { resync(); return; }
-        for (const record of event.records ?? []) staging.set(record.key, record);
+        const records = event.records ?? [];
+        const receipts = event.memberRevisions?.length === records.length ? event.memberRevisions : undefined;
+        for (let i = 0; i < records.length; i++) {
+          const record = records[i];
+          staging.set(record.key, shareRecord(record, snapshot.records.get(record.key), receipts?.[i]));
+        }
         break;
+      }
       case 'snapshotEnd': {
         if (!staging || !event.status) { resync(); return; }
-        // A new generation repeats most of the records it replaces: those keep their objects.
-        for (const [key, record] of staging) {
-          const held = snapshot.records.get(key);
-          if (held !== undefined) staging.set(key, replaceEqualDeep(held, record));
-        }
         writable = staging;
         const recordCount = staging.size;
-        update({ records: staging, viewGeneration: generation, status: replaceEqualDeep(snapshot.status, event.status), complete: true }, 'snapshotEnd');
+        const records = staging;
         staging = undefined;
+        update({ records, viewGeneration: generation, status: replaceEqualDeep(snapshot.status, event.status), complete: true }, 'snapshotEnd');
         endSync(undefined, recordCount);
         break;
       }
       case 'changes':
         if (staging) { resync(); return; }
-        update({ records: applyChanges(event.removes ?? [], event.upserts ?? []) }, 'changes');
+        update({ records: applyChanges(event.removes ?? [], event.upserts ?? [], event.memberRevisions) }, 'changes');
         break;
       case 'status': {
         if (staging || !event.status) { resync(); return; }
@@ -242,10 +297,12 @@ export async function openSourceView(pluginID: string, request: HostSourceViewRe
     subscribe(listener) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     getSnapshot() {
       writable = undefined;
-      return snapshot;
+      return published ??= Object.freeze({ ...snapshot, records: publishedRecords ??= new PublishedRecords(snapshot.records) });
     },
     async refresh() {
       const wasFailed = failed;
+      witnessedGeneration = undefined;
+      roots?.publish();
       failed = false;
       attempts = [];
       try {
@@ -258,6 +315,7 @@ export async function openSourceView(pluginID: string, request: HostSourceViewRe
     close() {
       if (closed) return;
       closed = true;
+      roots?.publish();
       pending = undefined;
       openViews.delete(client);
       unsubscribe();

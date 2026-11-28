@@ -11,6 +11,8 @@ export type PluginDescriptor = {
   readonly id: string;
   /** The name the plugin's manifest gives it: how a frame is named before (or without) its contribution. */
   readonly name: string;
+  /** Only present for ordinary pages from a verified extension installation. */
+  readonly artifact?: { readonly pin: string; readonly generation: string };
   /**
    * The host holds the plugin as failed (`inventory.ts`): its load failed before the window asked, at the start of the host or while the window was away. The store shows it so from the first and reads no interface until the plugin runs: a
    * plugin that did not start has no process behind its pages, and the host's events do not reach a window that was not open.
@@ -24,9 +26,9 @@ export type PluginDescriptor = {
 };
 
 /** What an entry says of the plugin it is for: the identity of its descriptor and no more. */
-type Named = Pick<PluginDescriptor, 'id' | 'name'>;
+type Named = Pick<PluginDescriptor, 'id' | 'name' | 'artifact'>;
 
-const named = (descriptor: PluginDescriptor): Named => ({ id: descriptor.id, name: descriptor.name });
+const named = ({ id, name, artifact }: PluginDescriptor): Named => artifact ? { id, name, artifact } : { id, name };
 
 export type PluginEntry = Named &
   (
@@ -36,7 +38,7 @@ export type PluginEntry = Named &
   );
 
 export type LoaderDeps = {
-  readonly importBundle: (id: string) => Promise<unknown>;
+  readonly importBundle: (id: string, artifact?: PluginDescriptor['artifact']) => Promise<unknown>;
   readonly clearBundle: (id: string) => void;
   readonly log: (message: string, detail: unknown) => void;
 };
@@ -49,7 +51,7 @@ export const MAX_CONCURRENT_LOADS = 5;
  * one place a static import cannot serve, because the point is to keep the loader out of the entry chunk.
  */
 export const productionDeps: LoaderDeps = {
-  importBundle: async (id) => (await import('../loader/importBundle')).importBundle(id),
+  importBundle: async (id, artifact) => (await import('../loader/importBundle')).importBundle(id, undefined, artifact),
   clearBundle: (id) => {
     void import('../loader/importBundle').then((loader) => {
       loader.clearBundle(id);
@@ -123,8 +125,13 @@ export class PluginStore {
    * its refusal, with nothing to retry.
    */
   async load(descriptor: PluginDescriptor): Promise<void> {
-    if (this.entries.has(descriptor.id)) {
-      return Promise.resolve();
+    const held = this.entries.get(descriptor.id);
+    if (held) {
+      if (held.artifact?.pin === descriptor.artifact?.pin && held.artifact?.generation === descriptor.artifact?.generation) {
+        return;
+      }
+
+      this.supersede(descriptor.id);
     }
 
     if (descriptor.incompatible !== undefined) {
@@ -189,7 +196,7 @@ export class PluginStore {
     }
 
     this.supersede(id);
-    this.set({ id, name: entry.name, phase: 'failed', failure });
+    this.set({ ...named(entry), phase: 'failed', failure });
   }
 
   /**
@@ -198,7 +205,7 @@ export class PluginStore {
    */
   async revive(id: string): Promise<void> {
     const entry = this.entries.get(id);
-    if (entry?.phase !== 'failed' || entry.failure.kind !== 'unloaded') {
+    if (entry?.phase !== 'failed' || entry.failure.kind !== 'unloaded' || entry.artifact) {
       return;
     }
 
@@ -254,7 +261,9 @@ export class PluginStore {
   private async run(descriptor: PluginDescriptor, generation: number): Promise<void> {
     await this.acquire();
     try {
-      const exports = await this.deps.importBundle(descriptor.id);
+      const exports = descriptor.artifact
+        ? await this.deps.importBundle(descriptor.id, descriptor.artifact)
+        : await this.deps.importBundle(descriptor.id);
       this.settle(descriptor, generation, { ...named(descriptor), phase: 'ready', contribution: admitOrThrow(exports) });
     } catch (error) {
       const failure = classify(error);
