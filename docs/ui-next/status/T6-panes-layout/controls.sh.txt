@@ -49,7 +49,7 @@ CONTROLS = [
 # The controls whose fault the named tests alone catch: with those tests skipped the copy passes. Every other control stays red with them skipped (another test catches it as well).
 SOLE = {
   'split-asks-the-host-before-the-room', 'split-button-enabled-with-no-directory', 'split-button-enabled-with-no-room', 'sash-minimum-lost', 'sash-double-click-does-nothing', 'sash-escape-keeps-the-drag',
-  'sash-keys-ignore-the-axis', 'sash-measured-at-the-press-only', 'sash-orientation-always-vertical', 'bodies-not-placed-in-the-groups-order', 'a-click-in-a-pane-does-not-focus-it', 'the-resize-of-the-deck-is-not-fitted',
+  'sash-keys-ignore-the-axis', 'sash-measured-at-the-press-only', 'sash-orientation-always-vertical', 'bodies-not-placed-in-the-groups-order', 'the-resize-of-the-deck-is-not-fitted',
   'the-room-for-one-more-is-always-yes', 'the-split-length-forgets-the-new-sash', 'the-active-pane-is-not-marked',
 }
 
