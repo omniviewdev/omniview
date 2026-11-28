@@ -27,3 +27,13 @@ Code controls: `docs/ui-next/status/T6-panes-focus/controls.sh.txt` (the faults 
 - The chords on a Mac keyboard (the probe's engines say Linux, so the Control Shift pair is what ran; the Command Option pair is unit-tested through `paneChordOf` and `keyOf`).
 - The reload of a group against the REAL host (the seam's r3 holds no group).
 - Stacked panes in a browser: `paneToward` and the chords handle a column (unit tests); no probe starts one.
+
+## Commands and results (final head)
+
+- `PART=panes` (WebKit and Chromium, both viewports): **PASS (88 assertions)**, among them `panes.keys-focus`, `panes.chords-quiet`, `panes.reload`, `panes.gone`, `panes.ended`. A first run failed `panes.ended` in WebKit (the lane of the ended terminal is drawn when the host's word reaches the page: the probe now waits for it), and the first `panes-gone-kept` control tripped `panes.ended` too (its fault is now armed only while the page is away in the gone scenario).
+- The 5 new probe controls, both engines, both halves: each **detected by its own assertion and not detected with it dropped**.
+- Reattach probes `PART=reattach-a` to `f`: 12, 12, 22, 4, 16, 20 pass; `words` 26.
+- `bash docs/ui-next/status/T6-panes-focus/controls.sh.txt`: **exit 0, 16 of 16 caught by the tests named for them**, second half enforced (`SOLE` of 10).
+- tsc app, test, kit typecheck exit 0; `pnpm lint` exit 0; the stable build exit 0 and `ui-flavour` 7 pass.
+- Seam `pages,terminal-core,controls-kept` (the exact command): exit 0, 32 phases, 10 controls detected. A first run failed once in WebKit's `providers` phase (the palette dialog was still attached after 30 s: the palette's detach, nothing of the panel), and the run after it passed.
+- `vitest run ui-next/shell/panel ui-next/shell/session ui-next/shell/core`: 5336 pass; the failures differ from run to run and are the timing tests of a loaded shared machine (load average 6 to 8): the 5 s timeouts of `core/panel/fuzz.test.ts` (two) and `LogStreams.fuzz.test.ts`/`LogStreams.test.ts`, and the perf tests of the palette and the notices, which pass alone (`core/notices/perf.test.ts` 9 of 9 twice; `core/panel/fuzz.test.ts` passes with a long timeout).
