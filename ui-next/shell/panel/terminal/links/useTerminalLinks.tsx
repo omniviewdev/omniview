@@ -3,7 +3,7 @@ import type { Platform } from '../../../core/chords';
 import type { LinkHover } from '../engine';
 import type { TerminalScreen } from '../screen';
 import type { TerminalSessions } from '../TerminalSessions';
-import { followsWith, followWords, isWebAddress } from './links';
+import { followsWith, followWords } from './links';
 import styles from './LinkTip.module.css';
 
 // The links in a terminal's output (T3a): a web address the emulator finds is a link the pointer can hover and click, and the host decides what a click does. VS Code and JetBrains ask for Command (Control elsewhere) with
@@ -20,7 +20,7 @@ export type TerminalLinksScreen = Pick<TerminalScreen, 'setLinks'>;
 export type TerminalLinksOptions = {
   /** The screen of the session. Before there is one (`undefined`) there are no links. */
   readonly screen: TerminalLinksScreen | undefined;
-  readonly sessions: Pick<TerminalSessions, 'canOpenExternal' | 'openExternal'>;
+  readonly sessions: Pick<TerminalSessions, 'canOpenExternal' | 'canFollow' | 'openExternal'>;
   readonly platform: Platform;
 };
 
@@ -33,6 +33,8 @@ type LinkTipProps = {
   readonly x: number;
   readonly y: number;
   readonly words: string;
+  /** Where the click goes: the address the link opens, whatever the words on the screen say (a hyperlink's text and target may differ). */
+  readonly target: string;
 };
 
 /** Whether two reports are of one link: the emulator reports a link by its address and where its first cell is, so a pointer that moves along a link, or comes back to it, is on the same one. */
@@ -54,7 +56,7 @@ type Dismissed = {
  * The tooltip: in the top layer, at the link's first cell, in the one polite live region that exists only while it is shown, so that what a hover says to the eye is said to a person who cannot see it, once, as it comes. It is mounted
  * when the pointer reaches a link and unmounted when it leaves or Escape puts it away, so there is one for the whole time and nothing in the document otherwise; a move from one link to another moves it.
  */
-function LinkTip({ x, y, words }: LinkTipProps) {
+function LinkTip({ x, y, words, target }: LinkTipProps) {
   const element = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     try {
@@ -74,7 +76,8 @@ function LinkTip({ x, y, words }: LinkTipProps) {
       className={styles.tip}
       style={{ '--_x': `${String(x)}px`, '--_y': `${String(y)}px` }}
     >
-      {words}
+      <span className={styles.words}>{words}</span>
+      <span className={styles.target}>{target}</span>
     </div>
   );
 }
@@ -98,15 +101,15 @@ export function useTerminalLinks({ screen, sessions, platform }: TerminalLinksOp
 
     screen.setLinks({
       activate: (uri, event) => {
-        // The emulator gives a click on a link as it came, with no key asked for: a plain click is a selection. An address that is not a web address is not followed whatever was held.
+        // The emulator gives a click on a link as it came, with no key asked for: a plain click is a selection. An address the registry does not follow (not a web address, or the host's own server) is not followed whatever was held.
         const { sessions: current, platform: now } = latest.current;
-        if (followsWith(event, now) && isWebAddress(uri)) {
+        if (followsWith(event, now) && current.canFollow(uri)) {
           current.openExternal(uri);
         }
       },
       hover: (reported) => {
-        // Only an address a click follows has a tooltip, which says that a click follows the link: a hyperlink the program writes (OSC 8) can name any scheme, where a printed address is a web address. Any other is no link here, as `activate` sees it.
-        const next = reported !== undefined && isWebAddress(reported.uri) ? reported : undefined;
+        // Only an address a click follows has a tooltip, which says that a click follows the link: a hyperlink the program writes (OSC 8) can name any scheme, where a printed address is a web address, and the host's own server is no link. Any other is no link here, as `activate` sees it.
+        const next = reported !== undefined && latest.current.sessions.canFollow(reported.uri) ? reported : undefined;
         const away = dismissed.current;
         if (next === undefined) {
           setHovered(undefined);
@@ -155,5 +158,5 @@ export function useTerminalLinks({ screen, sessions, platform }: TerminalLinksOp
     };
   }, [hovered]);
 
-  return { element: hovered === undefined ? null : <LinkTip x={hovered.x} y={hovered.y} words={followWords(platform)} /> };
+  return { element: hovered === undefined ? null : <LinkTip x={hovered.x} y={hovered.y} words={followWords(platform)} target={hovered.uri} /> };
 }

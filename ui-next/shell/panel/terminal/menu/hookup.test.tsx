@@ -129,12 +129,12 @@ describe('the menu in the body', () => {
     });
   });
 
-  it('opens on a secondary click on the screen, with Copy, Paste, Select all, Clear and Find', async () => {
+  it('opens on a secondary click on the screen, with Copy, Paste, Select all, Clear, Find and Open link', async () => {
     const { screen } = mount();
     await flush();
     rightClick(screen());
     expect(menu()).toBeInTheDocument();
-    expect(page.getAllByRole('menuitem').map((entry) => entry.getAttribute('aria-label'))).toEqual(['Copy', 'Paste', 'Select all', 'Clear', 'Find']);
+    expect(page.getAllByRole('menuitem').map((entry) => entry.getAttribute('aria-label'))).toEqual(['Copy', 'Paste', 'Select all', 'Clear', 'Find', 'Open link']);
   });
 
   // The kit names an item by its label alone and draws a shortcut after it, so an item that draws one fails "Label in Name" (WCAG 2.5.3; axe `label-content-name-mismatch`, found by the probe in a real browser). The terminal takes its
@@ -143,8 +143,40 @@ describe('the menu in the body', () => {
     const { screen } = mount({ platform });
     await flush();
     rightClick(screen());
-    expect(page.getAllByRole('menuitem')).toHaveLength(5);
+    expect(page.getAllByRole('menuitem')).toHaveLength(6);
     expect(document.querySelectorAll('[role="menu"] kbd')).toHaveLength(0);
+  });
+
+  // OPEN LINK (#696 step 1) in the real body: the links in view come from the emulator when the menu opens, the submenu names each by its target, and the registry opens the one chosen, and the host's own server is never offered.
+  describe('Open link', () => {
+    it('lists the links in view by their targets, and opens the chosen one through the registry, once', async () => {
+      const { screen, loader, openExternal } = mount();
+      await flush();
+      loader.engines[0]?.linksInView(['https://example.com/docs', 'https://b.example/login']);
+      rightClick(screen());
+      fireEvent.keyDown(item('Open link'), { key: 'ArrowRight' });
+      expect(page.getAllByRole('menuitem').map((entry) => entry.getAttribute('aria-label'))).toContain('https://b.example/login');
+      fireEvent.click(item('https://b.example/login'));
+      expect(openExternal).toHaveBeenCalledExactlyOnceWith('https://b.example/login');
+    });
+
+    it('does not offer the host\'s own server, which the registry will not open', async () => {
+      const { screen, loader } = mount();
+      await flush();
+      loader.engines[0]?.linksInView([`http://${location.hostname}:${location.port || '80'}/api`, 'https://example.com/']);
+      rightClick(screen());
+      fireEvent.keyDown(item('Open link'), { key: 'ArrowRight' });
+      const labels = page.getAllByRole('menuitem').map((entry) => entry.getAttribute('aria-label'));
+      expect(labels).toContain('https://example.com/');
+      expect(labels.filter((label) => label?.startsWith('http://') === true)).toEqual([]);
+    });
+
+    it('is not in the menu of a window that cannot open an address', async () => {
+      const { screen } = mount({ links: false });
+      await flush();
+      rightClick(screen());
+      expect(page.queryByRole('menuitem', { name: 'Open link' })).toBeNull();
+    });
   });
 
   describe('New terminal here', () => {
@@ -152,7 +184,7 @@ describe('the menu in the body', () => {
       const { screen, newHere, sessionId } = mount({ here: { directory: true } });
       await flush();
       rightClick(screen());
-      expect(page.getAllByRole('menuitem').map((entry) => entry.getAttribute('aria-label'))).toEqual(['Copy', 'Paste', 'Select all', 'Clear', 'Find', 'New terminal here']);
+      expect(page.getAllByRole('menuitem').map((entry) => entry.getAttribute('aria-label'))).toEqual(['Copy', 'Paste', 'Select all', 'Clear', 'Find', 'Open link', 'New terminal here']);
       expect(item('New terminal here')).not.toHaveAttribute('aria-disabled');
       fireEvent.click(item('New terminal here'));
       expect(newHere).toHaveBeenCalledTimes(1);

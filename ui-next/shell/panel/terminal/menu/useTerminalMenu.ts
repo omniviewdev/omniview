@@ -20,7 +20,7 @@ import { terminalMenu } from './terminalMenu';
 export const TERMINAL_MENU_LABEL = 'Terminal actions';
 
 /** What the menu needs of the screen: a real `TerminalScreen` has all of it, and a test makes one with these members only. */
-export type TerminalMenuScreen = Pick<TerminalScreen, 'clear' | 'selectAll' | 'paste' | 'mouseReporting' | 'decorateInput' | 'subscribe' | 'getSnapshot'> & { readonly commands?: Pick<TerminalScreen['commands'], 'state' | 'revision' | 'jump' | 'selectOutput' | 'copyOutput' | 'rerun' | 'onEvent'> | undefined };
+export type TerminalMenuScreen = Pick<TerminalScreen, 'clear' | 'selectAll' | 'paste' | 'mouseReporting' | 'decorateInput' | 'subscribe' | 'getSnapshot'> & { readonly viewLinks?: TerminalScreen['viewLinks'] | undefined } & { readonly commands?: Pick<TerminalScreen['commands'], 'state' | 'revision' | 'jump' | 'selectOutput' | 'copyOutput' | 'rerun' | 'onEvent'> | undefined };
 
 export type TerminalMenuOptions = {
   readonly sessionId?: string;
@@ -34,6 +34,8 @@ export type TerminalMenuOptions = {
   readonly copy: () => void;
   /** "New terminal here": what it opens and whether this terminal can say where it is. Absent: the menu has no such item. */
   readonly here?: TerminalMenuHere | undefined;
+  /** "Open link": what opens a link's target outside the app, and whether the registry follows an address (the host's own server is not offered). Absent: the menu has no such item (a window that cannot open an address). */
+  readonly links?: TerminalMenuLinks | undefined;
 };
 
 /** What the screen's element is given: the attributes of the menu's trigger, and the one rule that keeps a click for the program. Spread it on the element the emulator draws in. */
@@ -48,6 +50,9 @@ export type TerminalMenu = {
 
 /** "New terminal here" of the menu: what it opens, and whether this terminal can say where it is (its feed has a `directory`). */
 export type TerminalMenuHere = { readonly open: () => void; readonly available: boolean };
+
+/** "Open link" of the menu: the registry's own calls, `TerminalSessions.openExternal` and `TerminalSessions.canFollow`. */
+export type TerminalMenuLinks = { readonly open: (uri: string) => void; readonly follows: (uri: string) => boolean };
 
 const quiet = (): (() => void) => () => undefined;
 
@@ -82,15 +87,15 @@ async function pasteInto(screen: TerminalMenuScreen | undefined, canPaste: () =>
   screen?.paste(text);
 }
 
-export function useTerminalMenu({ sessionId, screen, status, openFind, copy, here }: TerminalMenuOptions): TerminalMenu {
+export function useTerminalMenu({ sessionId, screen, status, openFind, copy, here, links }: TerminalMenuOptions): TerminalMenu {
   const extendMenu = useMaybePanel()?.terminalMenu;
   // The terminal takes what is typed or pasted while it is starting or running (the screen's own rule).
   const input = status.state === 'starting' || status.state === 'running';
   // An action runs after the host gave the focus back, in whatever render the menu was chosen in: it reads what it calls from here and not from the render the menu opened in.
-  const latest = useRef({ screen, openFind, copy, input, here });
+  const latest = useRef({ screen, openFind, copy, input, here, links });
   useLayoutEffect(() => {
-    latest.current = { screen, openFind, copy, input, here };
-  }, [screen, openFind, copy, input, here]);
+    latest.current = { screen, openFind, copy, input, here, links };
+  }, [screen, openFind, copy, input, here, links]);
 
   // Whether something is selected and whether the terminal takes input are the revision of the menu: the host closes an open menu when it changes (its Copy would be unavailable, or would have something to copy that the menu did not
   // offer; its Paste would have nowhere to go). A menu shows the state it opened in. The items themselves are read when the menu opens, and not from what this render heard.
@@ -126,6 +131,13 @@ export function useTerminalMenu({ sessionId, screen, status, openFind, copy, her
         find: () => {
           latest.current.openFind();
         },
+        ...(links === undefined
+          ? {}
+          : {
+            openLink: (uri: string) => {
+              latest.current.links?.open(uri);
+            },
+          }),
         ...(here === undefined
           ? {}
           : {
@@ -156,7 +168,7 @@ export function useTerminalMenu({ sessionId, screen, status, openFind, copy, her
             },
           }),
       },
-      { selected: screen.getSnapshot().selected, input, here: here?.available, commands: screen.commands?.state() },
+      { selected: screen.getSnapshot().selected, input, here: here?.available, commands: screen.commands?.state(), links: links === undefined ? undefined : (screen.viewLinks?.() ?? []).filter(links.follows) },
     );
     return sessionId === undefined ? items : extendMenu?.(sessionId, 'terminal-body', items) ?? items;
   }, `${selected ? 'selected' : 'nothing selected'}, ${commandState}, ${input ? 'input' : 'no input'}, ${here === undefined ? 'no new terminal' : here.available ? 'new terminal here' : 'no directory'}`);

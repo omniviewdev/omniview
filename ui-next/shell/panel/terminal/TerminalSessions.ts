@@ -1,7 +1,7 @@
 import { HOST, type PanelStore, type Session, type SessionId } from '../../core/panel';
 import { offersTakeBack, type TerminalFeedHandle, type TerminalFeedSnapshot, type TerminalFinished, type TerminalRestart, type TerminalTarget } from './feed';
 import { sessionStateOf } from './state';
-import type { Origin } from './links/links';
+import { isOwnServer, isWebAddress, type Origin } from './links/links';
 import { TERMINAL_TOOL_ID } from './tool';
 
 // The registry of the feeds of the Terminal tool, beside the panel model (framework-free: no React, no DOM, no xterm). A caller hands the host a TARGET (`open(target)`, the one entry point: the host's own
@@ -224,24 +224,11 @@ function hasClose(value: unknown): value is { readonly close: () => unknown } {
 
 const text = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
 
-/** What an address may look like for the host to open it: http or https, with an authority, and no space, control character or backslash anywhere (a valid address has none; the reader of one would tidy them away or take them for something else). */
-const LINK = /^https?:\/\/[^\s\p{Cc}\\]+$/iu;
+/** The window's own `location`, which a page has and a test environment of another kind may not. */
+const page: { readonly location?: Origin | undefined } = globalThis;
 
-/**
- * Whether the host may be asked to open this address outside the app. A program writes what it likes in its output, and a link can name any scheme (a hyperlink the program wrote carries an address that nothing matched): another scheme starts another
- * program on the machine (a mail client, an editor, whatever handles it), and what the host refuses of them is a list, so only http and https are let through. The address is also read as an address, so that one with no host in it is refused.
- */
-function isOpenable(address: string): boolean {
-  if (!LINK.test(address)) {
-    return false;
-  }
-
-  try {
-    return new URL(address).hostname !== '';
-  } catch {
-    return false;
-  }
-}
+/** An origin that no address has: where a window with no `location` is served from. */
+const NOWHERE: Origin = { protocol: 'about:', hostname: '', port: '' };
 
 /** The platform's `crypto`, which every engine the app runs in has, and a test environment may not. */
 const platform: { readonly crypto?: Crypto | undefined } = globalThis;
@@ -268,6 +255,8 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
   const newId = options.newId ?? newUuid;
   const warn = options.warn ?? consoleWarn;
   const external = options.openExternal;
+  /** Where the page is served from, read when a link is followed: a window that moves is still the page it was. A window with no `location` (a test's) has no server to point at. */
+  const ownOrigin = (): Origin => options.origin ?? page.location ?? NOWHERE;
   const entries = new Map<SessionId, Entry>();
   const wanted = new Set<SessionId>();
   /** The command each session's view is asked to move to, until its body takes the request; and who follows them. */
@@ -868,15 +857,20 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
 
     canOpenExternal: () => external !== undefined,
 
-    canFollow: (uri) => external !== undefined && isOpenable(uri),
+    canFollow: (uri) => external !== undefined && isWebAddress(uri) && !isOwnServer(uri, ownOrigin()),
 
     openExternal: (uri) => {
       if (external === undefined) {
         return;
       }
 
-      if (!isOpenable(uri)) {
+      if (!isWebAddress(uri)) {
         warn('[terminal] the link could not be opened: only http and https addresses are opened');
+        return;
+      }
+
+      if (isOwnServer(uri, ownOrigin())) {
+        warn('[terminal] the link could not be opened: it points at this app\'s own server');
         return;
       }
 

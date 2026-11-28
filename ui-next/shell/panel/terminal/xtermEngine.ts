@@ -8,6 +8,7 @@ import xtermCss from '@xterm/xterm/css/xterm.css?inline';
 import { PALETTE_ROLES } from './appearance';
 import { FIND_LIMIT, type Engine, type EngineAppearance, type EngineMarker, type EngineOptions, type EngineRenderer, type Finder, type FindOptions, type FindState, type LinkHandler, type LinkHover } from './engine';
 import { findDecorations } from './findColours';
+import { isListedTarget, MAX_LINE, webAddressesIn } from './links/scan';
 
 // The emulator: xterm.js behind the host's `Engine` (docs/ui-next/status/T1.md, "The renderer"). This is the ONLY file that imports `@xterm/*`, and it is reached only through `loadEngine.ts`'s dynamic import, so
 // a window that never opens a terminal never fetches it. The GPU renderer is a second chunk inside it, fetched the first time a terminal is shown with the GPU on screen.
@@ -78,6 +79,25 @@ const NON_WORD_CLASS = `[${NON_WORD.replace(/[\]\\^-]/g, '\\$&')}]`;
  *     match of it is not a match of it. The last two have no remedy short of a patch of the addon, which has to be given the whole line.
  */
 const wholeWordPattern = (query: string, regex: boolean): string => `(?<=^|${NON_WORD_CLASS})(?:${regex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})(?=$|${NON_WORD_CLASS})`;
+
+/** How many hyperlinks the engine remembers where they are, for the list of links in view: the newest. */
+const HYPERLINKS = 128;
+/** The most links `viewLinks` says. */
+const VIEW_LINKS = 50;
+/** How many rows a wrapped line is read over, at most, for a printed address. */
+const WRAP_ROWS = 10;
+/** A place on the screen as one number: the row times this, plus the column. More than any terminal has columns. */
+const PLACE = 1_000_000;
+
+/** A hyperlink a program wrote (OSC 8) that is a web address: where it starts, in the cells of the buffer, and where it ended (`undefined` while it is open). */
+type Hyperlink = {
+  readonly uri: string;
+  /** It was written on the alternate screen, so it is in view only there. */
+  readonly alternate: boolean;
+  readonly marker: IMarker;
+  readonly column: number;
+  end: { readonly marker: IMarker; readonly column: number } | undefined;
+};
 
 export function createXtermEngine(options: EngineOptions): Engine {
   injectStyles();
@@ -273,6 +293,54 @@ export function createXtermEngine(options: EngineOptions): Engine {
     },
     allowNonHttpProtocols: false,
   };
+
+  // The hyperlinks a program writes, as the list of links in view needs them (`viewLinks`): where each starts and ends, by markers, so that a row that scrolls or is trimmed takes its links with it. The emulator's own handler of OSC 8
+  // still runs: this one only reads the sequence (and answers `false`, which hands it on). At most `HYPERLINKS` are kept, the newest, so that a flood of them is a constant; one that is not a web address is not kept, but it still ends
+  // the link before it (a link ends where the next begins, or at the empty one).
+  const hyperlinked: Hyperlink[] = [];
+  let writing: Hyperlink | undefined;
+  const endHyperlink = (): void => {
+    if (writing !== undefined) {
+      const marker = terminal.registerMarker(0);
+      if (marker !== undefined) {
+        writing.end = { marker, column: terminal.buffer.active.cursorX };
+      }
+
+      writing = undefined;
+    }
+  };
+
+  terminal.parser.registerOscHandler(8, (data) => {
+    // `params;uri`: the parameters never hold a semicolon, and the address may.
+    const uri = data.slice(data.indexOf(';') + 1);
+    endHyperlink();
+    if (uri !== '' && isListedTarget(uri)) {
+      const marker = terminal.registerMarker(0);
+      if (marker !== undefined) {
+        const one: Hyperlink = { uri, alternate: terminal.buffer.active.type === 'alternate', marker, column: terminal.buffer.active.cursorX, end: undefined };
+        writing = one;
+        hyperlinked.push(one);
+        const forget = (): void => {
+          const at = hyperlinked.indexOf(one);
+          if (at !== -1) {
+            hyperlinked.splice(at, 1);
+          }
+
+          one.end?.marker.dispose();
+          if (writing === one) {
+            writing = undefined;
+          }
+        };
+
+        marker.onDispose(forget);
+        if (hyperlinked.length > HYPERLINKS) {
+          hyperlinked[0]?.marker.dispose();
+        }
+      }
+    }
+
+    return false;
+  });
 
   /** The character in a cell of the buffer, as the search addon reads a line: an empty cell is nothing (a space to the addon), and the second half of a wide character is the character before it. */
   const characterAt = (row: number, column: number): string => {
@@ -658,7 +726,61 @@ export function createXtermEngine(options: EngineOptions): Engine {
       applyAttributes();
     },
 
-    viewLinks: () => [],
+    viewLinks: () => {
+      if (disposed) {
+        return [];
+      }
+
+      const active = terminal.buffer.active;
+      const top = active.viewportY;
+      const bottom = top + terminal.rows;
+      const { cols } = terminal;
+      // A place on the screen, as one number that orders them: the row and then the column.
+      const place = (row: number, column: number): number => row * PLACE + column;
+      const found: Array<{ readonly at: number; readonly uri: string }> = [];
+      const hyperlinks = hyperlinked.filter((one) => one.alternate === (active.type === 'alternate'));
+      for (const one of hyperlinks) {
+        const line = one.marker.line;
+        if (line >= top && line < bottom) {
+          found.push({ at: place(line, one.column), uri: one.uri });
+        }
+      }
+
+      // The printed addresses: a line is the rows it wraps over, read from the row it starts on (up to ten rows before the first one in view), and a match that is in the cells of a hyperlink is the text of that link and not one of its own.
+      let first = top;
+      while (first > 0 && top - first < WRAP_ROWS && active.getLine(first)?.isWrapped === true) {
+        first -= 1;
+      }
+
+      for (let start = first; start < bottom; start += 1) {
+        const head = active.getLine(start);
+        if (head === undefined || head.isWrapped) {
+          continue;
+        }
+
+        let text = head.translateToString(true);
+        for (let next = start + 1; next < start + WRAP_ROWS && text.length < MAX_LINE; next += 1) {
+          const row = active.getLine(next);
+          if (row?.isWrapped !== true) {
+            break;
+          }
+
+          text += row.translateToString(true);
+        }
+
+        for (const { index, uri } of webAddressesIn(text)) {
+          const row = start + Math.floor(index / cols);
+          const at = place(row, index % cols);
+          const inside = hyperlinks.some((one) => at >= place(one.marker.line, one.column) && at <= (one.end === undefined ? Infinity : place(one.end.marker.line, one.end.column)));
+          if (row >= top && row < bottom && !inside) {
+            found.push({ at, uri });
+          }
+        }
+      }
+
+      found.sort((a, b) => a.at - b.at);
+      return [...new Set(found.map((one) => one.uri))].slice(0, VIEW_LINKS);
+    },
 
     setLinks: (handler) => {
       links?.dispose();

@@ -52,11 +52,11 @@ export type TerminalMenuState = {
 };
 
 /**
- * Copy, Paste and Select all, a separator, then Clear and Find, and, for a window that can open a terminal, a separator and New terminal here. Copy says why it is unavailable when nothing is selected (the toolbar's own words), and so
+ * Copy, Paste and Select all, a separator, then Clear and Find, then Open link for a window that can open an address, and, for a window that can open a terminal, a separator and New terminal here. Copy says why it is unavailable when nothing is selected (the toolbar's own words), and so
  * does Paste when the terminal takes no input, and New terminal here when the terminal cannot say where it is. Paste and Select all have no glyph yet: the kit has none for either, and an item with none keeps its label on the same track
  * as the ones that have.
  */
-export function terminalMenu(actions: TerminalMenuActions, { selected, input, here, commands }: TerminalMenuState): readonly MenuItem[] {
+export function terminalMenu(actions: TerminalMenuActions, { selected, input, here, commands, links }: TerminalMenuState): readonly MenuItem[] {
   // No item passes a `shortcut`, the hint the kit draws at the end of a row, though the terminal takes the chords (`keys.ts`). The kit's `MenuPanel` (packages/kit/src/components/Menu/MenuPanel.tsx) names an item with
   // `aria-label={entry.label}` and leaves the drawn shortcut out of that name, so an item that draws one fails Label in Name (WCAG 2.5.3, axe `label-content-name-mismatch`): the terminal's probe measured it, and found that hiding the
   // shortcut from the accessibility tree does not help where not drawing it does. Add the hints back, written with `chordText` as the Find button's tip is, when the kit names an item together with its shortcut.
@@ -68,6 +68,26 @@ export function terminalMenu(actions: TerminalMenuActions, { selected, input, he
     { kind: 'action', id: 'clear', label: 'Clear', icon: 'eraser', onSelect: actions.clear },
     { kind: 'action', id: 'find', label: 'Find', icon: 'search', onSelect: actions.find },
   ];
+  const { openLink } = actions;
+  if (openLink !== undefined) {
+    // VS Code's "Open Detected Link", as the keyboard's way to a link (#696 step 1): the menu opens from the keyboard and the submenu with its arrow. Each item is named by the TARGET (what it opens), never by the text on the screen.
+    const targets = links ?? [];
+    items.push({
+      kind: 'submenu',
+      id: 'open-link',
+      label: 'Open link',
+      disabled: targets.length === 0 ? NO_LINKS : undefined,
+      items: targets.map((target, index) => ({
+        kind: 'action',
+        id: `link-${String(index)}`,
+        label: target,
+        onSelect: () => {
+          openLink(target);
+        },
+      })),
+    });
+  }
+
   if (commands !== undefined && actions.commands !== undefined) {
     const go = actions.commands;
     // Every item says why it is unavailable: with no commands there is nothing to go to or act on; the two that act on the output need some.
