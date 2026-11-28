@@ -9,6 +9,8 @@
 //   panes-layout  a press of Split terminal in the first pane: a second terminal is created, under another id, in the directory the host said the first was in, and the host was asked where the first was (panes.split); the two panes are side by
 //                 side, equal within 1 px, each at least 80 px, and with the sash they fill the deck (panes.equal); the new terminal has the keyboard (panes.focus); each emulator's columns are its pane's, within one column (panes.cols); a third split
 //                 gives three equal panes (panes.three)
+//   panes-order   a split in the middle inserts the new body and moves none that is there: the emulators that were there are the same nodes, still connected, and no node of the deck was removed (panes.keep); the document's order is the screen's,
+//                 body, sash, body, sash, ... from the left, which is the order Tab walks (panes.order)
 //   panes-sash    a drag of the sash moves the line by what the pointer moved, and each emulator's columns follow the share (panes.drag); a drag past either end stops at 80 px (panes.min); a double click shares the room equally (panes.reset);
 //                 the arrow keys move the line by 16 px, Shift by 64, Home to the minimum and Enter equalises (panes.keys); the sash is a Tab stop with a hit area wider than its line (panes.sash)
 //   panes-resize  a window made narrower brings every pane to at least 80 px with nothing overflowing (panes.fit), also when the window changes while the sash is dragged (panes.drag-resize)
@@ -61,6 +63,11 @@ const HELPERS = () => {
     const element = document.querySelector('.xterm-char-measure-element');
     return element === null || (element.textContent ?? '').length === 0 ? 0 : element.getBoundingClientRect().width / element.textContent.length;
   };
+  /** The deck's children that are a body or a sash, in the DOCUMENT's order (what Tab walks), each with where it is on the screen. */
+  panes.walk = () =>
+    [...document.querySelector('[data-shell-part="panelDeck"]').children]
+      .filter((child) => (child.hasAttribute('data-session-id') && !child.hidden) || child.getAttribute('data-shell-part') === 'paneSash')
+      .map((child) => ({ kind: child.getAttribute('data-shell-part') === 'paneSash' ? 'sash' : 'body', x: child.getBoundingClientRect().x }));
   panes.hit = (x, y) => document.elementFromPoint(x, y)?.getAttribute('data-shell-part') ?? null;
   // The WebGL contexts the page asked for (the GPU addon's dispose() does not release its context in 0.19.0 and WebKit allows 16 live ones in a page).
   const gl = (window.__gl = { made: 0 });
@@ -73,7 +80,7 @@ const HELPERS = () => {
 };
 
 export const PANES_PARTS = {
-  panes: ['panes-layout', 'panes-sash', 'panes-resize', 'panes-full', 'panes-gl', 'panes-axe'],
+  panes: ['panes-layout', 'panes-order', 'panes-sash', 'panes-resize', 'panes-full', 'panes-gl', 'panes-axe'],
 };
 
 const near = (a, b, tolerance = 1) => typeof a === 'number' && Math.abs(a - b) <= tolerance;
@@ -109,6 +116,26 @@ export const PANES_CONTROLS = {
     engines: ['chromium'],
     stage: 'split',
     after: (page) => page.locator('[data-shell-part="panelBody"][data-pane] [data-terminal-tool="find"]').first().focus(),
+  },
+  // The sashes come after every body in the document, as the first layout had them.
+  'panes-order-lost': {
+    assertion: 'panes.order',
+    section: 'panes-order',
+    engines: ['chromium'],
+    stage: 'order',
+    after: (page) =>
+      page.evaluate(() => {
+        const deck = document.querySelector('[data-shell-part="panelDeck"]');
+        for (const sash of [...deck.querySelectorAll('[data-shell-part="paneSash"]')]) deck.append(sash);
+      }),
+  },
+  // An emulator that was there is taken out of the document by the split.
+  'panes-remounted': {
+    assertion: 'panes.keep',
+    section: 'panes-order',
+    engines: ['chromium'],
+    stage: 'split',
+    after: (page) => page.evaluate(() => document.querySelector('[data-shell-part="panelDeck"] .xterm').remove()),
   },
   // A pane is given a share that makes it 30 px wide, as a page that did not keep the minimum would.
   'panes-min-lost': {
@@ -358,6 +385,48 @@ export function createPanesSections({ check, note, report, runAxe }) {
       // A photograph for looking at (`SHOTS=<dir>`): the three panes, the keyboard in the last.
       if (process.env.SHOTS !== undefined && process.env.SHOTS !== '') await page.screenshot({ path: `${process.env.SHOTS}/panes-${engine}-${vp}.png` });
       check('panes.three', threeProblems.length === 0, `${tag}: three panes: ${threeProblems.length === 0 ? `${widthsOf(three).map(rounded).join(', ')} px, two sashes, three terminals` : threeProblems.join('; ')}`);
+    } finally {
+      await session.close();
+    }
+  };
+
+  // ------------------------------------------------------------------------------------------------ panes-order
+  sections['panes-order'] = async (ctx) => {
+    const { engine, vp } = ctx;
+    const tag = `${engine} ${vp}`;
+    const session = await open(ctx);
+    const { page, host } = session;
+    try {
+      await split(page, host, 0);
+      await split(page, host, 1);
+      await settled(page, host, session);
+      // The emulators that are there, marked, and every change to the deck's children recorded from here on.
+      await page.evaluate(() => {
+        window.__panes.seen = [...document.querySelectorAll('[data-shell-part="panelDeck"] .xterm')];
+        window.__panes.removed = 0;
+        const watcher = new MutationObserver((records) => {
+          for (const record of records) window.__panes.removed += record.removedNodes.length;
+        });
+        watcher.observe(document.querySelector('[data-shell-part="panelDeck"]'), { childList: true });
+      });
+      // A split in the middle: from the first pane, so the new terminal is the second.
+      const done = await split(page, host, 0);
+      await perturb(ctx, page, 'split');
+      const kept = await page.evaluate(() => ({ all: window.__panes.seen.length, connected: window.__panes.seen.filter((node) => node.isConnected).length, removed: window.__panes.removed, now: document.querySelectorAll('[data-shell-part="panelDeck"] .xterm').length }));
+      const keepProblems = [];
+      if (!done) keepProblems.push('the split in the middle was not made');
+      if (kept.connected !== kept.all) keepProblems.push(`${String(kept.all - kept.connected)} of the ${String(kept.all)} emulators that were there are no longer in the document`);
+      if (kept.removed !== 0) keepProblems.push(`${String(kept.removed)} nodes were taken out of the deck by the split (a move is a removal and an insertion)`);
+      if (kept.now !== kept.all + 1) keepProblems.push(`${String(kept.now)} emulators after the split, not ${String(kept.all + 1)}`);
+      check('panes.keep', keepProblems.length === 0, `${tag}: a split in the middle of three panes: ${keepProblems.length === 0 ? 'the three emulators are the same nodes, still in the document, none removed, and one new one' : keepProblems.join('; ')}`);
+
+      await perturb(ctx, page, 'order');
+      const walk = await page.evaluate(() => window.__panes.walk());
+      const kinds = walk.map((one) => one.kind).join(',');
+      const orderProblems = [];
+      if (kinds !== 'body,sash,body,sash,body,sash,body') orderProblems.push(`the document's order is ${kinds}, not body,sash,body,sash,body,sash,body`);
+      if (walk.some((one, index) => index > 0 && one.x < walk[index - 1].x)) orderProblems.push(`the document's order is not the screen's, left to right (${walk.map((one) => String(Math.round(one.x))).join(', ')})`);
+      check('panes.order', orderProblems.length === 0, `${tag}: four panes after a split in the middle: ${orderProblems.length === 0 ? `the document holds body, sash, body, sash, body, sash, body at x ${walk.map((one) => String(Math.round(one.x))).join(', ')}: Tab walks the screen's order` : orderProblems.join('; ')}`);
     } finally {
       await session.close();
     }

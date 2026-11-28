@@ -631,7 +631,9 @@
       "panes-fit-lost",
       "panes-full-enabled",
       "panes-gl-every-show",
-      "panes-axe"
+      "panes-axe",
+      "panes-order-lost",
+      "panes-remounted"
     ]
   },
   "ui-next/shell/probes/terminal-reattach-b-probe.mjs": {

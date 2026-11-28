@@ -4,6 +4,7 @@ import type { SessionId } from '../core/panel';
 import { usePanel } from './context';
 import { useActiveSession, useActiveTool, useIsShown, useMounted, useOpen, usePaneActive, usePaneId, usePaneIndex, usePaneLayout, usePaneShare, useSession, useToolItem } from './hooks';
 import { PaneRoomProvider } from './panes/room';
+import { deckOrder } from './panes/order';
 import { PaneSash } from './panes/PaneSash';
 import { usePaneDeck } from './panes/usePaneDeck';
 import styles from './Panel.module.css';
@@ -115,15 +116,14 @@ export function PanelBody({ prefix, id }: PanelBodyProps) {
         </div>
       )}
       <PaneRoomProvider value={room}>
-        {mounted.map((sessionId) => (
-          <BodySlot key={sessionId} id={sessionId} prefix={prefix} />
-        ))}
+        {deckOrder(mounted, several ? layout.panes.map((one) => one.session) : []).map((item) =>
+          item.kind === 'body' ? (
+            <BodySlot key={item.session} id={item.session} prefix={prefix} />
+          ) : tool === null || layout === null ? null : (
+            <PaneSash key={`sash-${item.session}`} deck={deck} tool={tool} axis={layout.axis} boundary={item.boundary} sessions={layout.panes.map((one) => one.session)} ratios={layout.ratios} prefix={prefix} />
+          ),
+        )}
       </PaneRoomProvider>
-      {several && tool !== null
-        ? layout.panes.slice(1).map((pane, at) => (
-          <PaneSash key={pane.id} deck={deck} tool={tool} axis={layout.axis} boundary={at} sessions={layout.panes.map((one) => one.session)} ratios={layout.ratios} prefix={prefix} />
-        ))
-        : null}
     </div>
   );
 }

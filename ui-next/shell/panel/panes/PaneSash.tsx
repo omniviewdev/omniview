@@ -29,12 +29,13 @@ const slotOf = (deck: HTMLElement | null, session: SessionId): HTMLElement | nul
  */
 export function PaneSash({ deck, tool, axis, boundary, sessions, ratios, prefix }: PaneSashProps) {
   const { store } = usePanel();
-  // What the controller reads when a gesture starts: the sessions drawn now, kept current by the layout effect below (a ref written during a render is not allowed, and a closure made once would read the first render's).
+  // What the controller reads when a gesture starts or a key is pressed: where this sash is NOW. A sash is the one before a pane, so a split or a close puts it between other panes without making another component; the layout effect below
+  // keeps this current (a ref written during a render is not allowed, and a closure made once would read the first render's).
   const [live] = useState(() => {
-    let current = sessions;
+    let current = { tool, axis, boundary, sessions };
     return {
       get: () => current,
-      set: (next: readonly SessionId[]) => {
+      set: (next: typeof current) => {
         current = next;
       },
     };
@@ -42,20 +43,18 @@ export function PaneSash({ deck, tool, axis, boundary, sessions, ratios, prefix 
   const [sash] = useState(() =>
     createSash({
       store,
-      tool,
-      boundary,
-      axis,
-      geometry: () => (deck.current === null ? null : measure(deck.current, axis, live.get().length)),
-      panes: () => [slotOf(deck.current, live.get()[boundary]), slotOf(deck.current, live.get()[boundary + 1])],
+      place: () => ({ tool: live.get().tool, boundary: live.get().boundary, axis: live.get().axis }),
+      geometry: () => (deck.current === null ? null : measure(deck.current, live.get().axis, live.get().sessions.length)),
+      panes: (at) => [slotOf(deck.current, live.get().sessions[at]), slotOf(deck.current, live.get().sessions[at + 1])],
       marked: () => deck.current?.closest<HTMLElement>('[data-shell-part="window"]') ?? null,
     }),
   );
 
   // The committed shares are drawn: what a drag wrote is given back to the stylesheet in the commit that draws them, so the panes never show the old shares between the two.
   useLayoutEffect(() => {
-    live.set(sessions);
+    live.set({ tool, axis, boundary, sessions });
     sash.release();
-  }, [live, sash, sessions, ratios]);
+  }, [live, sash, tool, axis, boundary, sessions, ratios]);
 
   useEffect(
     () => () => {

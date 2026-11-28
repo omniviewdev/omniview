@@ -39,16 +39,16 @@ export type SashKey = { readonly key: string; readonly shiftKey: boolean; readon
 
 export type SashPointer = { readonly button: number; readonly isPrimary: boolean; readonly pointerId: number; readonly clientX: number; readonly clientY: number; readonly currentTarget: { setPointerCapture?: ((id: number) => void) | undefined } };
 
+/** Where a sash is now: the tool it divides, the pane before it and the axis the panes lie on. It is asked at the start of each gesture and each key, never kept: the same sash (the one before a pane) is between other panes after a split or a close. */
+export type Place = { readonly tool: ToolId; readonly boundary: number; readonly axis: PaneAxis };
+
 export type SashOptions = {
   readonly store: PanelStore;
-  readonly tool: ToolId;
-  /** The pane before the sash. */
-  readonly boundary: number;
-  readonly axis: PaneAxis;
+  readonly place: () => Place;
   /** The deck's measure now: read when a gesture starts and when a key is pressed, never per frame. */
   readonly geometry: () => Geometry | null;
   /** The two bodies beside the sash, in order: the only elements a drag writes to. */
-  readonly panes: () => readonly [HTMLElement | null, HTMLElement | null];
+  readonly panes: (boundary: number) => readonly [HTMLElement | null, HTMLElement | null];
   /** The window's element a drag marks, so that the cursor and the line show wherever the pointer is. Never `<html>`. */
   readonly marked: () => HTMLElement | null;
 };
@@ -67,7 +67,7 @@ export type Sash = {
   readonly dispose: () => void;
 };
 
-type Drag = {
+type Drag = Place & {
   readonly pointerId: number;
   readonly geometry: Geometry;
   readonly ratios: readonly number[];
@@ -79,9 +79,9 @@ type Drag = {
 
 const groupOf = (store: PanelStore, tool: ToolId) => (Object.hasOwn(store.getSnapshot().panes, tool) ? store.getSnapshot().panes[tool] : undefined);
 
-export function createSash({ store, tool, boundary, axis, geometry, panes, marked }: SashOptions): Sash {
+export function createSash({ store, place, geometry, panes, marked }: SashOptions): Sash {
   let drag: Drag | null = null;
-  const coordinate = (event: { readonly clientX: number; readonly clientY: number }): number => (axis === 'row' ? event.clientX : event.clientY);
+  const coordinate = (event: { readonly clientX: number; readonly clientY: number }, axis: PaneAxis): number => (axis === 'row' ? event.clientX : event.clientY);
 
   const write = (session: Drag): void => {
     session.frame = 0;
@@ -90,13 +90,14 @@ export function createSash({ store, tool, boundary, axis, geometry, panes, marke
     }
 
     session.dirty = false;
+    const { boundary } = session;
     const shares = sharesAfter(session.ratios, boundary, positionOf(session.raw, session.geometry, boundary), session.geometry.extent);
     if (session.applied?.[boundary] === shares[boundary]) {
       return;
     }
 
     session.applied = shares;
-    const [before, after] = panes();
+    const [before, after] = panes(boundary);
     if (before !== null && before !== undefined) {
       before.style.flexGrow = String(shares[boundary]);
     }
@@ -106,8 +107,8 @@ export function createSash({ store, tool, boundary, axis, geometry, panes, marke
     }
   };
 
-  const clear = (): void => {
-    for (const element of panes()) {
+  const clear = (boundary: number): void => {
+    for (const element of panes(boundary)) {
       if (element !== null) {
         element.style.flexGrow = '';
       }
@@ -132,25 +133,28 @@ export function createSash({ store, tool, boundary, axis, geometry, panes, marke
     cancelAnimationFrame(session.frame);
     window.removeEventListener('keydown', onEscape, true);
     marked()?.removeAttribute('data-resizing');
+    const { tool, boundary } = session;
     const final = raw ?? session.raw;
     // The window may have changed while the pointer was down: the shares committed are read against the deck as it is when the pointer is released (its start and its length), as the panel splitter reads the window's height again then.
     const now = geometry() ?? session.geometry;
     const answer = commit ? store.moveSash(tool, boundary, positionOf(final, now, boundary), now.extent) : undefined;
     // A commit that changed the shares is drawn by React in a moment, and the deck hands the inline value back then; any other end gives it back here.
     if (answer?.status !== 'done') {
-      clear();
+      clear(boundary);
     }
   }
 
   return {
     pointerDown: (event) => {
       const measured = geometry();
+      const here = place();
+      const { tool, boundary, axis } = here;
       const group = groupOf(store, tool);
       if (drag !== null || event.button !== 0 || !event.isPrimary || measured === null || group === undefined || boundary + 1 >= group.panes.length) {
         return;
       }
 
-      drag = { pointerId: event.pointerId, geometry: measured, ratios: group.ratios, raw: coordinate(event), applied: undefined, dirty: false, frame: 0 };
+      drag = { ...here, pointerId: event.pointerId, geometry: measured, ratios: group.ratios, raw: coordinate(event, axis), applied: undefined, dirty: false, frame: 0 };
       try {
         event.currentTarget.setPointerCapture?.(event.pointerId);
       } catch {
@@ -166,7 +170,7 @@ export function createSash({ store, tool, boundary, axis, geometry, panes, marke
         return;
       }
 
-      session.raw = coordinate(event);
+      session.raw = coordinate(event, session.axis);
       session.dirty = true;
       if (session.frame === 0) {
         session.frame = requestAnimationFrame(() => {
@@ -177,7 +181,7 @@ export function createSash({ store, tool, boundary, axis, geometry, panes, marke
     pointerUp: (event) => {
       const session = drag;
       if (session !== null && event.pointerId === session.pointerId) {
-        end(true, coordinate(event));
+        end(true, coordinate(event, session.axis));
       }
     },
     cancel: () => {
@@ -188,6 +192,7 @@ export function createSash({ store, tool, boundary, axis, geometry, panes, marke
         return;
       }
 
+      const { tool, boundary, axis } = place();
       const group = groupOf(store, tool);
       const measured = geometry();
       if (group === undefined || measured === null || boundary + 1 >= group.panes.length) {
@@ -223,13 +228,13 @@ export function createSash({ store, tool, boundary, axis, geometry, panes, marke
     reset: () => {
       const measured = geometry();
       if (measured !== null) {
-        store.equalisePanes(tool, measured.extent);
+        store.equalisePanes(place().tool, measured.extent);
       }
     },
     dragging: () => drag !== null,
     release: () => {
       if (drag === null) {
-        clear();
+        clear(place().boundary);
       }
     },
     dispose: () => {

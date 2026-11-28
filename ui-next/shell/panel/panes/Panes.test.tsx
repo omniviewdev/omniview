@@ -90,7 +90,7 @@ describe('a tool with one session', () => {
 });
 
 describe('a group of panes', () => {
-  it('draws every body of the group on screen, in the group\'s order whatever order they were mounted in, each with its share', () => {
+  it('draws every body of the group on screen, in the group\'s order in the document and by `order`, each with its share', () => {
     const h = mount([running('zsh')]);
     split(h, 3);
     act(() => {
@@ -99,10 +99,10 @@ describe('a group of panes', () => {
     act(() => {
       h.store.splitPane('terminal', { plugin: 'host', title: 'fish', state: 'running' }, { extent: DECK });
     });
-    // The group is [first, fourth, second, third]; the bodies stay mounted in the order they opened in.
+    // The group is [first, fourth, second, third]; the document has them so (the fourth was inserted, none moved).
     const shown = slots().filter((slot) => !slot.hidden);
     const [s1, s2, s3, s4] = h.store.getSnapshot().order;
-    expect(shown.map((slot) => slot.getAttribute('data-session-id'))).toEqual([s1, s2, s3, s4]);
+    expect(shown.map((slot) => slot.getAttribute('data-session-id'))).toEqual([s1, s4, s2, s3]);
     const byOrder = [...shown].sort((a, b) => Number(a.style.getPropertyValue('--_order')) - Number(b.style.getPropertyValue('--_order'))).map((slot) => slot.getAttribute('data-session-id'));
     expect(byOrder).toEqual([s1, s4, s2, s3]);
     expect(shown.map((slot) => slot.style.getPropertyValue('--_share'))).toEqual(['0.25', '0.25', '0.25', '0.25']);

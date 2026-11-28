@@ -653,7 +653,7 @@ async function words(ctx) {
       laneRole: document.querySelector('[data-shell-part="terminalLane"]')?.getAttribute('role'),
     };
   });
-  check('words.toolbar', toolbar.label === 'Terminal tools' && toolbar.orientation === 'vertical' && JSON.stringify(toolbar.names) === JSON.stringify(['Find', 'Clear', 'Copy selection', 'Rename session']) && toolbar.copyDisabled === 'true' && toolbar.copyReason === 'Select text in the terminal first', `${engine}: the toolbar is ${JSON.stringify(toolbar)}`);
+  check('words.toolbar', toolbar.label === 'Terminal tools' && toolbar.orientation === 'vertical' && JSON.stringify(toolbar.names) === JSON.stringify(['Find', 'Clear', 'Copy selection', 'Rename session', 'Split terminal']) && toolbar.copyDisabled === 'true' && toolbar.copyReason === 'Select text in the terminal first', `${engine}: the toolbar is ${JSON.stringify(toolbar)}`);
   check('words.input', toolbar.input === 'Terminal input, zsh' && /^Escape and Tab go to the shell\. Press F6 to move to the next part of the window/.test(toolbar.hint ?? ''), `${engine}: the input is ${JSON.stringify([toolbar.input, toolbar.hint])}`);
   check('words.running', toolbar.lane === '' && toolbar.laneRole === 'status', `${engine}: the lane of a running session says ${JSON.stringify(toolbar.lane)} (role ${toolbar.laneRole})`);
   // Ended: the process exits with code 0 (the host's typed end); the lane says so, input is off, the transcript keeps its lines and ends with the exit line (`ended.*` has the other ways a process ends).
