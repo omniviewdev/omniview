@@ -81,7 +81,7 @@ run bash-preexec-first-command "$B" 's|\*__bp_precmd_invoke_cmd\*) local __bp_in
 
 # zsh: a trailing `false` in our zlogin changes the status the framework's hook sees at the FIRST prompt (only the whole comparison of
 # the statuses catches it, not the last three).
-run zsh-first-prompt-status "$Z" 's|^  unset __omniview_fd$|  unset __omniview_fd; false|' "$T4"
+run zsh-first-prompt-status "$Z" 's|^  unset __omniview_fd$|  unset __omniview_fd; false|' "$T4" "$T5"
 
 # bash: the first prompt command returns 0, not the status: the framework's hook (starship's $?) sees 0 after `false`. (zsh hands
 # every hook the status of the command whatever a hook before it returns, so there the fault is to read $? late, below.)

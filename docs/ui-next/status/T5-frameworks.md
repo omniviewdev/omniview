@@ -69,8 +69,8 @@ Not controlled, said plainly: a script fault that makes a DUPLICATE record. Inst
 ## Commands run and results
 
 Environment: Go 1.27.4, `GOWORK=off GOTOOLCHAIN=local`; fish through `/tmp/fishdl/run.sh` (user namespace, overlay of `/usr/share`).
-- `go test -race ./backend/pkg/terminal/...` (with fish visible): `ok terminal 264s`, `ok terminal/marks 12.6s` (on the green commit `b448e41ef`; the later commit changes test code layout and `decodePercent`'s named returns only, and the controls run below ran the framework tests on it).
-- `bash docs/ui-next/status/T5-frameworks/mutations.sh.txt` whole, on `f7ae8a9bf` plus the two optional-set edits of this commit: 15 controls, both halves, exit 0.
+- Final runs (after the rebase onto origin/main, see the last section): `go test -race ./backend/pkg/terminal/...` ok under fish 4.0.2 and under fish 3.7.0, both with `OMNIVIEW_TEST_BASHES` = bash 5.2.37 and 5.3.15 (about 270 s each); the controls script whole under each fish, exit 0, 22 controls (the fish-3 one prints NOT RUN under fish 4); lint 0 issues.
+- Earlier rounds ran the controls on `f7ae8a9bf` (15), `defd56414`, `d3036dd7a` and `aeedabf11` (21); shas changed with the rebase.
 - `~/gl215/golangci-lint run --new-from-rev=origin/main ./backend/pkg/terminal/...`: 0 issues (the first run found 4: gochecknoglobals, gocognit, 2 nonamedreturns; fixed).
 - vitest `ui-next/shell/panel/terminal` with the main checkout's `node_modules` linked: 1532 tests pass, 19 test FILES fail to load (workspace packages not resolvable in this worktree: environment, not run to green). The page reads a mark's `cwd` as optional and `directoryOf` treats `''` as no directory (`execFeed.ts:205-212`), and the host only puts a cwd in a command when its trust is `nonce` (`channel_marks.go:129-145`), so a command with no cwd is the existing case.
 
@@ -93,3 +93,8 @@ Environment: Go 1.27.4, `GOWORK=off GOTOOLCHAIN=local`; fish through `/tmp/fishd
 - fish 3.7 (CI image, Ubuntu noble `fish_3.7.0-1`, unpacked into `/tmp/fish37`, same overlay trick): fish 3.7 prints no marks of its own, so our `fish_postexec` prints the end mark; it did `test $__omniview_native = 0; or return` BEFORE reading `$status`, and `test` sets `$status` to 0: every end mark said 0 (`false` = trusted line, exit 0). Fix: `set -l __omniview_last $status` first. fish 4 prints its own D, so it never showed. Red `TestFishGivesTheRightExitCodesOnEveryVersionUnderTest` on 3.7 (`[0 0 0]`), control `fish-status-read-after-test`.
 - fish versions are chosen with `OMNIVIEW_TEST_FISHES` (colon list), named `fish-<version>`, NOT RUN when absent; ONE fish per run (each needs its share directory overlaid): run once per fish with `/tmp/fishdl/run.sh` (4.0.2) and `/tmp/fish37/run.sh` (3.7.0). The own-marks test is NOT RUN on fish < 4 by name; the ESC-directory control reads the raw bytes so it also works on 3.x.
 - Results: `go test -race ./backend/pkg/terminal/...` ok under fish 4.0.2 (273 s) and fish 3.7.0 (272 s), both with `OMNIVIEW_TEST_BASHES` = 5.2.37:5.3.15; lint 0 issues; the controls script whole under fish 3.7 (`OMNIVIEW_TEST_FISHES` = 3.7) exited 1 once on three controls whose optional sets were incomplete; fixed and those three rerun green (not rerun whole after).
+
+## Round 4
+
+- Statuses: compared whole for bash and zsh (a change at the first prompt shows), by the last three for fish only (fish repaints). Control `zsh-first-prompt-status` (a trailing `false` in our zlogin).
+- The controls script resolves the fish from PATH when `OMNIVIEW_TEST_FISHES` is unset and prints its version.
