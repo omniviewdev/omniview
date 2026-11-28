@@ -132,7 +132,8 @@ func NewWindowRealm(onRetire func(string), options ...WindowRealmOption) *Window
 // OnRetire registers fn to run each time the realm retires a window, once for each window: for a native window when Wails fires its
 // close event, for a server-mode page when the sweep finds its events socket gone. fn runs after the source owner is retired, outside the
 // realm's lock, and the window is already refused when it runs. A registry keyed by window drops its entry in fn; it never listens to a window's own close event,
-// which a server-mode window never fires.
+// which a server-mode window never fires. fn may run at the same moment as the other subscribers for the same window and as the subscribers for
+// other windows that retire in the same sweep, so it must not rely on their order; it may take as long as it likes without holding them up.
 func (r *WindowRealm) OnRetire(fn func(WindowIdentity)) {
 	if fn == nil {
 		return
@@ -252,7 +253,10 @@ func (r *WindowRealm) refuse(key WindowIdentity, now time.Time, refusal *limitRe
 }
 
 // announce is the realm's one retirement signal: the source owner first, then every registry that subscribed. It runs outside the lock because
-// retiring an owner closes its streams.
+// retiring an owner closes its streams. The subscribers hear of the window together, each in a goroutine of its own, and announce returns when
+// the last has returned: a registry that waits (a terminal's close ladder waits for shells that ignore SIGHUP) does not hold up the others.
+// The source owner is retired before any of them starts. A subscriber that panics does not stop the others; the panic is raised again here
+// once they are done.
 func (r *WindowRealm) announce(key WindowIdentity, scope *Scope) {
 	if r.onRetire != nil {
 		r.onRetire(scope.Principal().Owner())
@@ -260,8 +264,41 @@ func (r *WindowRealm) announce(key WindowIdentity, scope *Scope) {
 	r.mu.Lock()
 	subscribers := slices.Clone(r.subscribers)
 	r.mu.Unlock()
-	for _, fn := range subscribers {
-		fn(key)
+	concurrently(len(subscribers), func(i int) { subscribers[i](key) })
+}
+
+// concurrently runs fn(0) to fn(n-1) each in its own goroutine, and returns when all have returned, so that none outlives the call. The number
+// is bounded by the realm: at most maxRealmWindows windows are live to retire, and a service subscribes once. One call runs in the caller's own
+// goroutine. A panic in a call is kept, the other calls run to their end, and the first panic is raised again in the caller.
+func concurrently(n int, fn func(int)) {
+	if n == 1 {
+		fn(0)
+		return
+	}
+	var (
+		group   sync.WaitGroup
+		mu      sync.Mutex
+		failure any
+	)
+	for i := range n {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					mu.Lock()
+					if failure == nil {
+						failure = recovered
+					}
+					mu.Unlock()
+				}
+			}()
+			fn(i)
+		}()
+	}
+	group.Wait()
+	if failure != nil {
+		panic(failure)
 	}
 }
 
@@ -270,7 +307,7 @@ type retiredWindow struct {
 	scope *Scope
 }
 
-// sweep retires the scope of every server-mode page that is gone and keeps the timer running while the realm holds a page. It is the timer's function.
+// sweep retires the scope of every server-mode page that is gone, all together, and keeps the timer running while the realm holds a page. It is the timer's function.
 func (r *WindowRealm) sweep() {
 	var gone []retiredWindow
 	r.mu.Lock()
@@ -298,9 +335,8 @@ func (r *WindowRealm) sweep() {
 		r.sweeper = nil
 	}
 	r.mu.Unlock()
-	for _, window := range gone {
-		r.announce(window.key, window.scope)
-	}
+	// Every window of the sweep is retired at once: N windows whose shells ignore SIGHUP are gone in one close ladder, not N.
+	concurrently(len(gone), func(i int) { r.announce(gone[i].key, gone[i].scope) })
 }
 
 // refusalKey carries, in the context of a window refused for lack of a slot, the error the boundary answers with.
