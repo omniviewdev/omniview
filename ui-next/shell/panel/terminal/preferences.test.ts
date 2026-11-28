@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { HostSnapshot } from '../../settings/model/types';
-import { DEFAULT_PREFERENCES, canonicalFontFamily, createTerminalPreferences, preferencesOf, sanitiseFontFamily, type PreferencesSourceOptions } from './preferences';
+import type { HostSnapshot, SettingsClient, SettingsScope } from '../../settings/model/types';
+import { DEFAULT_PREFERENCES, appTerminalPreferences, canonicalFontFamily, createTerminalPreferences, preferencesOf, sanitiseFontFamily, type PreferencesSourceOptions } from './preferences';
 
 // The terminal's settings as the page reads them (#697 step 1). The host declares and validates them (`internal/settings/terminal.go`); the page reads what the host's snapshot says as a value inside the
 // producer's bounds, whatever it was sent, and keeps it for as long as something listens: a change is one event and one question of the host, and the same object comes back when nothing the terminal reads moved.
@@ -344,7 +344,7 @@ describe('the store the screens read', () => {
 
 // The app's store loads the settings client as a lazy chunk when the first question comes. A chunk that cannot load is a warning of the page, and never an unhandled rejection that leaves the host's events unregistered.
 describe('the app\'s store when the settings chunk cannot load', () => {
-  it('warns for each registration it could not make (the change event and the reconnect) and raises nothing unhandled', async () => {
+  it('warns for a registration it could not make and raises nothing unhandled', async () => {
     vi.resetModules();
     let loads = 0;
     vi.doMock('../../settings/runtime', () => {
@@ -360,7 +360,7 @@ describe('the app\'s store when the settings chunk cannot load', () => {
         setTimeout(resolve, 0);
       });
       const listening = warn.mock.calls.filter(([message]) => String(message).includes('could not be listened to'));
-      expect(listening.length).toBeGreaterThanOrEqual(2);
+      expect(listening.length).toBeGreaterThanOrEqual(1);
       expect(loads).toBeGreaterThanOrEqual(1);
       stop();
     } finally {
@@ -368,5 +368,83 @@ describe('the app\'s store when the settings chunk cannot load', () => {
       vi.doUnmock('../../settings/runtime');
       vi.resetModules();
     }
+  });
+});
+
+describe('the app\'s store when the settings client cannot be loaded at first', () => {
+  const host = (): { client: SettingsClient; emit: (scope: SettingsScope) => void; values: Record<string, unknown>; listeners: () => number } => {
+    const heard = new Set<(scope: SettingsScope) => void>();
+    const values: Record<string, unknown> = {};
+    const client = {
+      snapshot: async () => Promise.resolve(snapshotOf(values)),
+      onChanged: (listener: (scope: SettingsScope) => void) => {
+        heard.add(listener);
+        return () => {
+          heard.delete(listener);
+        };
+      },
+      onReconnect: () => () => undefined,
+    } as unknown as SettingsClient;
+
+    return {
+      client,
+      emit: (scope) => {
+        heard.forEach((listener) => {
+          listener(scope);
+        });
+      },
+      values,
+      listeners: () => heard.size,
+    };
+  };
+
+  const quiet = () => vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+  it('registers with the host once the client loads, while a terminal is open: it gets the snapshot, and the changes after it, without every terminal closing', async () => {
+    const warn = quiet();
+    try {
+      const { client, emit, values, listeners } = host();
+      let attempts = 0;
+      const store = appTerminalPreferences(async () => {
+        attempts += 1;
+        if (attempts === 1) {
+          throw new Error('chunk lost');
+        }
+
+        return Promise.resolve(client);
+      });
+      const heard = vi.fn();
+      store.subscribe(heard);
+      await store.settled();
+      expect(listeners()).toBe(0);
+      expect(store.getSnapshot()).toEqual(DEFAULT_PREFERENCES);
+
+      // A second terminal asks for the settings while the first is open: the chunk loads now, the registration is made and the snapshot comes.
+      values.scrollback = 20_000;
+      await store.settled();
+      expect(listeners()).toBe(1);
+      expect(store.getSnapshot().scrollback).toBe(20_000);
+      expect(heard).toHaveBeenCalled();
+
+      values.scrollback = 30_000;
+      emit({ kind: 'host' });
+      await store.settled();
+      expect(store.getSnapshot().scrollback).toBe(30_000);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('registers once, whatever the number of questions, and not for a plugin\'s scope', async () => {
+    const { client, emit, values, listeners } = host();
+    const store = appTerminalPreferences(async () => Promise.resolve(client));
+    store.subscribe(vi.fn());
+    await store.settled();
+    await store.settled();
+    expect(listeners()).toBe(1);
+    values.fontSize = 30;
+    emit({ kind: 'plugin', pluginId: 'p' });
+    await store.settled();
+    expect(store.getSnapshot().fontSize).toBe(12);
   });
 });

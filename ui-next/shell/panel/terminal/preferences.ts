@@ -150,6 +150,8 @@ export type PreferencesSourceOptions = {
   /** Listens for a change of the HOST's settings (a plugin's are not the terminal's). Answers the function that stops it. */
   readonly onChanged: (listener: () => void) => () => void;
   readonly onReconnect?: SettingsClient['onReconnect'];
+  /** False while the host's events could not be registered for a listener that is waiting for them: `settled()` then asks again, which is how the registration is tried again. Default: always true. */
+  readonly healthy?: () => boolean;
   /** Where the page says what it could not do. Default: the console. */
   readonly warn?: ((message: string, error?: unknown) => void) | undefined;
 };
@@ -229,7 +231,7 @@ export function createTerminalPreferences(client: PreferencesSourceOptions): Pre
     settled: async () => {
       // With someone listening the snapshot is kept current by the host's events and the question of the first listener has been answered or is on its way. With nobody listening (the last terminal was closed) what is held may be stale,
       // because the host replays nothing: the next terminal asks again and waits for the answer.
-      if (listeners.size === 0) {
+      if (listeners.size === 0 || client.healthy?.() === false) {
         void ask();
       }
 
@@ -253,12 +255,12 @@ export function createTerminalPreferences(client: PreferencesSourceOptions): Pre
   };
 }
 
-/** The store of the app: the host's settings service, loaded with the first ask (the settings client is a lazy chunk, the sheet's). */
-export function appTerminalPreferences(): PreferencesSource {
-  // The settings client is the sheet's lazy chunk: the page that has no terminal never loads it, so it is imported with the first question and not before.
+/** The store of the app: the host's settings service, loaded with the first ask (the settings client is a lazy chunk, the sheet's). `load` is where the client comes from: the lazy chunk by default, a test gives its own. */
+export function appTerminalPreferences(load: () => Promise<SettingsClient> = async () => import('../../settings/runtime').then(({ runtimeClient }) => runtimeClient())): PreferencesSource {
+  // The settings client is the sheet's lazy chunk: the page that has no terminal never loads it, so it is loaded with the first question and not before.
   let held: Promise<SettingsClient> | undefined;
   const client = async (): Promise<SettingsClient> => {
-    held ??= import('../../settings/runtime').then(({ runtimeClient }) => runtimeClient());
+    held ??= load();
     try {
       return await held;
     } catch (error) {
@@ -268,43 +270,62 @@ export function appTerminalPreferences(): PreferencesSource {
     }
   };
 
-  const failed = (error: unknown): void => {
-    warnOnConsole('[terminal] the terminal settings could not be listened to', error);
+  /** The host's events for the listener the store has (`wanted`): registered once the client is there, and again by the next question when it could not be. */
+  let wanted: (() => void) | undefined;
+  let stops: Array<(() => void) | undefined> = [];
+  let registering = false;
+  const registered = (): boolean => stops.length > 0;
+
+  const register = async (): Promise<void> => {
+    const want = wanted;
+    if (want === undefined || registered() || registering) {
+      return;
+    }
+
+    registering = true;
+    try {
+      const settings = await client();
+      // Gone, or registered by another turn, while the client loaded.
+      if (wanted === want && !registered()) {
+        stops = [
+          settings.onChanged((scope) => {
+            if (scope.kind === 'host') {
+              want();
+            }
+          }),
+          settings.onReconnect?.(want),
+        ];
+        // The host replays nothing: what changed before the registration is asked for now.
+        want();
+      }
+    } catch (error) {
+      warnOnConsole('[terminal] the terminal settings could not be listened to', error);
+    } finally {
+      registering = false;
+    }
   };
 
   return createTerminalPreferences({
-    snapshot: async () => (await client()).snapshot(HOST_SCOPE),
+    snapshot: async () => {
+      const settings = await client();
+      // A question is the way back from a registration that failed: the client is there now.
+      void register();
+      return settings.snapshot(HOST_SCOPE);
+    },
     onChanged: (listener) => {
-      let stop: (() => void) | undefined;
-      let left = false;
-      void client().then((settings) => {
-        if (!left) {
-          stop = settings.onChanged((scope) => {
-            if (scope.kind === 'host') {
-              listener();
-            }
-          });
-          // The host does not replay a change made before this listener was registered: ask again now that it is.
-          listener();
-        }
-      }, failed);
+      wanted = listener;
+      void register();
       return () => {
-        left = true;
-        stop?.();
+        wanted = undefined;
+        for (const stop of stops) {
+          stop?.();
+        }
+
+        stops = [];
       };
     },
-    onReconnect: (listener) => {
-      let stop: (() => void) | undefined;
-      let left = false;
-      void client().then((settings) => {
-        if (!left) {
-          stop = settings.onReconnect?.(listener);
-        }
-      }, failed);
-      return () => {
-        left = true;
-        stop?.();
-      };
-    },
+    // The reconnect is registered with the change event, for the same listener.
+    onReconnect: () => () => undefined,
+    healthy: () => wanted === undefined || registered(),
   });
 }

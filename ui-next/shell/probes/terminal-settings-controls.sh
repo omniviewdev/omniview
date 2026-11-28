@@ -101,13 +101,14 @@ control "page cursor not applied" $terminal/xtermEngine.ts '/terminal.options.cu
 control "page reads the legacy blink" $terminal/preferences.ts "s/read('blinkingCursor')/read('cursorBlink')/" vt $terminal/preferences.test.ts
 control "page bound not held" $terminal/preferences.ts 's/fontSize: { min: 6, max: 72 }/fontSize: { min: 6, max: 7200 }/' vt $terminal/preferences.test.ts
 control "page font names not cleaned" $terminal/preferences.ts 's/ || !\/.*\.test(bare)//' vt $terminal/preferences.test.ts
-control "page next terminal reads stale settings" $terminal/preferences.ts 's/^      if (listeners.size === 0) {$/      if (false) {/' vt $terminal/preferences.test.ts
+control "page next terminal reads stale settings" $terminal/preferences.ts 's/^      if (listeners.size === 0 || client.healthy?.() === false) {$/      if (false) {/' vt $terminal/preferences.test.ts
 control "page font names not quoted" $terminal/preferences.ts 's/: `"${bare}"`);/: bare);/' vt $terminal/preferences.test.ts
 control "page keywords accepted" $terminal/preferences.ts "s/ || RESERVED_WORDS.includes(bare.toLowerCase())//" vt $terminal/preferences.test.ts
 control "go keyword accepted" internal/settings/terminal.go 's/slices.Contains(reservedFontWords, strings.ToLower/slices.Contains(reservedFontWords[:0], strings.ToLower/' go test ./internal/settings/ -run TestTheTerminal
 control "page settled releases early" $terminal/preferences.ts 's/while (inflight !== undefined) {/if (inflight !== undefined) {/' vt $terminal/preferences.test.ts
 control "page canonical form re-limited" $terminal/appearance.ts 's/canonicalFontFamily, type/sanitiseFontFamily, type/;s/canonicalFontFamily(preferences/sanitiseFontFamily(preferences/' vt $terminal/appearance.test.ts
-control "page listen failure unhandled" $terminal/preferences.ts 's/}, failed);/});/' vt $terminal/preferences.test.ts
+control "page listen failure unhandled" $terminal/preferences.ts "s/warnOnConsole('\\[terminal\\] the terminal settings could not be listened to', error);/throw error;/" vt $terminal/preferences.test.ts
+control "page registration never retried" $terminal/preferences.ts 's/healthy: () => wanted === undefined || registered(),/healthy: () => true,/' vt $terminal/preferences.test.ts
 control "page font reread not waited" $terminal/screen.ts 's/round < 3; round += 1/round < 1; round += 1/' vt $terminal/screen.test.ts -t "the person's settings"
 control "go bound not enforced" internal/settings/terminal.go 's/number > float64(maximum)/false/' go test ./internal/settings/ -run TestTheTerminal
 control "go font family takes a semicolon" internal/settings/terminal.go "s/r != '_' {/r != '_' \&\& r != ';' {/" go test ./internal/settings/ -run TestTheTerminal
