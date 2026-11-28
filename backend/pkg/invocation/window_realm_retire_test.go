@@ -103,6 +103,11 @@ func TestSixPagesAreRetiredInTheTimeOfOneLadder(t *testing.T) {
 
 			seen := gate.awaitEntered(t, pages, "all "+stage+" retirements must begin before any grace passes")
 			require.Len(t, seen, pages, "every page retired exactly once")
+			select {
+			case <-done:
+				t.Fatal("the sweep returned while retirements still held their grace: it does not wait for them")
+			default:
+			}
 			gate.pass()
 			awaitClosed(t, done, "the sweep")
 		})
