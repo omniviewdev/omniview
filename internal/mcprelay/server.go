@@ -110,10 +110,12 @@ type Relay struct {
 	registered            map[string]bool
 	published             map[string]ToolInfo
 	listener              net.Listener
-	unlisten              func() // removes the listener's address from the host's own servers (ownservers)
-	httpServer            *http.Server
-	listenErr             string
-	listenAddr            string // tests set "127.0.0.1:0"; empty means the configured port
+	// drain stops a detached HTTP server; a field so that a test can look at the relay while it drains.
+	drain      func(context.Context, *http.Server, func()) error
+	unlisten   func() // removes the listener's address from the host's own servers (ownservers)
+	httpServer *http.Server
+	listenErr  string
+	listenAddr string // tests set "127.0.0.1:0"; empty means the configured port
 
 	confirmMu sync.Mutex
 	pending   map[string]*pendingEntry
@@ -128,6 +130,7 @@ func New(o Options) *Relay {
 		tools:       o.Tools,
 		connections: o.Connections,
 		registered:  map[string]bool{},
+		drain:       drainHTTPServer,
 		pending:     map[string]*pendingEntry{},
 	}
 	r.authority = o.Authority
@@ -356,7 +359,7 @@ func (r *Relay) stopListenerOwned() {
 	if unlisten != nil {
 		defer unlisten() // the address is an own server until the server has stopped answering
 	}
-	if err := drainHTTPServer(ctx, server, func() {
+	if err := r.drain(ctx, server, func() {
 		var sessions sync.WaitGroup
 		for session := range r.server.Sessions() {
 			sessions.Add(1)

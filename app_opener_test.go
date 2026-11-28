@@ -86,3 +86,24 @@ func TestTheWiringOfTheSourcesNamesTheViteServersAndTheDiagnostics(t *testing.T)
 	}
 	assert.Equal(t, []string{"127.0.0.1:45001", "127.0.0.1:45003"}, sources())
 }
+
+// Wails' own MCP server, compiled in with -tags mcp, listens where WAILS_MCP_HOST and WAILS_MCP_PORT say (9099 by default).
+func TestWailsMCPServerIsAnOwnServerInTheBuildsThatHaveIt(t *testing.T) {
+	t.Setenv("WAILS_MCP_HOST", "")
+	t.Setenv("WAILS_MCP_PORT", "")
+	address, ok := wailsMCPAddress()
+	assert.True(t, ok)
+	assert.Equal(t, "127.0.0.1:9099", address)
+	t.Setenv("WAILS_MCP_PORT", "9100")
+	address, _ = wailsMCPAddress()
+	assert.Equal(t, "127.0.0.1:9100", address)
+	t.Setenv("WAILS_MCP_PORT", "0")
+	_, ok = wailsMCPAddress()
+	assert.False(t, ok, "a free port is not known")
+	t.Setenv("WAILS_MCP_PORT", "")
+	if mcpBuild {
+		assert.Contains(t, hostServers(), "127.0.0.1:9099")
+		return
+	}
+	assert.NotContains(t, hostServers(), "127.0.0.1:9099", "the native build has no such server")
+}

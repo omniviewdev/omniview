@@ -39,11 +39,13 @@ type PluginReloader interface {
 // DevServerManager manages dev server instances for plugins in development mode.
 // It is exposed as a Wails binding. All public methods are callable from the frontend.
 type DevServerManager struct {
-	app                       *application.App
-	ctx                       context.Context
-	logger                    logging.Logger
-	mu                        sync.RWMutex
-	instances                 map[string]*DevServerInstance // pluginID -> instance
+	app       *application.App
+	ctx       context.Context
+	logger    logging.Logger
+	mu        sync.RWMutex
+	instances map[string]*DevServerInstance // pluginID -> instance
+	// stop stops an instance (inst.Stop): a field so that a test can look at the manager while a stop is in progress.
+	stop                      func(*DevServerInstance) error
 	stopping                  map[string]*DevServerInstance // pluginID -> an instance that StopDevServer is stopping: not in instances, its servers may still answer
 	ports                     *PortAllocator
 	pluginRef                 PluginRef
@@ -76,6 +78,7 @@ func NewDevServerManager(
 		mu:               sync.RWMutex{},
 		instances:        make(map[string]*DevServerInstance),
 		stopping:         make(map[string]*DevServerInstance),
+		stop:             (*DevServerInstance).Stop,
 		ports:            NewPortAllocator(stateRoot),
 		pluginRef:        pluginRef,
 		pluginReloader:   pluginReloader,
@@ -350,7 +353,7 @@ func (m *DevServerManager) StopDevServer(pluginID string) error {
 	m.stopping[pluginID] = inst // its servers may answer until Stop returns
 	m.mu.Unlock()
 
-	if err := inst.Stop(); err != nil {
+	if err := m.stop(inst); err != nil {
 		m.mu.Lock()
 		m.instances[pluginID] = inst
 		delete(m.stopping, pluginID)

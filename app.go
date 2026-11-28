@@ -175,6 +175,9 @@ func hostServers(sources ...func() []string) []string {
 	if serverBuild {
 		out = append(out, wailsServerAddress()) // Wails listens there in the server build only
 	}
+	if address, ok := wailsMCPAddress(); ok && mcpBuild {
+		out = append(out, address)
+	}
 	for _, source := range sources {
 		out = append(out, source()...)
 	}
@@ -186,3 +189,24 @@ func hostServers(sources ...func() []string) []string {
 func ownServerSources(diagnostics func() string, vite func() []string) func() []string {
 	return func() []string { return append([]string{diagnostics()}, vite()...) }
 }
+
+// wailsMCPAddress is where Wails' own MCP server listens in the -tags mcp development builds (pkg/application/mcp_enabled.go): WAILS_MCP_HOST over 127.0.0.1 and
+// WAILS_MCP_PORT over 9099. It is not known for port 0 (the system picks one), and the server is behind a bearer token as well.
+func wailsMCPAddress() (string, bool) {
+	host := os.Getenv("WAILS_MCP_HOST")
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	port := wailsMCPDefaultPort
+	if text := os.Getenv("WAILS_MCP_PORT"); text != "" {
+		parsed, err := strconv.Atoi(text)
+		if err != nil || parsed <= 0 || parsed > maxServerPort {
+			return "", false
+		}
+		port = parsed
+	}
+	return net.JoinHostPort(host, strconv.Itoa(port)), true
+}
+
+// wailsMCPDefaultPort is the port of Wails' MCP server unless WAILS_MCP_PORT says another.
+const wailsMCPDefaultPort = 9099

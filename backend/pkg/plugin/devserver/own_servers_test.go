@@ -2,9 +2,11 @@ package devserver
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	logging "github.com/omniviewdev/plugin-sdk/log"
 )
@@ -39,4 +41,40 @@ func TestTheViteAddressOfAnInstanceThatIsBeingStoppedIsStillListed(t *testing.T)
 	delete(manager.stopping, "stopping")
 	manager.mu.Unlock()
 	assert.Empty(t, manager.ListenAddresses())
+}
+
+func stoppingInstance(manager *DevServerManager, id string, port int) *DevServerInstance {
+	inst := NewDevServerInstance(context.Background(), logging.NewNop(), id, "", port, BuildOpts{},
+		&mockPluginReloader{}, manager.pluginsRoot, func(string, DevServerState) {},
+		func(string, []LogEntry) {}, func(string, []BuildError) {})
+	manager.mu.Lock()
+	manager.instances[id] = inst
+	manager.mu.Unlock()
+	return inst
+}
+
+// While StopDevServer stops an instance its Vite server may still answer: the address is listed during the stop, and after a stop that succeeded it is gone.
+func TestTheViteAddressIsListedWhileTheStopRunsAndGoneAfterItSucceeded(t *testing.T) {
+	manager := newTestManager(t)
+	stoppingInstance(manager, "stops", 45175)
+	var during []string
+	manager.stop = func(*DevServerInstance) error {
+		during = manager.ListenAddresses()
+		return nil
+	}
+	require.NoError(t, manager.StopDevServer("stops"))
+	assert.Equal(t, []string{"127.0.0.1:45175"}, during, "listed once, while the stop runs")
+	assert.Empty(t, manager.ListenAddresses(), "gone after a stop that succeeded")
+}
+
+// After a stop that failed the instance is back and its server may be up: the address is listed once, and the stop leaves nothing behind.
+func TestTheViteAddressIsListedOnceAfterAStopThatFailed(t *testing.T) {
+	manager := newTestManager(t)
+	stoppingInstance(manager, "fails", 45176)
+	manager.stop = func(*DevServerInstance) error { return errors.New("the process would not stop") }
+	require.Error(t, manager.StopDevServer("fails"))
+	assert.Equal(t, []string{"127.0.0.1:45176"}, manager.ListenAddresses())
+	manager.mu.RLock()
+	defer manager.mu.RUnlock()
+	assert.Empty(t, manager.stopping)
 }
