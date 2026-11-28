@@ -53,13 +53,13 @@ func parse(text string) (target, Reason) {
 			s = s[1:]
 		}
 	} else if s != "" && strings.IndexByte("([<", s[0]) >= 0 {
-		s = s[1:]
+		s = strings.TrimRight(s[1:], ".,;:")
 		if strings.IndexByte(s, '(') < 0 {
 			s = strings.TrimRight(s, ")]>")
 		}
 	}
 	out := noTarget
-	if tail != "" {
+	if strings.Trim(tail, ".,; ") != "" {
 		out.path = s
 		out.line, out.col = position(tail)
 	} else {

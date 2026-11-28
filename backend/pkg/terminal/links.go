@@ -22,15 +22,15 @@ func (m *Manager) ChannelResolveLink(presented, rowDirectory, text string) (Link
 	if err != nil {
 		return LinkResolution{}, err
 	}
-	out := s.resolveLink(m.links, rowDirectory, text)
+	out := s.resolveLink(m.links, m.linkSlots, rowDirectory, text)
 	if s.ending.Load() {
 		return LinkResolution{}, ChannelNotFound()
 	}
 	return out, nil
 }
 
-func (s *session) resolveLink(links *linkresolve.Resolver, rowDirectory, text string) LinkResolution {
-	dir, reason := s.linkDirectory(rowDirectory)
+func (s *session) resolveLink(links *linkresolve.Resolver, slots chan struct{}, rowDirectory, text string) LinkResolution {
+	dir, reason := s.linkDirectory(slots, rowDirectory)
 	if dir == "" {
 		return UnknownLink(reason)
 	}
@@ -43,8 +43,11 @@ func (s *session) resolveLink(links *linkresolve.Resolver, rowDirectory, text st
 }
 
 // linkDirectory is the directory to resolve in: the row's when it is vouched for, else the shell's own.
-func (s *session) linkDirectory(rowDirectory string) (string, LinkReason) {
-	current, why := s.directory()
+func (s *session) linkDirectory(slots chan struct{}, rowDirectory string) (string, LinkReason) {
+	current, why, answered := askDirectory(slots, linkDirectoryBudget, s.directory)
+	if !answered {
+		return "", LinkTimeout
+	}
 	if rowDirectory == "" {
 		if current == "" {
 			if why == ReasonRemote {
@@ -82,10 +85,37 @@ func vouches(record Commands, current, dir string) bool {
 	return false
 }
 
+const (
+	// linkDirectoryBudget and linkDirectorySlots bound the question of where the shell is, as the resolver bounds its own work.
+	linkDirectoryBudget = 400 * time.Millisecond
+	linkDirectorySlots  = 16
+)
+
 // askDirectory asks where the shell is, bounded like the resolver's own work: the question stats the shell's directory, which may sit on a stalled
-// mount, so it runs in a goroutine that holds one of the slots until it returns, and a call that finds none free, or waits past the budget, is told
-// it timed out.
-func askDirectory(_ chan struct{}, _ time.Duration, ask func() (string, UnknownReason)) (string, UnknownReason, bool) {
-	path, reason := ask()
-	return path, reason, true
+// mount, so it runs in a goroutine that holds one of the slots until it returns, and a call that finds none free, or waits past the budget, is not
+// answered (the last result is false).
+func askDirectory(slots chan struct{}, budget time.Duration, ask func() (string, UnknownReason)) (string, UnknownReason, bool) {
+	select {
+	case slots <- struct{}{}:
+	default:
+		return "", "", false
+	}
+	type answer struct {
+		path   string
+		reason UnknownReason
+	}
+	done := make(chan answer, 1)
+	go func() {
+		path, reason := ask()
+		<-slots
+		done <- answer{path, reason}
+	}()
+	timer := time.NewTimer(budget)
+	defer timer.Stop()
+	select {
+	case got := <-done:
+		return got.path, got.reason, true
+	case <-timer.C:
+		return "", "", false
+	}
 }

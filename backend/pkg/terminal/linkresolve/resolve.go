@@ -24,8 +24,6 @@ const (
 	defaultCacheSize   = 256
 	// maxLinks is how many links one path may run through before it is a loop (Linux allows 40).
 	maxLinks = 40
-	// scanBatch is the most entries one directory read of the scan asks for.
-	scanBatch = 512
 )
 
 // Resolver resolves links. It is safe for concurrent use.
@@ -113,8 +111,8 @@ func (r *Resolver) Resolve(in Input) Result {
 	c := newCall(ctx, r)
 
 	key := in.Dir + "\x00" + strings.Join(in.Roots, "\x00") + "\x00" + in.Text
-	if cached, ok := r.cache.get(key); ok {
-		switch c.reuse(in, cached) {
+	if cached, lex, ok := r.cache.get(key); ok {
+		switch c.reuse(in, cached, lex) {
 		case stillThere:
 			return cached
 		case timedOut:
@@ -129,7 +127,7 @@ func (r *Resolver) Resolve(in Input) Result {
 
 	out := c.resolve(in, t)
 	if out.Kind != KindUnknown {
-		r.cache.put(key, out)
+		r.cache.put(key, out, c.lex)
 	}
 	return out
 }
@@ -153,10 +151,12 @@ type call struct {
 	stuck   bool
 	// allowed are the spellings of the directories a path may lie in: the real paths and the ones the shell and the host gave.
 	allowed []string
+	// lex is the candidate path that gave the last answer, as it was walked: what a cache hit walks again.
+	lex string
 }
 
 func newCall(ctx context.Context, r *Resolver) *call {
-	return &call{r: r, ctx: ctx, ops: 0, lstats: map[string]lstatMemo{}, links: map[string]string{}, scanned: 0, stuck: false, allowed: nil}
+	return &call{r: r, ctx: ctx, ops: 0, lstats: map[string]lstatMemo{}, links: map[string]string{}, scanned: 0, stuck: false, allowed: nil, lex: ""}
 }
 
 type lstatMemo struct {
@@ -280,6 +280,11 @@ func (c *call) real(p string, allowed []string) (string, fs.FileInfo, Reason) {
 		switch name {
 		case "", ".":
 			continue
+		case mustBeDir:
+			if reason := c.requireDir(resolved, info); reason != "" {
+				return "", nil, reason
+			}
+			continue
 		case "..":
 			resolved, info = path.Dir(resolved), nil
 			continue
@@ -296,14 +301,14 @@ func (c *call) real(p string, allowed []string) (string, fs.FileInfo, Reason) {
 		if links++; links > maxLinks {
 			return "", nil, ReasonLoop
 		}
-		target, reason := c.readlink(next)
+		parts, reason := c.linkParts(next)
 		if reason != "" {
 			return "", nil, reason
 		}
-		if strings.HasPrefix(target, "/") {
+		if parts[0] == "" {
 			resolved = "/"
 		}
-		queue = append(strings.Split(target, "/"), queue...)
+		queue = append(parts, queue...)
 	}
 	if info == nil {
 		var reason Reason
@@ -312,6 +317,37 @@ func (c *call) real(p string, allowed []string) (string, fs.FileInfo, Reason) {
 		}
 	}
 	return resolved, info, ""
+}
+
+// linkParts reads a link and splits its target into components, the trailing slash of the target made the mustBeDir mark. A target that is
+// absolute starts with an empty component.
+func (c *call) linkParts(link string) ([]string, Reason) {
+	target, reason := c.readlink(link)
+	if reason != "" {
+		return nil, reason
+	}
+	parts := strings.Split(target, "/")
+	if len(parts) > 1 && parts[len(parts)-1] == "" {
+		parts[len(parts)-1] = mustBeDir // a target with a trailing slash names a directory only
+	}
+	return parts, ""
+}
+
+// mustBeDir stands in the queue of a walk for the trailing slash of a link's target. No name has a NUL.
+const mustBeDir = "\x00dir"
+
+// requireDir is whether the walk stands in a directory (info is what lstat said of it, nil when a `..` just moved it).
+func (c *call) requireDir(resolved string, info fs.FileInfo) Reason {
+	if info == nil {
+		var reason Reason
+		if info, reason = c.lstat(resolved); reason != "" {
+			return reason
+		}
+	}
+	if !info.IsDir() {
+		return ReasonNotFound
+	}
+	return ""
 }
 
 // look is lstat for a path that is neither denied nor outside.
@@ -466,8 +502,10 @@ func (c *call) attempt(lex string, bases []string) Result {
 	case !within(resolved, bases):
 		return unknown(ReasonOutside)
 	case info.Mode().IsRegular():
+		c.lex = lex
 		return hit(KindFile, resolved)
 	case info.IsDir():
+		c.lex = lex
 		return hit(KindDir, resolved)
 	}
 	return unknown(ReasonSpecial)
@@ -497,6 +535,7 @@ type level struct {
 // reading at most scanEntries entries to scanDepth directories deep.
 func (c *call) scan(bases []string, name string) Result {
 	st := &scanState{suffix: "/" + name, match: ""}
+	unread := false
 	for _, base := range bases {
 		queue := []level{{dir: base, depth: 0}}
 		for len(queue) > 0 && c.r.scanEntries-c.scanned > 0 {
@@ -508,8 +547,13 @@ func (c *call) scan(bases []string, name string) Result {
 			}
 			queue = append(queue, next...)
 		}
+		unread = unread || len(queue) > 0
 	}
-	if st.match == "" {
+	switch {
+	case unread && st.match != "":
+		// the budget ended with directories unread: the one match seen may have a twin there, and a wrong file is worse than none
+		return unknown(ReasonAmbiguous)
+	case st.match == "":
 		return unknown(ReasonNotFound)
 	}
 	return c.attempt(st.match, bases)
@@ -517,7 +561,7 @@ func (c *call) scan(bases []string, name string) Result {
 
 // scanDir reads one directory of the scan: it notes a match, and answers the directories to read next. The reason is set when the scan ends.
 func (c *call) scanDir(st *scanState, at level) ([]level, Reason) {
-	n := min(c.r.scanEntries-c.scanned, scanBatch)
+	n := c.r.scanEntries - c.scanned
 	got := guarded(c, func() ([]fs.DirEntry, error) { return c.r.fs.ReadDir(at.dir, n) })
 	if !got.done {
 		return nil, ReasonTimeout
@@ -532,7 +576,7 @@ func (c *call) scanDir(st *scanState, at level) ([]level, Reason) {
 	for _, e := range entries {
 		full := path.Join(at.dir, e.Name())
 		typ := e.Type()
-		if (typ.IsRegular() || typ.IsDir()) && strings.HasSuffix(full, st.suffix) && full != st.match {
+		if typ.IsRegular() && strings.HasSuffix(full, st.suffix) && full != st.match {
 			if st.match != "" {
 				return nil, ReasonAmbiguous
 			}
@@ -559,7 +603,7 @@ const (
 
 // reuse says whether an answer from the cache may be given again: it is still inside the directories as they are now (a directory may have been
 // replaced by a link elsewhere), and the file is still there.
-func (c *call) reuse(in Input, res Result) recheck {
+func (c *call) reuse(in Input, res Result, lex string) recheck {
 	bases, reason := c.bases(in)
 	switch {
 	case reason == ReasonTimeout:
@@ -568,13 +612,13 @@ func (c *call) reuse(in Input, res Result) recheck {
 		return changed
 	}
 	c.allowed = c.spellingsOf(bases, in)
-	return c.stillThere(res, bases)
+	return c.stillThere(res, lex, bases)
 }
 
-// stillThere walks the cached path again, with every link followed and inside the directories as they are now, and says whether it is still the
+// stillThere walks the candidate path that gave the cached answer again (a link on it may now lead elsewhere), with every link followed and inside the directories as they are now, and says whether it is still the
 // same file or directory: a component swapped for a link out, or the file deleted, is not what was answered.
-func (c *call) stillThere(res Result, bases []string) recheck {
-	resolved, info, reason := c.real(res.Path, c.allowed)
+func (c *call) stillThere(res Result, lex string, bases []string) recheck {
+	resolved, info, reason := c.real(lex, c.allowed)
 	switch {
 	case reason == ReasonTimeout:
 		return timedOut

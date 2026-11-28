@@ -41,8 +41,8 @@ func TestTheQuestionOfWhereTheShellIsIsBoundedInTimeAndInStuckQuestions(t *testi
 	t.Cleanup(func() { close(gate) })
 	stuck := func() (string, UnknownReason) { <-gate; return "/never", "" }
 
-	call := func(ask func() (string, UnknownReason)) (done chan bool) {
-		done = make(chan bool, 1)
+	call := func(ask func() (string, UnknownReason)) chan bool {
+		done := make(chan bool, 1)
 		go func() { _, _, ok := askDirectory(slots, 20*time.Millisecond, ask); done <- ok }()
 		return done
 	}
@@ -52,7 +52,7 @@ func TestTheQuestionOfWhereTheShellIsIsBoundedInTimeAndInStuckQuestions(t *testi
 	case <-time.After(10 * time.Second):
 		t.Fatal("the call waits for a stuck question")
 	}
-	assert.Equal(t, 1, len(slots), "the stuck question keeps its slot")
+	assert.Len(t, slots, 1, "the stuck question keeps its slot")
 	select {
 	case ok := <-call(stuck):
 		assert.False(t, ok)

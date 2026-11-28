@@ -22,6 +22,7 @@ type cache struct {
 type cached struct {
 	key string
 	res Result
+	lex string
 	at  time.Time
 }
 
@@ -29,32 +30,32 @@ func newCache(size int, ttl time.Duration, now func() time.Time) *cache {
 	return &cache{mu: sync.Mutex{}, size: size, ttl: ttl, now: now, order: list.New(), byKey: make(map[string]*list.Element, size)}
 }
 
-func (c *cache) get(key string) (Result, bool) {
+func (c *cache) get(key string) (Result, string, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	el, ok := c.byKey[key]
 	if !ok {
-		return unknown(""), false
+		return unknown(""), "", false
 	}
 	entry, _ := el.Value.(*cached)
 	if c.now().Sub(entry.at) >= c.ttl {
 		c.order.Remove(el)
 		delete(c.byKey, key)
-		return unknown(""), false
+		return unknown(""), "", false
 	}
 	c.order.MoveToFront(el)
-	return entry.res, true
+	return entry.res, entry.lex, true
 }
 
-func (c *cache) put(key string, res Result) {
+func (c *cache) put(key string, res Result, lex string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if el, ok := c.byKey[key]; ok {
-		el.Value = &cached{key, res, c.now()}
+		el.Value = &cached{key, res, lex, c.now()}
 		c.order.MoveToFront(el)
 		return
 	}
-	c.byKey[key] = c.order.PushFront(&cached{key, res, c.now()})
+	c.byKey[key] = c.order.PushFront(&cached{key, res, lex, c.now()})
 	for c.order.Len() > c.size {
 		oldest := c.order.Back()
 		entry, _ := oldest.Value.(*cached)

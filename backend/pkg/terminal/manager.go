@@ -102,6 +102,8 @@ type Manager struct {
 	tee func(id string, data []byte)
 	// links resolves the candidate links of the channel terminals' output (links.go): one cache for the host, bounded.
 	links *linkresolve.Resolver
+	// linkSlots bound the stuck questions of where a shell is, that a link resolution asks first (links.go).
+	linkSlots chan struct{}
 	// offsets is the sink as an OffsetSink when it is one: a terminal with a page key is delivered through it.
 	offsets OffsetSink
 	// detachments is the sink as a DetachmentSink when it is one: it is told when a page lost its terminal.
@@ -149,7 +151,7 @@ func NewManager(ctx context.Context, log logging.Logger, sink Sink) *Manager {
 	m := &Manager{
 		base: shellenv.LaunchEnvironment, resolve: shellenv.Resolve, probe: shellenv.Probe, integrationOn: func() (bool, error) { return true, nil }, bashVersion: probeBashVersion,
 		ctx: ctx, log: log.Named("TerminalManager"), sink: sink, reported: reported, closing: atomic.Bool{}, launching: sync.WaitGroup{}, flowStall: FlowStall, closeWait: closeWait,
-		replayBytes: ReplayBytes, channel: defaultChannelLimits(), links: linkresolve.NewDefault(), offsets: offsets, detachments: detachments,
+		replayBytes: ReplayBytes, channel: defaultChannelLimits(), links: linkresolve.NewDefault(), linkSlots: make(chan struct{}, linkDirectorySlots), offsets: offsets, detachments: detachments,
 		mu: sync.RWMutex{}, sessions: make(map[string]*session), starting: make(map[string]struct{}), ended: nil, tombs: nil, tombTimer: nil, clock: wallClock{},
 	}
 	go m.forwardSignals()
