@@ -26,7 +26,7 @@
 
 - Red then green: `npx vitest run packages/omniviewdev-runtime/src/openExternal.test.ts ui-next/plugins/host ui-next/shell/hostOpenerOnly.test.ts` (runtime package's own run for its test).
 - `npx vitest run` of `ui-next/plugins/host`, the hostOpenerOnly test, `TerminalSessions.test.ts`, `ui-next/shell/panel/ports`, `ui/pages/plugins`: 87 files, 2,731 tests pass. `task check:ui-typecheck` (tsc app, tsc test, kit): exit 0. `tsc --noEmit` of the runtime and providers packages: exit 0. `pnpm lint`: the files of this change are clean after `eslint --fix` of the new test; the 8 warnings and the other errors it reports are in files this change does not touch.
-- `task local:probes -- terminal-urls`: exit 0 (103 s). `task local:seam -- terminal-core,terminal-find` and the stable build with `ui-flavour`: see the hand-off message.
+- `task local:probes -- terminal-urls`: exit 0 (103 s). `task local:seam -- terminal-core,terminal-find`: exit 0 in both engines; the links phases report `[["host-opener",0,0,<address>]]` for a plain address and an OSC 8 link. Stable `pnpm build` then `node --test scripts/react-compiler.test.mjs scripts/ui-flavour.test.mjs`: 20 of 20 pass.
 
 ## Not verified
 
