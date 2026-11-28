@@ -322,7 +322,7 @@ In `docs/ui-next/status/T1-go/` (`.txt`, drop the suffix): `red-queue.sh.txt` (r
 - Re-applying the user's PATH after a refresh of the login environment, and a "resolving environment" state in the UI.
 - Review B-106: `idle` means "the shell holds the foreground", which the UI may read as "nothing to lose": a suspended vim (`:stop`), a stopped job and a builtin loop read `idle`. A second fact (the shell's child count, or a `jobs` number) would let the close question match VS Code's, which warns on any child.
 - Review B-107: a server-mode call with a client id and no events socket starts a terminal owned by the main window, which is never retired; the same happens to a page's first calls if they beat its socket (INV3 row 4).
-- Review B-108: window retirement closes the shells one window at a time (`announce` runs the subscriber in line and `CloseOwned` blocks up to 1.5 s for each): run each window's `CloseOwned` in its own goroutine.
+- Review B-108 (done in #698 item 1, `fix/window-retirement-parallel`: the realm retires the windows of a sweep and the subscribers of an announce concurrently): window retirement closed the shells one window at a time (`announce` runs the subscriber in line and `CloseOwned` blocks up to 1.5 s for each): run each window's `CloseOwned` in its own goroutine.
 - Review SHOULD 3: the PATH order for a host started from a terminal whose PATH has the user's directories in front (re-apply the launch PATH's user entries after the profile, VS Code's `VSCODE_PATH_PREFIX` idea, or document it).
 - A native in-place window reload keeps its identity (2.6); with several windows open the first to serialize an event credits it, and a second window that stops reading still queues in Wails (2.8.6, row 9).
 
