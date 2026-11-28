@@ -30,6 +30,8 @@ const world = vi.hoisted(() => {
     start: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     /** The runtime's close of a forward by its id, which the screen's networker calls through to. */
     close: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    /** The host's opener (`openExternalURL` of the runtime's api), which the Terminal tool's way to open an address calls. */
+    openExternal: vi.fn<(...args: unknown[]) => Promise<void>>(),
     /** The runtime's `Events.On`, which the screen's lifecycle listeners and its networker's closed feed subscribe through. */
     on: vi.fn<(name: string, callback: (event: { readonly data?: unknown }) => void) => () => void>(),
   };
@@ -46,6 +48,8 @@ vi.mock('@omniviewdev/runtime/api', async (importOriginal) => ({
     List: async () => Promise.resolve([{ name: 'main' }]),
     OpenSettings: async () => Promise.resolve(),
   },
+  // the host's opener: the screen gives the Terminal tool this one, never the runtime's own browser call
+  openExternalURL: async (...args: unknown[]) => world.openExternal(...args),
   NetworkerClient: { StartResourcePortForwardingSession: async (...args: unknown[]) => world.start(...args), ClosePortForwardSession: async (...args: unknown[]) => world.close(...args) },
 }));
 
@@ -54,7 +58,7 @@ vi.mock('@omniviewdev/runtime/runtime', async (importOriginal) => ({
   Window: { Name: async () => Promise.resolve('main'), Close: async () => Promise.resolve() },
   Events: { On: (name: string, callback: (event: { readonly data?: unknown }) => void) => world.on(name, callback) },
   // eslint-disable-next-line @typescript-eslint/naming-convention -- the runtime names its browser call `OpenURL`
-  Browser: { OpenURL: vi.fn() },
+  Browser: { OpenURL: vi.fn() }, // a direct call of it is a failure of the tests below
 }));
 
 vi.mock('../../shell/panel/terminal/localShell', async (importOriginal) => ({ ...(await importOriginal<Record<string, unknown>>()), restoreLocalTerminals: vi.fn(), attachLocalTerminal: vi.fn(), localRestartTarget: vi.fn() }));
@@ -79,11 +83,13 @@ beforeEach(() => {
   vi.mocked(loadAppTerminalChannels).mockReset();
   vi.mocked(loadAppTerminalChannels).mockReturnValue(channels);
   vi.mocked(Browser.OpenURL).mockReset();
+  world.openExternal.mockReset();
   world.start.mockReset();
   world.close.mockReset();
   world.on.mockReset();
   world.on.mockImplementation(() => () => undefined);
   vi.mocked(Browser.OpenURL).mockResolvedValue(undefined);
+  world.openExternal.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -194,31 +200,33 @@ describe('the terminal channels the screen gives the Terminal tool', () => {
 });
 
 describe('the way the screen gives the Terminal tool to open an address outside the app (T3a)', () => {
-  it('is the runtime\'s browser call, which the host answers: it opens the address once for each call, and not before one is made', async () => {
+  it('is the host\'s opener, which checks the address and answers: it opens the address once for each call, and not before one is made', async () => {
     render(<PluginHostScreen />);
     await waitFor(() => {
       expect(world.given.length).toBeGreaterThan(0);
     });
     const open = drawn()?.terminals?.openExternal;
     expect(open).toBeTypeOf('function');
-    expect(Browser.OpenURL).not.toHaveBeenCalled();
+    expect(world.openExternal).not.toHaveBeenCalled();
     await open?.('https://example.com/docs');
-    expect(Browser.OpenURL).toHaveBeenCalledTimes(1);
-    expect(Browser.OpenURL).toHaveBeenCalledWith('https://example.com/docs');
+    expect(world.openExternal).toHaveBeenCalledTimes(1);
+    expect(world.openExternal).toHaveBeenCalledWith('https://example.com/docs');
     await open?.('http://localhost:3000');
-    expect(Browser.OpenURL).toHaveBeenCalledTimes(2);
-    expect(Browser.OpenURL).toHaveBeenLastCalledWith('http://localhost:3000');
+    expect(world.openExternal).toHaveBeenCalledTimes(2);
+    expect(world.openExternal).toHaveBeenLastCalledWith('http://localhost:3000');
+    expect(Browser.OpenURL).not.toHaveBeenCalled();
   });
 
   it('lets the host\'s refusal through, for the Terminal tool to warn of: the screen swallows nothing and says nothing itself', async () => {
     const refused = new Error('the host does not open an address with a semicolon in it');
-    vi.mocked(Browser.OpenURL).mockRejectedValue(refused);
+    world.openExternal.mockRejectedValue(refused);
     render(<PluginHostScreen />);
     await waitFor(() => {
       expect(world.given.length).toBeGreaterThan(0);
     });
     await expect(drawn()?.terminals?.openExternal?.('https://example.com/a;b')).rejects.toBe(refused);
     expect(console.warn).not.toHaveBeenCalled();
+    expect(Browser.OpenURL).not.toHaveBeenCalled();
   });
 });
 

@@ -30,3 +30,4 @@ export * as DevServerManager from './bindings/github.com/omniviewdev/omniview/ba
 export * as PluginLogManager from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/pluginlog/servicewrapper';
 
 export * from './bindings/github.com/omniviewdev/omniview/appservice';
+export { ExternalURLRefusedError, openExternalURL } from './openExternal';
