@@ -10,9 +10,13 @@ import {
   TAB_PALETTE_COMMANDS,
   tabCommands,
   TERMINAL_TOOL,
+  TERMINAL_TOOL_ID,
   toggleChordText,
   togglePanel,
   togglePanelMaximized,
+  equaliseTool,
+  focusSashOfActivePane,
+  moveToPane,
   maximizeChordText,
   type Contributions,
   type Description,
@@ -82,6 +86,11 @@ export type HostPaletteDeps = {
   readonly terminalScreenReader?: { readonly toggle: () => boolean; readonly say: (text: string) => void } | undefined;
   /** Starts a session in the Terminal tool, as its `+` does. Absent: the window has no Terminal tool, and the command is not offered. */
   readonly newTerminal?: (() => void) | undefined;
+  /**
+   * The Terminal's pane commands: focus the next and the previous pane, resize a pane (the keyboard goes to a sash) and equalise the panes. A terminal takes Tab and every Control chord and F6 leaves it, so these are the way to the other panes and to a
+   * sash on every platform, also where the pane chords are the browser's. Absent: the window has no Terminal tool, and they are not offered.
+   */
+  readonly terminalPanes?: boolean | undefined;
   /** Where each plugin was last shown. A page of a plugin that is not on screen opens at the connection that plugin was last used in, as the entries of its own sidebar do. Absent: no connection is carried. */
   readonly remembered?: ((plugin: string) => Route | undefined) | undefined;
   /**
@@ -406,7 +415,7 @@ type HostCommand = {
  * Close window (only on a Mac, and only when the app can close its window: elsewhere the main window hides and nothing brings it back, decision A17). The palette lists them and the runner looks them
  * up here, so what it runs is what it checked a moment before.
  */
-function commandsOf({ tabs, panel, platform, onCloseWindow, openSettings, terminalScreenReader, newTerminal }: HostPaletteDeps): HostCommand[] {
+function commandsOf({ tabs, panel, platform, onCloseWindow, openSettings, terminalScreenReader, newTerminal, terminalPanes }: HostPaletteDeps): HostCommand[] {
   // The app's own window gets the chords the shell binds natively; a browser tab keeps those for itself, and the shell's Control Option chords are what work there.
   const native = onCloseWindow !== undefined;
   const tabRows = tabCommands({ tabs, platform, native }, tabs.getSnapshot().active);
@@ -455,6 +464,27 @@ function commandsOf({ tabs, panel, platform, onCloseWindow, openSettings, termin
         return true;
       },
     });
+  }
+
+  if (panel !== undefined && terminalPanes === true) {
+    // Made from what is true now (the palette asks when it opens): a Terminal that shows one terminal has no pane to go to and no sash, and the commands are not listed.
+    const layout = panel.selectors.paneLayout(panel.getSnapshot(), TERMINAL_TOOL_ID);
+    const several = layout !== null && layout.panes.length > 1;
+    // The palette gives the keyboard back to where it was when it closes, so what moves it runs one task later, when the palette is gone (as Settings does).
+    const later = (act: () => void): boolean => {
+      panel.show({ tool: TERMINAL_TOOL_ID });
+      setTimeout(act, 0);
+      return true;
+    };
+
+    if (several) {
+      commands.push(
+        { id: 'host.terminal.focusNextPane', title: 'Terminal: Focus Next Pane', context: 'Panel', icon: TERMINAL_TOOL.icon, run: () => later(() => void moveToPane(panel, 'next', TERMINAL_TOOL_ID)) },
+        { id: 'host.terminal.focusPreviousPane', title: 'Terminal: Focus Previous Pane', context: 'Panel', icon: TERMINAL_TOOL.icon, run: () => later(() => void moveToPane(panel, 'previous', TERMINAL_TOOL_ID)) },
+        { id: 'host.terminal.resizePane', title: 'Terminal: Resize Pane…', context: 'Panel', icon: TERMINAL_TOOL.icon, run: () => later(() => void focusSashOfActivePane(panel, TERMINAL_TOOL_ID)) },
+        { id: 'host.terminal.equalisePanes', title: 'Terminal: Equalise Panes', context: 'Panel', icon: TERMINAL_TOOL.icon, run: () => later(() => void equaliseTool(panel, TERMINAL_TOOL_ID)) },
+      );
+    }
   }
 
   if (terminalScreenReader !== undefined) {

@@ -13,6 +13,8 @@
 //                 body, sash, body, sash, ... from the left, which is the order Tab walks (panes.order)
 //   panes-keys    the pane chords (Control Shift Left and Right and the brackets, Linux and Windows): the keyboard goes to the neighbouring pane, into its emulator, the pane's input says "pane 2 of 3", the tab of its session is the selected one, the ends
 //                 stop for left and right and wrap for the next and the previous, and the shells are sent nothing (panes.keys-focus, panes.chords-quiet)
+//   panes-palette a terminal takes Tab and every Control chord, so with the keyboard alone (F6, then the palette) the next and the previous pane are reached, a sash is reached and moved by its arrow keys, and the panes are made equal
+//                 (panes.palette); Tab in a pane stays in the shell and Shift Tab too (the probe says so, panes.tab-trapped: it is why these commands exist)
 //   panes-reload  three panes with uneven shares and the keyboard in the middle one, the page reloads: the same sessions in the same order, the same widths within 2 px, the same active pane, each pane's terminal attached again and no new terminal
 //                 made (panes.reload)
 //   panes-gone    one terminal gone while the page was away: its pane is closed, its share is the others' in proportion, its tab stays, ended (panes.gone); one ended while the page was away: its pane stays and its lane offers Restart (panes.ended)
@@ -85,7 +87,7 @@ const HELPERS = () => {
 };
 
 export const PANES_PARTS = {
-  panes: ['panes-layout', 'panes-order', 'panes-keys', 'panes-reload', 'panes-gone', 'panes-sash', 'panes-resize', 'panes-full', 'panes-gl', 'panes-axe'],
+  panes: ['panes-layout', 'panes-order', 'panes-keys', 'panes-palette', 'panes-reload', 'panes-gone', 'panes-sash', 'panes-resize', 'panes-full', 'panes-gl', 'panes-axe'],
 };
 
 const near = (a, b, tolerance = 1) => typeof a === 'number' && Math.abs(a - b) <= tolerance;
@@ -136,6 +138,18 @@ export const PANES_CONTROLS = {
     section: 'panes-order',
     stage: 'split',
     after: (page) => page.evaluate(() => document.querySelector('[data-shell-part="panelDeck"] .xterm').remove()),
+  },
+  // A sash cannot take the keyboard.
+  'panes-sash-unfocusable': {
+    assertion: 'panes.palette',
+    section: 'panes-palette',
+    init: () => {
+      const focus = HTMLElement.prototype.focus;
+      HTMLElement.prototype.focus = function (...args) {
+        if (this.getAttribute('data-shell-part') === 'paneSash') return;
+        focus.apply(this, args);
+      };
+    },
   },
   // The pane chords are taken before the page hears them.
   'panes-chords-lost': {
@@ -471,6 +485,62 @@ export function createPanesSections({ check, note, report, runAxe }) {
       if (kinds !== 'body,sash,body,sash,body,sash,body') orderProblems.push(`the document's order is ${kinds}, not body,sash,body,sash,body,sash,body`);
       if (walk.some((one, index) => index > 0 && one.x < walk[index - 1].x)) orderProblems.push(`the document's order is not the screen's, left to right (${walk.map((one) => String(Math.round(one.x))).join(', ')})`);
       check('panes.order', orderProblems.length === 0, `${tag}: four panes after a split in the middle: ${orderProblems.length === 0 ? `the document holds body, sash, body, sash, body, sash, body at x ${walk.map((one) => String(Math.round(one.x))).join(', ')}: Tab walks the screen's order` : orderProblems.join('; ')}`);
+    } finally {
+      await session.close();
+    }
+  };
+
+  // ------------------------------------------------------------------------------------------------ panes-palette
+  sections['panes-palette'] = async (ctx) => {
+    const { engine, vp } = ctx;
+    const tag = `${engine} ${vp}`;
+    const session = await open(ctx);
+    const { page, host } = session;
+    try {
+      await split(page, host, 0);
+      await split(page, host, 1);
+      await settled(page, host, session);
+      const where = () => page.evaluate(() => ({ ...window.__panes.focus(), label: document.activeElement?.getAttribute('aria-label') ?? '', role: document.activeElement?.getAttribute('role') ?? '', boundary: document.activeElement?.getAttribute('data-boundary') ?? null }));
+      const widths = async () => (await bodies(page)).map((one) => one.box.width);
+      const input = (index) => page.locator('[data-shell-part="panelDeck"] > [data-shell-part="panelBody"]:not([hidden])').nth(index).locator('.xterm-helper-textarea');
+      /** F6 leaves the terminal, the palette opens, the command is typed and run. */
+      const command = async (text, row) => {
+        await page.keyboard.press('F6');
+        await page.keyboard.press('Control+k');
+        await page.waitForSelector('dialog[open]', { timeout: 5000 });
+        await page.keyboard.type(text);
+        await page.getByRole('option', { name: new RegExp(`^Command: ${row}`) }).waitFor({ timeout: 5000 });
+        await page.keyboard.press('Enter');
+      };
+
+      // Tab and Shift Tab stay in the terminal that has the keyboard: the shell takes them. That is the trap the commands are for.
+      await input(0).focus();
+      await page.keyboard.press('Tab');
+      const afterTab = (await where()).index;
+      await input(2).focus();
+      await page.keyboard.press('Shift+Tab');
+      const afterShiftTab = (await where()).index;
+      check('panes.tab-trapped', afterTab === 0 && afterShiftTab === 2, `${tag}: Tab in the first pane leaves the keyboard in pane ${String(afterTab)} and Shift Tab in the last leaves it in pane ${String(afterShiftTab)}: ${afterTab === 0 && afterShiftTab === 2 ? 'the shell takes them, so the palette is the way to the other panes' : 'the terminal does not take Tab here: the palette commands are no longer the only way'}`);
+
+      const problems = [];
+      await input(2).focus();
+      await command('focus previous pane', 'Terminal: Focus Previous Pane');
+      if (!(await until(async () => (await where()).index === 1))) problems.push(`Focus Previous Pane from the last pane left the keyboard in pane ${String((await where()).index)}, not the middle one`);
+      const middle = await where();
+      if (!/pane 2 of 3/.test(middle.label)) problems.push(`the middle pane's input is called ${JSON.stringify(middle.label)}`);
+      await command('resize pane', 'Terminal: Resize Pane');
+      if (!(await until(async () => (await where()).role === 'separator'))) problems.push(`Resize Pane left the keyboard on ${JSON.stringify(await where())}, not on a sash`);
+      else {
+        const sash = await where();
+        if (sash.boundary !== '1') problems.push(`the sash is the one after pane ${String(Number(sash.boundary) + 1)}, not the one after the middle pane`);
+        const before = await widths();
+        await page.keyboard.press('ArrowRight');
+        if (!(await until(async () => near((await widths())[1], before[1] + 16, 1.5)))) problems.push(`ArrowRight on the sash moved the middle pane from ${rounded(before[1])} to ${rounded((await widths())[1])} px, not by 16`);
+      }
+
+      await command('equalise panes', 'Terminal: Equalise Panes');
+      if (!(await until(async () => { const now = await widths(); return Math.max(...now) - Math.min(...now) <= 1; }))) problems.push(`Equalise Panes left the panes at ${(await widths()).map(rounded).join(', ')} px`);
+      check('panes.palette', problems.length === 0, `${tag}: with the keyboard alone: ${problems.length === 0 ? 'F6 and the palette move the keyboard to the previous pane, to the sash after it (whose arrow keys then move it by 16 px), and make the panes equal' : problems.join('; ')}`);
     } finally {
       await session.close();
     }

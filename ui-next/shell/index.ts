@@ -35,7 +35,7 @@ export { createPaletteStore, seedChips } from './core/palette';
 export type { Candidate as PaletteCandidate, CommandOutcome as PaletteCommandOutcome, CommandRef as PaletteCommandRef, OpenPalette, PaletteSeam, PaletteStore, Provider as PaletteSource, ProviderAnswer as PaletteAnswer, SearchScope as PaletteScope } from './core/palette';
 export { createAnnouncer } from './palette/host';
 export type { Announcer, PaletteBindings } from './palette/host';
-export { togglePanel, togglePanelMaximized } from './panel/focus';
+export { equaliseTool, focusSashOfActivePane, moveToPane, togglePanel, togglePanelMaximized } from './panel/focus';
 export { maximizeChordText, toggleChordText } from './panel/words';
 export { createNoticesStore } from './core/notices';
 export type { Availability as NoticeAvailability, CommandRef as NoticeCommandRef, NoticesOptions, NoticesStore, Producer as NoticesProducer } from './core/notices';

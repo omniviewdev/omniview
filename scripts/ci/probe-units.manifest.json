@@ -651,7 +651,8 @@
       "panes-chords-sent-to-shell",
       "panes-reload-forgets-layout",
       "panes-gone-kept",
-      "panes-ended-closed"
+      "panes-ended-closed",
+      "panes-sash-unfocusable"
     ]
   },
   "ui-next/shell/probes/terminal-reattach-b-probe.mjs": {

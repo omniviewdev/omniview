@@ -1,3 +1,4 @@
+import { extentOf } from './panes/geometry';
 import { paneToward, type PaneStep, type PanelStore, type SessionId, type ShowOptions, type ToolId } from '../core/panel';
 
 // Where the focus goes when the panel opens and closes (ch16 S105, S116; the mock's `focusPanel` and `focusPage`). The regions say where their focus goes (`data-shell-region`,
@@ -106,8 +107,8 @@ export function focusPaneBody(session: SessionId): boolean {
  * The pane chords (`paneChordOf`): moves the keyboard from the active pane of the tool on screen to the pane `step` asks for, and makes that pane the active one. False when there is nowhere to go (one pane, the end of a row), so that the key is
  * left alone.
  */
-export function moveToPane(store: PanelStore, step: PaneStep): boolean {
-  const shown = store.selectors.shown(store.getSnapshot());
+export function moveToPane(store: PanelStore, step: PaneStep, tool?: ToolId): boolean {
+  const shown = tool === undefined ? store.selectors.shown(store.getSnapshot()) : { tool };
   const layout = shown === null ? null : store.selectors.paneLayout(store.getSnapshot(), shown.tool);
   const target = layout === null ? undefined : paneToward(layout, step);
   const pane = layout?.panes.find((one) => one.id === target);
@@ -120,12 +121,30 @@ export function moveToPane(store: PanelStore, step: PaneStep): boolean {
   return true;
 }
 
+/** The layout of a tool when it has panes to move between. */
+const panesOf = (store: PanelStore, tool: ToolId) => {
+  const layout = store.selectors.paneLayout(store.getSnapshot(), tool);
+  return layout !== null && layout.panes.length > 1 ? layout : undefined;
+};
+
 /** Puts the keyboard on the sash after the active pane of a tool (before it, for the last pane), so that its arrow keys, Home, End and Enter work: the way to a sash for a person who cannot point and cannot use the pane chords. False when the tool has one pane or no sash is drawn. */
-export function focusSashOfActivePane(_store: PanelStore, _tool: ToolId): boolean {
-  return false;
+export function focusSashOfActivePane(store: PanelStore, tool: ToolId): boolean {
+  const layout = panesOf(store, tool);
+  if (layout === undefined) {
+    return false;
+  }
+
+  const at = layout.panes.findIndex((pane) => pane.id === layout.active);
+  const boundary = String(at < layout.panes.length - 1 ? at : at - 1);
+  const sash = [...document.querySelectorAll<HTMLElement>('[data-shell-part="paneSash"]')].find((one) => one.getAttribute('data-boundary') === boundary);
+  sash?.focus();
+  return sash !== undefined && document.activeElement === sash;
 }
 
 /** Every pane of the tool the same share, against the length of the deck now (what a double click on a sash does). False when the tool has one pane or no deck is drawn. */
-export function equaliseTool(_store: PanelStore, _tool: ToolId): boolean {
-  return false;
+export function equaliseTool(store: PanelStore, tool: ToolId): boolean {
+  const layout = panesOf(store, tool);
+  const deck = document.querySelector<HTMLElement>('[data-shell-part="panelDeck"]');
+  const extent = layout === undefined || deck === null ? 0 : extentOf(deck, layout.axis, layout.panes.length);
+  return extent > 0 && store.equalisePanes(tool, extent).status !== 'refused';
 }

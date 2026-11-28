@@ -395,7 +395,7 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
     rail: createRailChoice(restored?.rail ?? null),
     contributions,
     opened: new Published<string>(),
-    palette: createHostPalette({ tabs, plugins, contributions, nodes, frames, connections, panel: store, platform: platformOf(navigator), onCloseWindow, openSettings: settings.open, remembered: (plugin) => sidebarPageRoute(ownerOf(plugin), routes.get(plugin)), panelHosts, terminalScreenReader: { toggle: terminals.screenReader.toggle, say: notices.announcer.polite.announce }, newTerminal: terminals.newSession.start }),
+    palette: createHostPalette({ tabs, plugins, contributions, nodes, frames, connections, panel: store, platform: platformOf(navigator), onCloseWindow, openSettings: settings.open, remembered: (plugin) => sidebarPageRoute(ownerOf(plugin), routes.get(plugin)), panelHosts, terminalScreenReader: { toggle: terminals.screenReader.toggle, say: notices.announcer.polite.announce }, terminalPanes: true, newTerminal: terminals.newSession.start }),
     notices,
     settings,
     connections,

@@ -19,7 +19,7 @@ SHELL = 'ui-next/shell'
 # The tests of this part: the chords, the model's panes, the page tests of the panes, the registry's, the keys and the session.
 FILES = [
   f'{SHELL}/core/chords.test.ts', f'{SHELL}/core/panel/panes.test.ts', f'{SHELL}/core/panel/panes.fuzz.test.ts', f'{SHELL}/panel/panes/Panes.test.tsx', f'{SHELL}/panel/panes/PaneEmulators.test.tsx',
-  f'{SHELL}/panel/terminal/TerminalSplit.test.tsx', f'{SHELL}/panel/terminal/terminals.test.ts', f'{SHELL}/panel/terminal/keys.test.ts', f'{SHELL}/session/session.test.ts',
+  f'{SHELL}/panel/terminal/TerminalSplit.test.tsx', f'{SHELL}/panel/terminal/terminals.test.ts', f'{SHELL}/panel/terminal/keys.test.ts', f'{SHELL}/session/session.test.ts', 'ui-next/plugins/host/palette.test.ts',
 ]
 
 # name | file (under ui-next/shell) | exact text | replacement | regexp of "file > test title" that must be among the failures
@@ -40,6 +40,12 @@ CONTROLS = [
   ('a-gone-terminal-keeps-its-pane', 'panel/terminal/terminals.ts', '    leaveGonePanes();\n  };', '  };', r'terminals\.test\.ts.*leaves the pane of a terminal that is gone'),
   ('every-terminal-leaves-its-pane', 'panel/terminal/terminals.ts', 'if (sessions.feedOf(pane.session) === undefined) {', 'if (true as boolean) {', r'terminals\.test\.ts.*brings the group back as it was'),
   ('a-silent-host-closes-the-panes', 'panel/terminal/terminals.ts', "console.warn('[panel] the terminals left for this window could not be found again', error);\n        return;", "console.warn('[panel] the terminals left for this window could not be found again', error);\n        leaveGonePanes();\n        return;", r'terminals\.test\.ts.*keeps the panes of a host that could not answer'),
+  ('the-seat-is-not-passed-to-the-body', 'panel/PanelBody.tsx', "value={seat === '' ? null : {", "value={true ? null : {", r'Panes\.test\.tsx.*the seat a body is given'),
+  ('resize-pane-focuses-no-sash', 'panel/focus.ts', '  sash?.focus();\n  return sash !== undefined', '  return sash !== undefined', r'Panes\.test\.tsx.*puts the keyboard on the sash after the active pane'),
+  ('resize-pane-takes-the-wrong-sash', 'panel/focus.ts', 'String(at < layout.panes.length - 1 ? at : at - 1)', 'String(at)', r'Panes\.test\.tsx.*puts the keyboard on the sash after the active pane'),
+  ('equalise-does-nothing', 'panel/focus.ts', 'return extent > 0 && store.equalisePanes(tool, extent).status !== \'refused\';', 'return extent > 0;', r'Panes\.test\.tsx.*shares the room equally again'),
+  ('pane-commands-listed-with-one-terminal', '../plugins/host/palette.ts', '    if (several) {', '    if (true as boolean) {', r'palette\.test\.ts.*are not listed while the Terminal shows one terminal'),
+  ('pane-commands-move-nothing', '../plugins/host/palette.ts', "later(() => void moveToPane(panel, 'previous', TERMINAL_TOOL_ID))", "later(() => undefined)", r'palette\.test\.ts.*move the keyboard to the next and the previous pane'),
 ]
 
 # The controls whose fault the named tests alone catch: with those tests skipped the copy passes. Every other control stays red with them skipped (another test catches it as well).

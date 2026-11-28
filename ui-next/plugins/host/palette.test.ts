@@ -2525,10 +2525,10 @@ describe('the Terminal\'s pane commands', () => {
     }
   });
 
-  it('say why they cannot run while the Terminal shows one terminal', () => {
+  it('are not listed while the Terminal shows one terminal: there is no pane to go to and no sash', () => {
     const { w } = withPanes(1);
     for (const title of [FOCUS_NEXT, FOCUS_PREVIOUS, RESIZE, EQUALISE]) {
-      expect(w.store.activate(rowTitled(w, title).id), title).toMatchObject({ status: 'refused', reason: 'unavailable' });
+      expect(titlesOf(w, 'commands'), title).not.toContain(title);
     }
   });
 
@@ -2536,11 +2536,11 @@ describe('the Terminal\'s pane commands', () => {
     const { w, panel } = withPanes(3);
     expect(panel.getSnapshot().panes.terminal?.active).toBe('p3');
     expect(w.store.activate(rowTitled(w, FOCUS_PREVIOUS).id)).toMatchObject({ status: 'ran', outcome: 'done' });
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await vi.advanceTimersByTimeAsync(0);
     expect(panel.getSnapshot().panes.terminal?.active).toBe('p2');
     w.store.open({ kind: 'commands' });
     expect(w.store.activate(rowTitled(w, FOCUS_NEXT).id)).toMatchObject({ status: 'ran', outcome: 'done' });
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await vi.advanceTimersByTimeAsync(0);
     expect(panel.getSnapshot().panes.terminal?.active).toBe('p3');
   });
 });
