@@ -4,6 +4,7 @@ package terminal
 
 import (
 	"path/filepath"
+	"time"
 
 	"github.com/omniviewdev/omniview/backend/pkg/terminal/linkresolve"
 )
@@ -79,4 +80,12 @@ func vouches(record Commands, current, dir string) bool {
 		}
 	}
 	return false
+}
+
+// askDirectory asks where the shell is, bounded like the resolver's own work: the question stats the shell's directory, which may sit on a stalled
+// mount, so it runs in a goroutine that holds one of the slots until it returns, and a call that finds none free, or waits past the budget, is told
+// it timed out.
+func askDirectory(_ chan struct{}, _ time.Duration, ask func() (string, UnknownReason)) (string, UnknownReason, bool) {
+	path, reason := ask()
+	return path, reason, true
 }

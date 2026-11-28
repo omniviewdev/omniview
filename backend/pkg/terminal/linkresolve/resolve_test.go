@@ -70,6 +70,7 @@ func TestTheRowDirectoryComesFirstAndTheRootsAfterIt(t *testing.T) {
 	assert.Equal(t, found(row, "only-row.go", 0, 0), r.Resolve(in("only-row.go")))
 	// roots alone are not a directory of the row: no row directory, no answer
 	assert.Equal(t, unknown(linkresolve.ReasonNotFound), r.Resolve(linkresolve.Input{Dir: row, Roots: []string{root}, Text: "nowhere.go"}))
+	assert.Equal(t, unknown(linkresolve.ReasonNoDirectory), r.Resolve(linkresolve.Input{Roots: []string{root}, Text: "only-root.go"}), "a root is not a row directory: no row directory, no answer")
 }
 
 func TestNothingUnderDevProcOrSysIsEverLookedAt(t *testing.T) {
@@ -141,7 +142,14 @@ func TestUnicodeSpellingsOfOneNameFindTheFileUnderItsRealSpelling(t *testing.T) 
 	nfc := "r\u00e9sum\u00e9.go"
 	ws := tree(t, nfd)
 	r, _ := resolver(t, linkresolve.Config{})
-	assert.Equal(t, found(ws, nfd, 4, 0), r.Resolve(linkresolve.Input{Dir: ws, Text: nfc + ":4"}), "printed composed, on disk decomposed: the real spelling is answered")
+	got := r.Resolve(linkresolve.Input{Dir: ws, Text: nfc + ":4"})
+	if _, err := os.Lstat(filepath.Join(ws, nfc)); err == nil {
+		// a volume that matches names loosely (APFS): the spelling that was found is answered, either form
+		assert.Contains(t, []string{filepath.Join(ws, nfd), filepath.Join(ws, nfc)}, got.Path)
+		assert.Equal(t, linkresolve.KindFile, got.Kind)
+	} else {
+		assert.Equal(t, found(ws, nfd, 4, 0), got, "printed composed, on disk decomposed: the real spelling is answered")
+	}
 	assert.Equal(t, found(ws, nfd, 0, 0), r.Resolve(linkresolve.Input{Dir: ws, Text: nfd}), "the control: the same spelling")
 	assert.Equal(t, unknown(linkresolve.ReasonNotFound), r.Resolve(linkresolve.Input{Dir: ws, Text: "r\u00e9sum\u00e9x.go"}))
 }
@@ -149,12 +157,18 @@ func TestUnicodeSpellingsOfOneNameFindTheFileUnderItsRealSpelling(t *testing.T) 
 func TestAPipeOrASocketIsNeverOpened(t *testing.T) {
 	ws := tree(t, "plain.txt")
 	require.NoError(t, syscall.Mkfifo(filepath.Join(ws, "pipe"), 0o600))
-	sock, err := net.Listen("unix", filepath.Join(ws, "sock"))
+	// a socket path is at most 104 bytes on Darwin: bind it in a short directory and link to it
+	short, err := os.MkdirTemp("/tmp", "lr")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(short) })
+	sock, err := net.Listen("unix", filepath.Join(short, "s"))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = sock.Close() })
+	short, err = filepath.EvalSymlinks(short)
+	require.NoError(t, err)
 	r, seen := resolver(t, linkresolve.Config{})
-	for _, name := range []string{"pipe:1", "sock:1"} {
-		assert.Equal(t, unknown(linkresolve.ReasonSpecial), within(t, name, func() linkresolve.Result { return r.Resolve(linkresolve.Input{Dir: ws, Text: name}) }), name)
+	for dir, name := range map[string]string{ws: "pipe:1", short: "s:1"} {
+		assert.Equal(t, unknown(linkresolve.ReasonSpecial), within(t, name, func() linkresolve.Result { return r.Resolve(linkresolve.Input{Dir: dir, Text: name}) }), name)
 	}
 	assert.Equal(t, found(ws, "plain.txt", 1, 0), r.Resolve(linkresolve.Input{Dir: ws, Text: "plain.txt:1"}), "the control")
 	assert.NotEmpty(t, seen.paths())
@@ -246,17 +260,22 @@ func TestTheSuffixScanFindsOneFileAndRefusesTwo(t *testing.T) {
 	assert.Equal(t, unknown(linkresolve.ReasonNotFound), r.Resolve(linkresolve.Input{Dir: ws, Text: "skip.go"}), "hidden and node_modules are not scanned")
 }
 
-func TestTheSuffixScanIsBounded(t *testing.T) {
+func TestTheSuffixScanIsBoundedInEntries(t *testing.T) {
 	var names []string
 	for i := 0; i < 60; i++ {
 		names = append(names, "d"+strconv.Itoa(i)+"/f.txt")
 	}
-	names = append(names, "d0/d1/d2/d3/d4/d5/too_deep.go")
 	ws := tree(t, names...)
 	r, seen := resolver(t, linkresolve.Config{ScanEntries: 40, ScanDepth: 3})
 	assert.Equal(t, unknown(linkresolve.ReasonNotFound), r.Resolve(linkresolve.Input{Dir: ws, Text: "nothing_like_this.go"}))
 	assert.LessOrEqual(t, seen.entries, 40, "entries read")
-	assert.Equal(t, unknown(linkresolve.ReasonNotFound), r.Resolve(linkresolve.Input{Dir: ws, Text: "too_deep.go"}), "deeper than the scan goes")
+}
+
+func TestTheSuffixScanIsBoundedInDepth(t *testing.T) {
+	ws := tree(t, "d1/d2/d3/last.go", "d1/d2/d3/d4/too_deep.go")
+	r, _ := resolver(t, linkresolve.Config{ScanDepth: 3})
+	assert.Equal(t, found(ws, "d1/d2/d3/last.go", 0, 0), r.Resolve(linkresolve.Input{Dir: ws, Text: "last.go"}), "the control: at the last depth the scan reads")
+	assert.Equal(t, unknown(linkresolve.ReasonNotFound), r.Resolve(linkresolve.Input{Dir: ws, Text: "too_deep.go"}), "one level deeper it does not")
 }
 
 func TestTheTextIsRefusedBeforeAnythingIsLookedAt(t *testing.T) {
@@ -378,9 +397,8 @@ func BenchmarkTheCacheHitAgainstTheMiss(b *testing.B) {
 	b.Run("miss", func(b *testing.B) {
 		r := linkresolve.New(linkresolve.Config{CacheSize: 1})
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
+		for i := 0; i < b.N; i++ { // two texts alternate in a cache of one: every lookup is a miss, and each is one successful resolve
 			r.Resolve(linkresolve.Input{Dir: root, Text: "a/b/c/f.go:" + strconv.Itoa(i%2)})
-			r.Resolve(linkresolve.Input{Dir: root, Text: "other" + strconv.Itoa(i%2)})
 		}
 	})
 }
@@ -417,15 +435,18 @@ func TestADirectorySwappedForAPipeIsNotOpenedByTheScan(t *testing.T) {
 	ws := tree(t, "sub/x.go", "other/y.go")
 	r, seen := resolver(t, linkresolve.Config{})
 	var once sync.Once
+	var setup error // the callback runs on the resolver's worker: it records, and the test goroutine asserts
 	seen.before = func(p string) {
 		if p == filepath.Join(ws, "sub") {
 			once.Do(func() {
-				require.NoError(t, os.RemoveAll(p))
-				require.NoError(t, syscall.Mkfifo(p, 0o600))
+				if setup = os.RemoveAll(p); setup == nil {
+					setup = syscall.Mkfifo(p, 0o600)
+				}
 			})
 		}
 	}
 	got := within(t, "swapped", func() linkresolve.Result { return r.Resolve(linkresolve.Input{Dir: ws, Text: "zzz/nothing.go"}) })
+	require.NoError(t, setup)
 	assert.Equal(t, unknown(linkresolve.ReasonNotFound), got)
 	// the control: the scan still reads directories that are directories
 	assert.Equal(t, found(ws, "other/y.go", 0, 0), r.Resolve(linkresolve.Input{Dir: ws, Text: "other/y.go"}))
