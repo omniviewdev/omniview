@@ -2506,3 +2506,133 @@ describe('the person\'s settings on a real emulator', () => {
     engine.dispose();
   });
 });
+
+// What the person's settings give a REAL emulator besides its look (#697 steps 2 and 3): the blink of the cursor, the scrollback and Option as Meta. The emulator is the real xterm in jsdom (which has no layout and draws nothing): it proves
+// the options the emulator holds, the lines it keeps and the timers it asks for; the real browsers' own timers are the probe's (`terminal-apply.mjs`).
+describe('the behaviour of a real emulator', () => {
+  const made_ = (extra: Partial<Parameters<typeof createXtermEngine>[0]> = {}) => {
+    const host = document.createElement('div');
+    document.body.append(host);
+    const engine = createXtermEngine({ cols: 20, rows: 4, scrollback: 50, appearance: APPEARANCE, screenReaderMode: false, ...extra });
+    engine.open(host);
+    const terminal = made.at(-1);
+    if (terminal === undefined) {
+      throw new Error('no emulator');
+    }
+
+    return { engine, terminal, host, textarea: terminal.textarea as HTMLTextAreaElement, close: () => {
+      engine.dispose();
+      host.remove();
+    } };
+  };
+
+  const focus = (textarea: HTMLTextAreaElement, on: boolean) => {
+    textarea.dispatchEvent(new FocusEvent(on ? 'focus' : 'blur'));
+  };
+
+  const lines = (terminal: Terminal): string[] => {
+    const out: string[] = [];
+    for (let row = 0; row < terminal.buffer.active.length; row += 1) {
+      out.push(terminal.buffer.active.getLine(row)?.translateToString(true) ?? '');
+    }
+
+    return out;
+  };
+
+  const written = async (engine: Engine, data: string) => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    engine.write(data, resolve);
+    return promise;
+  };
+
+  it('is made in the blink, the scrollback and the Option it was given, and never blinks before it has the focus', () => {
+    const { terminal, close } = made_({ scrollback: 321, cursorBlink: true, optionIsMeta: true });
+    expect(terminal.options).toMatchObject({ scrollback: 321, macOptionIsMeta: true, cursorBlink: false });
+    close();
+  });
+
+  it('does not blink, ask for a timer or hold one while it has not the focus, however the setting is: the blink is a timer only with the focus and the setting both', async () => {
+    vi.useFakeTimers();
+    try {
+      const { engine, terminal, textarea, close } = made_({ cursorBlink: true });
+      await vi.advanceTimersByTimeAsync(50);
+      const unfocusedOn = vi.getTimerCount();
+      expect(terminal.options.cursorBlink).toBe(false);
+
+      focus(textarea, true);
+      await vi.advanceTimersByTimeAsync(50);
+      expect(terminal.options.cursorBlink).toBe(true);
+      const focusedOn = vi.getTimerCount();
+      expect(focusedOn).toBeGreaterThan(unfocusedOn);
+
+      focus(textarea, false);
+      await vi.advanceTimersByTimeAsync(50);
+      expect(terminal.options.cursorBlink).toBe(false);
+      expect(vi.getTimerCount()).toBe(unfocusedOn);
+
+      focus(textarea, true);
+      engine.setBehaviour({ scrollback: 50, cursorBlink: false, optionIsMeta: false });
+      await vi.advanceTimersByTimeAsync(50);
+      expect(terminal.options.cursorBlink).toBe(false);
+      expect(vi.getTimerCount()).toBe(unfocusedOn);
+
+      engine.setBehaviour({ scrollback: 50, cursorBlink: true, optionIsMeta: false });
+      await vi.advanceTimersByTimeAsync(50);
+      expect(terminal.options.cursorBlink).toBe(true);
+      expect(vi.getTimerCount()).toBe(focusedOn);
+      close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('blinks when it is told to while it has the focus, and not before it is told', () => {
+    const { engine, terminal, textarea, close } = made_();
+    focus(textarea, true);
+    expect(terminal.options.cursorBlink).toBe(false);
+    engine.setBehaviour({ scrollback: 50, cursorBlink: true, optionIsMeta: false });
+    expect(terminal.options.cursorBlink).toBe(true);
+    close();
+  });
+
+  it('trims the scrollback when it is made smaller and keeps every line when it is made larger: the lines are counted, in the emulator\'s own buffer', async () => {
+    const { engine, terminal, close } = made_({ scrollback: 50 });
+    await written(engine, Array.from({ length: 100 }, (_, index) => `line ${String(index)}`).join('\r\n'));
+    expect(terminal.buffer.active.length).toBe(54);
+    const kept = lines(terminal);
+    expect(kept[0]).toBe('line 46');
+
+    engine.setBehaviour({ scrollback: 10, cursorBlink: false, optionIsMeta: false });
+    expect(terminal.buffer.active.length).toBe(14);
+    expect(lines(terminal)).toEqual(kept.slice(-14));
+    expect(lines(terminal)[0]).toBe('line 86');
+
+    engine.setBehaviour({ scrollback: 200, cursorBlink: false, optionIsMeta: false });
+    expect(terminal.buffer.active.length).toBe(14);
+    expect(lines(terminal)[0]).toBe('line 86');
+    await written(engine, `\r\n${Array.from({ length: 60 }, (_, index) => `more ${String(index)}`).join('\r\n')}`);
+    expect(terminal.buffer.active.length).toBe(74);
+    expect(lines(terminal)[0]).toBe('line 86');
+    close();
+  });
+
+  it('makes Option the Meta key, and gives it back', () => {
+    const { engine, terminal, close } = made_();
+    expect(terminal.options.macOptionIsMeta).toBe(false);
+    engine.setBehaviour({ scrollback: 50, cursorBlink: false, optionIsMeta: true });
+    expect(terminal.options.macOptionIsMeta).toBe(true);
+    engine.setBehaviour({ scrollback: 50, cursorBlink: false, optionIsMeta: false });
+    expect(terminal.options.macOptionIsMeta).toBe(false);
+    close();
+  });
+
+  it('takes the new behaviour without a new emulator and without losing what is on the screen', async () => {
+    const { engine, terminal, close } = made_();
+    await written(engine, 'hello');
+    const count = made.length;
+    engine.setBehaviour({ scrollback: 10, cursorBlink: true, optionIsMeta: true });
+    expect(made.length).toBe(count);
+    expect(terminal.buffer.active.getLine(0)?.translateToString(true)).toBe('hello');
+    close();
+  });
+});
