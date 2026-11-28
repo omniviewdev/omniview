@@ -71,6 +71,8 @@ func TestAMalformedAddressIsRefusedAndTheSemicolonIsDecided(t *testing.T) {
 		"http:///evil.com", "https://", "http://", "https://a.example/\x00", "https://a.example/ x", "https://a.example/\tx", "https://a.example/\nx", "https://a.example/\x1b[31m",
 		"https://a.example/a;b", "https://a.example/?q=a|b", "https://a.example/`x`", "https://a.example/$x", "https://a.example/<x>", "https://evil.example\\@good.example/",
 		"https://a.example:99999/", "https://a.example:abc/", "https://[fe80::1%25eth0]/", "https://127%2e0.0.1/", "https://a.example\u202e/", "https://a.example\u200b/",
+		"https://a.example/\u0090", "https://a.example/\u009b31m", "http://127.0.0.1\"x/", "http://a\"b.example/", "http://a'b.example/", "http://a_b.example/", "http://a..example/",
+		"http://.a.example/", "http://a*.example/", "http://a,b.example/", "http://a!.example/", "http://a~b.example/", "http://a{b}.example/",
 		"https://1.2.3.4.5/", "https://example.com.1/", "https://[::1/", "https://a.example/\u0085", "https://a.example/\xff", "https://a b.example/",
 	} {
 		refusal(t, o, rec, raw, ReasonMalformed)
@@ -78,6 +80,9 @@ func TestAMalformedAddressIsRefusedAndTheSemicolonIsDecided(t *testing.T) {
 	// the control: the same shapes without the fault
 	opens(t, o, rec, "https://a.example/a,b?q=a,b&r=1#x")
 	opens(t, o, rec, "https://a.example:8443/path")
+	opens(t, o, rec, "https://sub-domain.a.example/a%20b?q=%22x%22")
+	opens(t, o, rec, "https://münchen.example/")
+	opens(t, o, rec, "https://xn--mnchen-3ya.example/")
 }
 
 func TestAnAddressOverTheCapIsRefusedAndOneAtTheCapIsOpened(t *testing.T) {
@@ -96,7 +101,7 @@ func TestTheHostsOwnServerIsRefusedInEverySpellingAndOnlyOnItsPort(t *testing.T)
 		"http://a.b.localhost:34115/", "http://127.1:34115/", "http://127.0.1:34115/", "http://0x7f.1:34115/", "http://0x7f000001:34115/", "http://2130706433:34115/",
 		"http://0177.0.0.1:34115/", "http://0177.1:34115/", "http://127.0.0.1.:34115/", "http://127.255.255.254:34115/", "http://0.0.0.0:34115/", "http://0:34115/", "http://[::]:34115/",
 		"http://[::1]:34115/", "http://[0:0:0:0:0:0:0:1]:34115/", "http://[::ffff:127.0.0.1]:34115/", "http://[::ffff:7f00:1]:34115/", "http://[::127.0.0.1]:34115/",
-		"http://１２７.０.０.１:34115/", "http://127。0。0。1:34115/", "http://①②⑦.0.0.1:34115/",
+		"http://１２７.０.０.１:34115/", "http://%ef%bc%91%ef%bc%92%ef%bc%97.0.0.1:34115/", "http://127。0。0。1:34115/", "http://①②⑦.0.0.1:34115/",
 		"http://127.0.0.1:40000/", "http://localhost:41000/", "https://[::1]:40000/",
 	} {
 		before := len(rec.opened)
@@ -131,6 +136,9 @@ func TestAnAddressOfAnInterfaceTheHostListensOnIsRefused(t *testing.T) {
 	refusal(t, o, rec, "http://192.168.1.5:9000/", ReasonOwnServer)
 	refusal(t, o, rec, "http://3232235781:9000/", ReasonOwnServer)
 	refusal(t, o, rec, "http://0xc0.0xa8.1.5:9000/", ReasonOwnServer)
+	refusal(t, o, rec, "http://[::ffff:192.168.1.5]:9000/", ReasonOwnServer) // an IPv4 address in an IPv6 spelling
+	refusal(t, o, rec, "http://[::ffff:c0a8:105]:9000/", ReasonOwnServer)
+	opens(t, o, rec, "http://[::ffff:192.168.1.6]:9000/")
 	opens(t, o, rec, "http://192.168.1.6:9000/")
 	opens(t, o, rec, "http://192.168.1.5:9001/")
 }

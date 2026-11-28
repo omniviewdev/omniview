@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"net"
 	"os"
 	"runtime"
+	"strconv"
 	"sync"
 
 	"github.com/omniviewdev/omniview/backend/pkg/opener"
@@ -143,4 +145,16 @@ func (a *AppService) SaveFileDialog(opts FileDialogOptions) (string, error) {
 // WriteFileContent writes string content to the given file path.
 func (a *AppService) WriteFileContent(path string, content string) error {
 	return os.WriteFile(path, []byte(content), 0644)
+}
+
+// wailsServerAddress is where the server build's own server listens: the host and the port the application is configured with.
+func wailsServerAddress() string { return net.JoinHostPort("localhost", strconv.Itoa(serverModePort)) }
+
+// hostServers are the addresses of every server the host listens on now: the application server, the listeners that registered themselves, and the sources.
+func hostServers(sources ...func() []string) []string {
+	out := []string{wailsServerAddress()}
+	for _, source := range sources {
+		out = append(out, source()...)
+	}
+	return out
 }

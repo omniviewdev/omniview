@@ -7,13 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -800,7 +798,7 @@ func main() {
 
 	// The opener refuses an address of the host's own servers: the server-mode port, the diagnostics endpoint and the MCP relay.
 	appService.setOwnServers(func() []string {
-		return []string{net.JoinHostPort("localhost", strconv.Itoa(serverModePort)), diagnosticsHTTP.Address(), mcpRelay.ListenAddress()}
+		return hostServers(func() []string { return []string{diagnosticsHTTP.Address(), mcpRelay.ListenAddress()} })
 	})
 
 	uiInspectionEnabled, _ := coreSettings.CategoryValues("developer")["ui_inspection_enabled"].(bool)

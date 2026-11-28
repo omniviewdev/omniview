@@ -3,6 +3,8 @@ package main
 import (
 	"testing"
 
+	"github.com/omniviewdev/omniview/internal/ownservers"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -24,4 +26,35 @@ func TestTheBoundOpenerRefusesTheHostsOwnServersAndTheOtherSchemes(t *testing.T)
 		require.NoError(t, err)
 		assert.Equal(t, opener.Result{Opened: false, Reason: reason}, got, raw)
 	}
+}
+
+// The application server is where Wails binds it: WAILS_SERVER_HOST and WAILS_SERVER_PORT override the configured host and port (the e2e harness and the
+// docs run on 34215), and a port that is not one is ignored as Wails ignores it.
+func TestTheApplicationServerIsWhereWailsBindsIt(t *testing.T) {
+	assert.Equal(t, "localhost:34115", wailsServerAddress(), "the control: the configured address")
+	t.Setenv("WAILS_SERVER_PORT", "34215")
+	assert.Equal(t, "localhost:34215", wailsServerAddress())
+	t.Setenv("WAILS_SERVER_HOST", "0.0.0.0")
+	assert.Equal(t, "0.0.0.0:34215", wailsServerAddress())
+	t.Setenv("WAILS_SERVER_PORT", "70000")
+	assert.Equal(t, "0.0.0.0:34115", wailsServerAddress(), "a port out of range is ignored")
+	t.Setenv("WAILS_SERVER_PORT", "abc")
+	assert.Equal(t, "0.0.0.0:34115", wailsServerAddress())
+
+	t.Setenv("WAILS_SERVER_HOST", "")
+	t.Setenv("WAILS_SERVER_PORT", "34215")
+	service := NewAppService(devcontract.InstanceDescriptor{})
+	service.setOwnServers(func() []string { return hostServers() })
+	got, err := service.OpenExternalURL("http://127.0.0.1:34215/")
+	require.NoError(t, err)
+	assert.Equal(t, opener.Result{Opened: false, Reason: opener.ReasonOwnServer}, got)
+}
+
+func TestEveryListenerThatRegisteredItselfIsAnOwnServer(t *testing.T) {
+	remove := ownservers.Add("127.0.0.1:45671")
+	servers := hostServers(func() []string { return []string{"127.0.0.1:45672"} })
+	assert.Contains(t, servers, "127.0.0.1:45671")
+	assert.Contains(t, servers, "127.0.0.1:45672")
+	remove()
+	assert.NotContains(t, hostServers(), "127.0.0.1:45671")
 }

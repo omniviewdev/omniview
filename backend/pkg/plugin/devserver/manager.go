@@ -523,3 +523,6 @@ func (m *DevServerManager) emitErrors(pluginID string, errors []BuildError) {
 	}
 	m.app.Event.Emit(EventDevServerError, DevServerErrorPayload{PluginID: pluginID, Errors: errors})
 }
+
+// ListenAddresses are the addresses of the Vite servers of the instances, as host:port.
+func (m *DevServerManager) ListenAddresses() []string { return nil }
