@@ -87,16 +87,6 @@ func (OSFS) Lstat(p string) (fs.FileInfo, error) { return os.Lstat(p) }
 // Readlink is os.Readlink.
 func (OSFS) Readlink(p string) (string, error) { return os.Readlink(p) }
 
-// ReadDir reads at most n entries of a directory it opens, which the caller knows to be a directory (it was an entry's type or an lstat).
-func (OSFS) ReadDir(p string, n int) ([]fs.DirEntry, error) {
-	f, err := os.Open(p)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = f.Close() }()
-	return f.ReadDir(n)
-}
-
 // Resolve says what the text names, looked for in the row's directory, then in the roots, then by a bounded scan for a file whose path ends
 // with the text. The answer is Kind file or dir with the real path, or unknown with a Reason.
 //
@@ -124,7 +114,7 @@ func (r *Resolver) Resolve(in Input) Result {
 
 	key := in.Dir + "\x00" + strings.Join(in.Roots, "\x00") + "\x00" + in.Text
 	if cached, ok := r.cache.get(key); ok {
-		switch c.stillThere(cached) {
+		switch c.reuse(in, cached) {
 		case stillThere:
 			return cached
 		case timedOut:
@@ -161,10 +151,12 @@ type call struct {
 	links   map[string]string
 	scanned int
 	stuck   bool
+	// allowed are the spellings of the directories a path may lie in: the real paths and the ones the shell and the host gave.
+	allowed []string
 }
 
 func newCall(ctx context.Context, r *Resolver) *call {
-	return &call{r: r, ctx: ctx, ops: 0, lstats: map[string]lstatMemo{}, links: map[string]string{}, scanned: 0, stuck: false}
+	return &call{r: r, ctx: ctx, ops: 0, lstats: map[string]lstatMemo{}, links: map[string]string{}, scanned: 0, stuck: false, allowed: nil}
 }
 
 type lstatMemo struct {
@@ -244,10 +236,26 @@ func (c *call) readlink(p string) (string, Reason) {
 	return got.v, ""
 }
 
-// denied is whether a path is one that is never looked at.
+// denied is whether a path is one that is never looked at. The names are compared without case: a volume may not tell them apart.
 func denied(p string) bool {
 	for _, root := range [...]string{"/dev", "/proc", "/sys"} {
-		if p == root || strings.HasPrefix(p, root+"/") {
+		if len(p) >= len(root) && strings.EqualFold(p[:len(root)], root) && (len(p) == len(root) || p[len(root)] == '/') {
+			return true
+		}
+	}
+	return false
+}
+
+// permitted is whether a path may be looked at: it is one of the directories a path may lie in, inside one, or an ancestor of one (a walk to a
+// directory looks at each of its ancestors). Anything else is outside and is not looked at, so text cannot make the host touch a path of its choosing
+// (an automounted /net/host/..., a path on a hung mount), and a missing path outside is answered as an existing one is.
+func permitted(p string, allowed []string) bool {
+	if allowed == nil || p == "/" {
+		return true
+	}
+	for _, base := range allowed {
+		base = strings.TrimSuffix(base, "/")
+		if p == base || strings.HasPrefix(p, base+"/") || strings.HasPrefix(base, p+"/") {
 			return true
 		}
 	}
@@ -256,7 +264,7 @@ func denied(p string) bool {
 
 // real follows every link of an absolute, cleaned path, one component at a time with lstat and readlink, so that nothing is looked at that
 // was not named: a link into /dev is read, and /dev is not looked at. It answers the real path and what lstat said of it.
-func (c *call) real(p string) (string, fs.FileInfo, Reason) {
+func (c *call) real(p string, allowed []string) (string, fs.FileInfo, Reason) {
 	if denied(p) {
 		return "", nil, ReasonDenied
 	}
@@ -274,10 +282,7 @@ func (c *call) real(p string) (string, fs.FileInfo, Reason) {
 			continue
 		}
 		next := path.Join(resolved, name)
-		if denied(next) {
-			return "", nil, ReasonDenied
-		}
-		fi, reason := c.lstat(next)
+		fi, reason := c.look(next, allowed)
 		if reason != "" {
 			return "", nil, reason
 		}
@@ -306,6 +311,17 @@ func (c *call) real(p string) (string, fs.FileInfo, Reason) {
 	return resolved, info, ""
 }
 
+// look is lstat for a path that is neither denied nor outside.
+func (c *call) look(p string, allowed []string) (fs.FileInfo, Reason) {
+	switch {
+	case denied(p):
+		return nil, ReasonDenied
+	case !permitted(p, allowed):
+		return nil, ReasonOutside
+	}
+	return c.lstat(p)
+}
+
 // bases are the directories a path is resolved in and may lie in: the real path of the row's directory first, then those of the roots. A root
 // that is not a directory here is left out; a row directory that is not one, or is in /dev, /proc or /sys, is the answer.
 func (c *call) bases(in Input) ([]string, Reason) {
@@ -314,7 +330,7 @@ func (c *call) bases(in Input) ([]string, Reason) {
 		if !filepath.IsAbs(dir) {
 			continue
 		}
-		resolved, info, reason := c.real(filepath.Clean(dir))
+		resolved, info, reason := c.real(filepath.Clean(dir), nil)
 		if reason == ReasonTimeout || (reason == ReasonDenied && i == 0) {
 			return nil, reason
 		}
@@ -327,6 +343,17 @@ func (c *call) bases(in Input) ([]string, Reason) {
 		out = append(out, resolved)
 	}
 	return out, ""
+}
+
+// spellingsOf are the directories a path may be looked at in: the real paths of the bases, and the lexical ones as they were given.
+func (c *call) spellingsOf(bases []string, in Input) []string {
+	out := append([]string(nil), bases...)
+	for _, dir := range append([]string{in.Dir}, in.Roots...) {
+		if filepath.IsAbs(dir) {
+			out = append(out, filepath.Clean(dir))
+		}
+	}
+	return out
 }
 
 // worse is the answer to keep of two misses: the first that is not a plain not-found.
@@ -342,6 +369,7 @@ func (c *call) resolve(in Input, t target) Result {
 	if reason != "" {
 		return unknown(reason)
 	}
+	c.allowed = c.spellingsOf(bases, in)
 	cleaned := path.Clean(filepath.ToSlash(t.path))
 	miss := unknown(ReasonNotFound)
 	for _, name := range names(cleaned) {
@@ -428,7 +456,7 @@ func spellings(name string) []string {
 
 // attempt looks for one absolute, lexically cleaned path: its real path must lie in a base, and be a file or a directory.
 func (c *call) attempt(lex string, bases []string) Result {
-	resolved, info, reason := c.real(lex)
+	resolved, info, reason := c.real(lex, c.allowed)
 	switch {
 	case reason != "":
 		return unknown(reason)
@@ -525,6 +553,19 @@ const (
 	changed
 	timedOut
 )
+
+// reuse says whether an answer from the cache may be given again: it is still inside the directories as they are now (a directory may have been
+// replaced by a link elsewhere), and the file is still there.
+func (c *call) reuse(in Input, res Result) recheck {
+	bases, reason := c.bases(in)
+	switch {
+	case reason == ReasonTimeout:
+		return timedOut
+	case reason != "" || !within(res.Path, bases):
+		return changed
+	}
+	return c.stillThere(res)
+}
 
 // stillThere asks the file system once whether an answer from the cache is still true: the file may have been deleted since.
 func (c *call) stillThere(res Result) recheck {
