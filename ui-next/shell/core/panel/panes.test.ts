@@ -77,6 +77,18 @@ describe('split', () => {
     expect(h.snapshot().active.terminal).toBe('s3');
   });
 
+  it('goes after the pane of the session it is told to be beside, whichever pane is active; a session that is in no pane leaves the active pane the anchor', () => {
+    const h = terminalWith(3);
+    expect(group(h)?.active).toBe('p3');
+    expect(h.store.splitPane('terminal', shell('beside s1'), { extent: EXTENT, beside: 's1' })).toMatchObject({ status: 'done', id: 's4' });
+    expect(sessionsOf(h)).toEqual(['s1', 's4', 's2', 's3']);
+    expect(group(h)?.active).toBe(group(h)?.panes[1].id);
+    h.store.openSession(session('terminal', 'host', 'aside'), { reveal: false });
+    expect(h.store.splitPane('terminal', shell('beside nothing'), { extent: EXTENT, beside: 's5' })).toMatchObject({ status: 'done', id: 's6' });
+    expect(sessionsOf(h)).toEqual(['s1', 's4', 's6', 's2', 's3']);
+    expect(h.store.splitPane('terminal', shell('beside a ghost'), { extent: EXTENT, beside: 'ghost' })).toMatchObject({ status: 'done' });
+  });
+
   it('on a tool that has no session opens one and makes no group', () => {
     const h = boot({ hostTools: HOST_TOOLS });
     expect(h.store.splitPane('terminal', shell('shell 1'), { extent: EXTENT })).toMatchObject({ status: 'done', id: 's1' });

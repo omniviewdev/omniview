@@ -422,6 +422,69 @@ describe('the sash\'s drag', () => {
     expect(ratios(h)).toEqual([0.5, 0.5]);
   });
 
+  it('cancels the drag when a pane before the sash closes: the preview is cleared from the panes it was written to, and nothing is committed', () => {
+    const h = mount();
+    split(h, 3);
+    const [first, , third] = h.store.getSnapshot().order;
+    const sash = sashAt(1);
+    fireEvent.pointerDown(sash, { button: 0, isPrimary: true, pointerId: 1, clientX: 530 });
+    fireEvent.pointerMove(sash, { pointerId: 1, clientX: 400 });
+    act(() => {
+      vi.advanceTimersByTime(20);
+    });
+    expect(slots().some((slot) => slot.style.getPropertyValue('flex-grow') !== '')).toBe(true);
+    const before = h.store.getSnapshot().panes.terminal?.ratios;
+    void third;
+    act(() => {
+      h.store.closeSession(first);
+    });
+    fireEvent.pointerMove(sash, { pointerId: 1, clientX: 300 });
+    act(() => {
+      vi.advanceTimersByTime(20);
+    });
+    expect(slots().filter((slot) => slot.style.getPropertyValue('flex-grow') !== '')).toEqual([]);
+    fireEvent.pointerUp(sash, { pointerId: 1, clientX: 300 });
+    expect(before).toHaveLength(3);
+    expect(h.store.getSnapshot().panes.terminal?.ratios).toHaveLength(2);
+    expect(h.store.getSnapshot().panes.terminal?.ratios.every((one) => Math.abs(one - 0.5) < 1e-9)).toBe(true);
+  });
+
+  it('keeps the preview within 80 px when the deck gets shorter during the drag', () => {
+    const callbacks: Array<() => void> = [];
+    class Observer {
+      observe = vi.fn();
+
+      disconnect = vi.fn();
+
+      constructor(callback: () => void) {
+        callbacks.push(callback);
+      }
+    }
+
+    vi.stubGlobal('ResizeObserver', Observer);
+    const h = mount();
+    split(h, 2);
+    const sash = sashAt(0);
+    fireEvent.pointerDown(sash, { button: 0, isPrimary: true, pointerId: 1, clientX: 400 });
+    fireEvent.pointerMove(sash, { pointerId: 1, clientX: 30 });
+    act(() => {
+      vi.advanceTimersByTime(20);
+    });
+    deckWidth = 300;
+    act(() => {
+      for (const callback of callbacks) {
+        callback();
+      }
+    });
+    act(() => {
+      vi.advanceTimersByTime(20);
+    });
+    const [left] = slots().filter((slot) => !slot.hidden);
+    expect(Number(left.style.getPropertyValue('flex-grow')) * (300 - SASH)).toBeGreaterThanOrEqual(80 - 1e-6);
+    fireEvent.pointerCancel(sash);
+    vi.unstubAllGlobals();
+  });
+
   it('ignores a pointer that is not the primary button\'s', () => {
     const h = mount();
     split(h, 2);

@@ -1163,6 +1163,21 @@ describe('a window that was reloaded finds its terminals again (T2-go)', () => {
       withDirectory.stop();
     });
 
+    it('puts the new pane beside the pane the split was pressed in, though the keyboard went to another pane while the host answered', async () => {
+      const answer = Promise.withResolvers<TerminalDirectory>();
+      const r = withTerminal(async () => answer.promise);
+      // A second and a third terminal beside the first (three panes), the keyboard in the last.
+      r.terminals.sessions.open(found('term-b', keyedFeed()), { split: { extent: 1000 } });
+      r.terminals.sessions.open(found('term-c', keyedFeed()), { split: { extent: 1000 } });
+      expect(r.store.getSnapshot().panes.terminal?.panes.map((pane) => pane.session)).toEqual(['term-a', 'term-b', 'term-c']);
+      const splitting = r.terminals.splitHere('term-a', 1000);
+      await turns();
+      answer.resolve(SHELL);
+      await splitting;
+      expect(r.store.getSnapshot().panes.terminal?.panes.map((pane) => pane.session)).toEqual(['term-a', 'term-split-1', 'term-b', 'term-c']);
+      r.stop();
+    });
+
     it('is what the body\'s Split runs, given the length the deck measured', async () => {
       const directory = vi.fn(async () => Promise.resolve(SHELL));
       const r = withTerminal(directory);
