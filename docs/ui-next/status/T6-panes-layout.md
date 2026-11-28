@@ -2,7 +2,9 @@
 
 Branch `feat/panel-panes-layout` from `origin/main` `00a1c0eda` (the model, #806). Not here: focus movement between panes by key (a click or the keyboard going into a pane focuses it, `focusPane`), the saved ratios wired into the window's session, and the probe of a reload. The editor area is step 7 and is blocked.
 
-Shas (filled at the end): see the final section.
+Shas: reds `17f2a8be8` (every pane of the shown group is shown), `f3e429b7f` (the layout, the sash, Split terminal), `44df20185` (a release after the window changed), `fad023b9d` (the active pane is marked); greens `ddbf330cc`, the fix in `ddbf330cc`'s successor `06ca89eea` (the probe, its controls, the release re-measure), `309c96d6a`, `cd0280aae` (the sash painted above the bodies), `180a690e0` (lint), and the controls `6549bb32f`, `f4db2bf98`.
+
+**How the red was seen, honestly:** the layout and the sash were written before their page tests; the tests were then committed and run against the panel body and registry as they were before the change (the new `PanelBody.tsx` put aside and restored), where 14 of 16 failed by their own words (`the panes have a sash after pane 1: expected undefined to be defined`, widths, orders); the other 2 pass on the old body because they state what a tool with one session still does. The later findings (the release, the marker) are red-then-green commits.
 
 ## Decisions
 
@@ -18,7 +20,7 @@ Shas (filled at the end): see the final section.
 
 ## What is proved, and how
 
-Tests first, seen red (`f3e429b7f`, `ad…` see shas): page tests against the invented stream bodies (`panes/Panes.test.tsx`: **no emulator**; jsdom has no layout, so the deck's length is given: 800 px, a sash of 5), the Split button against the real registry and screen with a **FAKE emulator** (`terminal/TerminalSplit.test.tsx`), the registry (`TerminalSessions.test.ts`, `terminals.test.ts`).
+Page tests against the invented stream bodies (`panes/Panes.test.tsx`: **no emulator**; jsdom has no layout, so the deck's length is given: 800 px, a sash of 5), the Split button against the real registry and screen with a **FAKE emulator** (`terminal/TerminalSplit.test.tsx`), the registry (`TerminalSessions.test.ts`, `terminals.test.ts`).
 
 **The real emulator** (the product's own xterm, DOM renderer where text is read and the GPU's where contexts are counted) is the probe's: `terminal-panes-probe.mjs` (`PART=panes` of `terminal-probe.mjs`, sections in `terminal-panes.mjs`), against the probe's own host, which now records the directory a terminal was asked to start in and every directory it was asked for. In WebKit and Chromium at 1440x900 and 1280x800:
 - `panes.split` a second terminal under another id, asked to start in `/home/user` where the host said the first is; `panes.equal` two panes equal within 1 px, each at least 80, and with the sash filling the deck; `panes.focus` the keyboard in the new pane; `panes.cols` each emulator's columns are its pane's, within one column (the host's own record of the sizes it was told); `panes.three` three equal panes and two sashes;
@@ -35,3 +37,21 @@ Looked at (screenshots of three panes, `SHOTS=<dir>`): both engines at both view
 - The nine themes (the panes add only `--ov-border-control`, `--ov-accent` and `--ov-hover-toolbar`, tokens that every theme defines; none of the nine was looked at).
 - Stacked panes in a browser: the deck and the sash draw a column (page tests: orientation, keys), and no control starts one, so no probe does.
 - The seam and the stable build: see the commands below.
+
+## Commands and results (final head)
+
+- Probe, both engines at both viewports, `PART=panes` (`node ui-next/shell/probes/terminal-panes-probe.mjs`): **PASS (60 assertions)**, 138 s at load 5.9. WebGL contexts: 3 after the first showing and 3 after the tenth, for 3 terminals, in all four. A first full run found a real defect (the hit area of the sash was painted under the next pane in Chromium: `z-index: 1`); the first section run found another (a window narrowed mid-drag left a pane at 47 px: the release now reads the deck again).
+- Probe controls: the 11 of `PANES_CONTROLS`, each run twice in Chromium (`/tmp` script, not kept: `NEGATIVE_CONTROL=<name>` then the same with `ASSERTION_OFF=^<assertion>$`): all 11 **detected by their own assertion and NOT DETECTED with it dropped**. Five were first wrong and fixed: `panes-unequal` tripped `panes.cols` too (its fault was a share of 1.004 against 0.5, a 2 to 1 split; now 0.502, 3 px), `panes-wrong-directory` was not applied (the host calls go through the probe's binding, not `fetch`), `panes-fit-lost` was undone by React redrawing the share (now the deck's observer is dropped), `panes-reset-lost` also tripped `panes.keys` (the keys now start from equal panes), and the first drop pattern did not match the assertion name.
+- `bash docs/ui-next/status/T6-panes-layout/controls.sh.txt`: **exit 0, 20 of 20 controls RED by the tests named for them**, second half enforced (`SOLE` of 13): 7.4 min. It had `MISMATCH`es until the controls that the new marker test also catches (`a-click-in-a-pane-does-not-focus-it`) were taken out of `SOLE`.
+- Seam `pages,terminal-core,controls-kept` (`env -i ... SEAM_SHELL=/bin/bash task local:seam`, both engines): **exit 0**, 32 phases, 10 controls detected. (The `env -i` of the brief needs `$HOME/.asdf/shims` and `$HOME/.local/bin` on `PATH` for `task` and `node` on this machine.)
+- Stable build (`task check:ui-build` = `task packages` + `pnpm build`) **exit 0**; `node --test scripts/ui-flavour.test.mjs` **7 pass**; `scripts/react-compiler.test.mjs` 13 pass.
+- `tsc -p tsconfig.app.json`, `tsc -p tsconfig.test.json`, `pnpm --filter @omniviewdev/kit run typecheck`: **exit 0 each**. `pnpm lint` (eslint of ui, ui-next, packages, the ui-policy audit and stylelint): **exit 0**, 0 errors, 8 warnings in the legacy `ui/` that `origin/main` has too.
+- `vitest run ui-next/shell/panel ui-next/shell/core/panel ui-next/plugins/host ui-next/shell/session ui-next/shell/probes`: 5675 pass, 5 fail, all of them the failures of `origin/main` under load that the model pull request recorded: three 5 s timeouts (`core/panel/fuzz.test.ts` twice, `LogStreams.fuzz.test.ts`, which pass with `--testTimeout=120000`: 11 of 11), `PluginHost.terminal` (the screen reader setting, passes alone) and `PluginHost.settings` "draws the sheet from the gear in a browser" (fails on a clean `origin/main`).
+- `node --test scripts/ci/*.test.mjs`: 248 pass, 9 fail, all `jq is needed for this test` (no `jq` on this machine; the probe table's own tests pass).
+- `uptime` at the probe: load average 5.9; at the controls 7 to 11 (shared machine).
+
+## Not verified, in addition to the above
+
+- The Tab order is the order the bodies were mounted in (decision 1): a split in the middle of a group puts the new body last in the DOM and in the Tab order but in the middle on screen. WCAG 2.4.3 (focus order) is not met for that case until focus movement lands.
+- The panes probe measures the DOM renderer's columns by the host's record of sizes; the GPU renderer's columns are checked only by the context count.
+- A pane's close is the session tab's close (the existing guard); there is no close button on the pane itself.
