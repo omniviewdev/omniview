@@ -11,6 +11,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/opener"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/instance"
+	"github.com/omniviewdev/omniview/internal/ownservers"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -147,12 +148,29 @@ func (a *AppService) WriteFileContent(path string, content string) error {
 	return os.WriteFile(path, []byte(content), 0644)
 }
 
-// wailsServerAddress is where the server build's own server listens: the host and the port the application is configured with.
-func wailsServerAddress() string { return net.JoinHostPort("localhost", strconv.Itoa(serverModePort)) }
+// wailsServerAddress is where the server build's own server listens, resolved as Wails resolves it (pkg/application/application_server.go): the
+// WAILS_SERVER_HOST and WAILS_SERVER_PORT of the environment over the configured host and port (the e2e harness and the docs run on 34215), and a port
+// that is not 1 to 65535 is ignored.
+func wailsServerAddress() string {
+	host := os.Getenv("WAILS_SERVER_HOST")
+	if host == "" {
+		host = serverModeHost
+	}
+	port := serverModePort
+	if text := os.Getenv("WAILS_SERVER_PORT"); text != "" {
+		if parsed, err := strconv.Atoi(text); err == nil && parsed >= 1 && parsed <= maxServerPort {
+			port = parsed
+		}
+	}
+	return net.JoinHostPort(host, strconv.Itoa(port))
+}
+
+// maxServerPort is the largest port number.
+const maxServerPort = 65535
 
 // hostServers are the addresses of every server the host listens on now: the application server, the listeners that registered themselves, and the sources.
 func hostServers(sources ...func() []string) []string {
-	out := []string{wailsServerAddress()}
+	out := append([]string{wailsServerAddress()}, ownservers.Addresses()...)
 	for _, source := range sources {
 		out = append(out, source()...)
 	}

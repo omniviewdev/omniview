@@ -83,6 +83,8 @@ const (
 
 	// serverModePort is the port used when built with -tags server.
 	serverModePort = 34115
+	// serverModeHost is the host the application server binds to unless WAILS_SERVER_HOST says another.
+	serverModeHost = "localhost"
 
 	// Main window background colour #0D1117 (dark theme), fully opaque.
 	backgroundRed   = 13
@@ -302,7 +304,7 @@ func main() {
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
 		},
-		Server: application.ServerOptions{Host: "localhost", Port: serverModePort},
+		Server: application.ServerOptions{Host: serverModeHost, Port: serverModePort},
 		Mac:    macApplicationOptions(),
 		Linux:  application.LinuxOptions{ProgramName: appName},
 	}
@@ -798,7 +800,9 @@ func main() {
 
 	// The opener refuses an address of the host's own servers: the server-mode port, the diagnostics endpoint and the MCP relay.
 	appService.setOwnServers(func() []string {
-		return hostServers(func() []string { return []string{diagnosticsHTTP.Address(), mcpRelay.ListenAddress()} })
+		return hostServers(func() []string {
+			return append([]string{diagnosticsHTTP.Address(), mcpRelay.ListenAddress()}, devServerManager.ListenAddresses()...)
+		})
 	})
 
 	uiInspectionEnabled, _ := coreSettings.CategoryValues("developer")["ui_inspection_enabled"].(bool)

@@ -15,6 +15,8 @@ import (
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	"golang.org/x/net/netutil"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/omniviewdev/omniview/internal/ownservers"
 )
 
 const (
@@ -57,7 +59,9 @@ func (s *Service) StartPluginTraceReceiver(pluginID string) (string, string, fun
 	}
 	server.Handler = s.pluginTraceHandler(pluginID, token, generation, armed, client)
 	go func() { _ = server.Serve(listener) }()
+	unregister := ownservers.Add(listener.Addr().String())
 	cleanup := func() {
+		unregister()
 		ctx, cancel := context.WithTimeout(context.Background(), pluginTraceTimeout)
 		defer cancel()
 		if shutdownErr := server.Shutdown(ctx); shutdownErr != nil {

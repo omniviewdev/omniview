@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"sync"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -524,5 +526,15 @@ func (m *DevServerManager) emitErrors(pluginID string, errors []BuildError) {
 	m.app.Event.Emit(EventDevServerError, DevServerErrorPayload{PluginID: pluginID, Errors: errors})
 }
 
-// ListenAddresses are the addresses of the Vite servers of the instances, as host:port.
-func (m *DevServerManager) ListenAddresses() []string { return nil }
+// ListenAddresses are the addresses of the Vite servers of the instances, as host:port: servers of this machine that the host started.
+func (m *DevServerManager) ListenAddresses() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]string, 0, len(m.instances))
+	for _, inst := range m.instances {
+		if inst.vitePort > 0 {
+			out = append(out, net.JoinHostPort("127.0.0.1", strconv.Itoa(inst.vitePort)))
+		}
+	}
+	return out
+}

@@ -3,13 +3,12 @@ package main
 import (
 	"testing"
 
-	"github.com/omniviewdev/omniview/internal/ownservers"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/omniviewdev/omniview/backend/pkg/opener"
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/ownservers"
 )
 
 // The bound call refuses the host's own server, as the opener does: the service passes the servers it was told of, and nothing is started for a refusal.

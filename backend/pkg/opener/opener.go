@@ -127,7 +127,7 @@ func (o *Opener) check(raw string) (string, Reason) {
 	if err != nil || parsed.Host == "" || parsed.Hostname() == "" {
 		return "", ReasonMalformed
 	}
-	if parsed.User != nil || strings.Contains(authority(raw), "@") {
+	if parsed.User != nil {
 		return "", ReasonUserinfo
 	}
 	port, ok := portOf(parsed)
@@ -162,15 +162,6 @@ func hasControl(s string) bool {
 	return false
 }
 
-// authority is the part of the address between `//` and the first `/`, `?` or `#`.
-func authority(raw string) string {
-	rest := raw[strings.Index(raw, "//")+2:]
-	if i := strings.IndexAny(rest, "/?#"); i >= 0 {
-		return rest[:i]
-	}
-	return rest
-}
-
 // portOf is the port the address names, or the scheme's default.
 func portOf(u *url.URL) (int, bool) {
 	text := u.Port()
@@ -187,12 +178,10 @@ func portOf(u *url.URL) (int, bool) {
 	return port, true
 }
 
-// normalHost is the host as a browser would read it: no percent escapes (a browser decodes them, so `127%2e0.0.1` is loopback; none is refused), no zone, lower
-// case, no trailing dots, and in ASCII (the other spellings of a dot and of the digits are mapped as a browser maps them).
+// normalHost is the host as a browser would read it, and strictly: lower case, no trailing dot, in ASCII (the other spellings of a dot and of the digits are mapped
+// as a browser maps them, and a name that cannot be is refused), and then only letters, digits, hyphens and dots, with no empty label. An IPv6 literal is checked
+// by its own parser. Go's parser has refused a percent escape of an ASCII character already, and decoded those of others, so a host never holds `%` here.
 func normalHost(host string) (string, bool) {
-	if strings.Contains(host, "%") {
-		return "", false
-	}
 	if !isASCII(host) {
 		ascii, err := idna.Lookup.ToASCII(host)
 		if err != nil {
@@ -201,7 +190,24 @@ func normalHost(host string) (string, bool) {
 		host = ascii
 	}
 	host = strings.TrimRight(strings.ToLower(host), ".")
-	return host, host != ""
+	if host == "" {
+		return "", false
+	}
+	if strings.Contains(host, ":") { // an IPv6 literal: classify parses it
+		return host, true
+	}
+	for _, label := range strings.Split(host, ".") {
+		if label == "" {
+			return "", false
+		}
+		for i := 0; i < len(label); i++ {
+			c := label[i]
+			if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' {
+				return "", false
+			}
+		}
+	}
+	return host, true
 }
 
 func isASCII(s string) bool {
