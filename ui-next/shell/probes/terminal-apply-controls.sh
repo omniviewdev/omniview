@@ -112,6 +112,9 @@ control "page bell mark clear told for nothing" $terminal/bells.ts "s/if (marked
 control "page bell mark never cleared on show" $terminal/TerminalBody.tsx '/^  useEffect(() => {$/,/^  }, \[bells, session.id, visible\]);$/s/if (visible) {/if (false) {/' vt $terminal/terminals.test.ts -t "the bell of a terminal"
 control "page bell mark not in the tab's name" ui-next/shell/panel/SessionTabs.tsx 's/aria-label={mark === undefined ? sessionName(item) : `${sessionName(item)}, ${mark.label}`}/aria-label={sessionName(item)}/' vt ui-next/shell/panel/SessionTabs.test.tsx -t "the mark a tool puts"
 control "page bell mark drawn for every tab" ui-next/shell/panel/SessionTabs.tsx 's/{mark === undefined ? null : <span className={styles.sessionMark}/{false ? null : <span className={styles.sessionMark}/' vt ui-next/shell/panel/SessionTabs.test.tsx -t "the mark a tool puts"
+control "page bell parsed in a replay marks the tab" $terminal/screen.ts '/made.onBell(() => {/,/return;/s/replaying !== undefined/false/' vt $terminal/screen.test.ts -t "the bell"
+control "page start reads Option before the font wait" $terminal/screen.ts 's/appliedBehaviour = startBehaviour;/appliedBehaviour = behaviourOf(person);/' vt $terminal/screen.test.ts -t "the bell"
+control "page US International is not a US layout" $terminal/layout.ts "s/, '\\\\u0301', '\\\\u00b4'//" vt $terminal/layout.test.ts
 
 if [ $wrong -eq 0 ]; then
   echo "every control was seen"

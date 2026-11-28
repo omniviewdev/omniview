@@ -3605,4 +3605,43 @@ describe('the bell', () => {
     engine().ring();
     expect(bells.count).toBe(1);
   });
+
+  it('puts no mark for a bell the emulator parses while it applies a replay: it is a bell the person saw (or one a program rang long ago, still in the host\'s ring), and a hidden screen takes a late replay as it takes live bytes', async () => {
+    const prefs = fakePreferences({ bell: 'visual' });
+    const r = rig({ preferences: prefs.source, auto: false, reattach: { late: true } });
+    r.screen.mount(r.host);
+    r.feed.push('first\r\n');
+    r.screen.show();
+    await r.settle();
+    r.frame();
+    r.engine().complete();
+    r.screen.hide();
+    r.arrive(replayOf('seen\u0007\r\n'));
+    r.frame();
+    r.engine().ring();
+    expect(r.bells.count).toBe(0);
+    r.engine().complete();
+    await r.settle();
+    r.frame();
+    r.engine().complete();
+    await r.settle();
+    r.engine().ring();
+    expect(r.bells.count).toBe(1);
+  });
+
+  it('takes the setting it read after the font wait: a change that came while the font loaded is applied to the emulator that was made in the older one', async () => {
+    const prefs = fakePreferences({ macOptionIsMeta: 'off' });
+    const { screen, host, loader, fonts, settle } = rig({ preferences: prefs.source, fontsHeld: true });
+    screen.mount(host);
+    screen.show();
+    await settle();
+    // The store is kept live by another terminal, and this screen listens only once its emulator is made.
+    prefs.change({ macOptionIsMeta: 'on', cursorBlink: true });
+    fonts.release();
+    await settle();
+    const made = loader.engines[0];
+    const optionIsMeta = made.behaviours.at(-1)?.optionIsMeta ?? made.options.optionIsMeta;
+    expect(optionIsMeta).toBe(true);
+    expect(made.behaviours.at(-1)?.cursorBlink ?? made.options.cursorBlink).toBe(true);
+  });
 });

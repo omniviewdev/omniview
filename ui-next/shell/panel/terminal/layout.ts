@@ -9,29 +9,32 @@ import type { PreferencesSource } from './preferences';
 /** What the keyboard map answers: the character a key code types (`KeyQ` types `q` on a US layout). */
 export type LayoutMap = { readonly get: (code: string) => string | undefined };
 
-/** The keys on which layouts differ, and what the US layout types on them (US International types the same on the base layer). A layout is US only when EVERY one is. */
-const US_KEYS: Readonly<Record<string, string>> = {
-  KeyQ: 'q',
-  KeyW: 'w',
-  KeyA: 'a',
-  KeyZ: 'z',
-  KeyM: 'm',
-  Semicolon: ';',
-  Quote: '\'',
-  Backquote: '`',
-  BracketLeft: '[',
-  BracketRight: ']',
-  Backslash: '\\',
-  Minus: '-',
-  Equal: '=',
-  Comma: ',',
-  Period: '.',
-  Slash: '/',
+/**
+ * The keys on which layouts differ, and what each types on the US layout: every key lists what it may be. US International types the same on the base layer, except that `'` and `` ` `` are DEAD keys, and Chromium reports a
+ * dead key as the combining character it makes (U+0301 for the acute, U+0300 for the grave) and not as the sign. A layout is US only when EVERY key is one of its.
+ */
+const US_KEYS: Readonly<Record<string, readonly string[]>> = {
+  KeyQ: ['q'],
+  KeyW: ['w'],
+  KeyA: ['a'],
+  KeyZ: ['z'],
+  KeyM: ['m'],
+  Semicolon: [';'],
+  Quote: ['\'', '\u0301', '\u00b4'],
+  Backquote: ['`', '\u0300'],
+  BracketLeft: ['['],
+  BracketRight: [']'],
+  Backslash: ['\\'],
+  Minus: ['-'],
+  Equal: ['='],
+  Comma: [','],
+  Period: ['.'],
+  Slash: ['/'],
 };
 
 /** Whether a keyboard map is the US layout's: false for a map that does not say what a key types. */
 export function isUsLayout(map: LayoutMap): boolean {
-  return Object.entries(US_KEYS).every(([code, character]) => map.get(code) === character);
+  return Object.entries(US_KEYS).every(([code, characters]) => characters.includes(map.get(code) ?? ''));
 }
 
 /** What `navigator` offers of the keyboard, as far as this reads it. */

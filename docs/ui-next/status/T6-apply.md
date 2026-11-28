@@ -63,6 +63,13 @@ On the final tree (commits `d2eed6d3f` red tests, then the implementation commit
 | `node scripts/ci/probe-shards.mjs check` | ok (104 units, 57 control units, 465 controls) |
 
 
+## Review notes (after `ee03ef800`)
+
+- A bell the emulator parses while it applies a replay is ignored (`replaying` guard in `onBell`, as `onData` has one): a hidden screen takes late replays, and every BEL still in the host's ring would mark the tab again for a bell already seen. Red test, control "page bell parsed in a replay marks the tab".
+- Option as Meta and the settings it was resolved from are read once, after the settings' first answer; the emulator is made in them and what changed during the font wait is applied once it exists (`startBehaviour`). Red test, control "page start reads Option before the font wait".
+- US International: Chromium reports a dead key as the combining character it makes (`'` as U+0301, `` ` `` as U+0300), so the US keys are lists of what each may be, and a US-International map is a layout test fixture. Control "page US International is not a US layout". Not seen on a real US-International keyboard.
+- The blink gate is proved by the UNIT test on a real xterm (the option follows the focus) and not by the probe: xterm itself stops the blink on blur, so the probe's count of timers with the blink on and no focus would be zero without the gate too. The gate is the guarantee that does not depend on that. A program's DECSCUSR (cursor style with its own blink, `CSI 1 SP q`) overrides blink off: that is xterm's old behaviour, not this slice's, and a program that asks for a blinking cursor gets one (a timer, while the terminal has the focus).
+
 ## Not verified
 
 - A Mac, a real AZERTY keyboard, WKWebView's own (absent) keyboard map, and Option typing a character in a real shell.

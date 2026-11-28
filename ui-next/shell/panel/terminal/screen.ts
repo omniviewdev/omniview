@@ -248,6 +248,8 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
   let behaviours = 0;
   /** Option as Meta as it was resolved for the emulator that is being made. */
   let metaAtStart = false;
+  /** What of the settings Option as Meta was resolved from (`behaviourOf`): the emulator is made in it, and what changed since is applied once it is made. */
+  let startBehaviour = behaviourOf(preferences.getSnapshot());
   /** The changes of look so far: a font that comes after a later change is not applied. */
   let looks = 0;
   /** A change of look came while the screen was not shown: it is applied when the screen is. */
@@ -1043,7 +1045,7 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
     const made = factory({ cols: INITIAL.cols, rows: INITIAL.rows, scrollback: deps.preferences === undefined ? SCROLLBACK : person.scrollback, appearance: look, screenReaderMode: readerMode, cursorBlink: person.cursorBlink, optionIsMeta: metaAtStart });
     engine = made;
     appliedLook = lookOf(person);
-    appliedBehaviour = behaviourOf(person);
+    appliedBehaviour = startBehaviour;
     appliedFamily = look.fontFamily;
     stops.push(preferences.subscribe(preferencesChanged));
     // What changed while the font loaded and the layout was read: nobody listened then.
@@ -1090,6 +1092,11 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
       // The emulator is silent: the host shows the bell, on the screen, and never makes a sound. Two names for the one animation restart it for each bell without a timer.
       // The setting is read at the bell: `off` does nothing at all. A terminal that is shown fades its screen; one that is not shown fades nothing nobody sees, and its tab is marked instead (`onBell`).
       made.onBell(() => {
+        // A bell the emulator parses while it applies a replay is one that was rung (and seen, or not) before this page took the terminal back: the host's ring still holds it. Like what the emulator answers, it is not for the person now.
+        if (replaying !== undefined) {
+          return;
+        }
+
         if (preferences.getSnapshot().bell === 'off') {
           return;
         }
@@ -1124,7 +1131,9 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
         await deps.preferences.settled();
       }
 
-      const asked = resolveMeta(preferences.getSnapshot().macOptionIsMeta);
+      const person = preferences.getSnapshot();
+      startBehaviour = behaviourOf(person);
+      const asked = resolveMeta(person.macOptionIsMeta);
       metaAtStart = typeof asked === 'boolean' ? asked : await asked;
 
       // The look is read again after each wait: a setting changed while the font loaded (the store is kept live by another terminal, and this screen listens only once its emulator is made) may name another family, which is loaded

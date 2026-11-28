@@ -17,6 +17,15 @@ describe('whether a keyboard is a US layout', () => {
     expect(isUsLayout(mapOf(US))).toBe(true);
   });
 
+  it('is true for US International, whose `\'` and `` ` `` are dead keys that Chromium reports as the combining characters they make', () => {
+    expect(isUsLayout(mapOf({ ...US, Quote: '\u0301', Backquote: '\u0300' }))).toBe(true);
+    expect(isUsLayout(mapOf({ ...US, Quote: '\u00b4' }))).toBe(true);
+  });
+
+  it('is false for a dead key that is not the US International\'s (a layout whose Quote makes the diaeresis)', () => {
+    expect(isUsLayout(mapOf({ ...US, Quote: '\u0308' }))).toBe(false);
+  });
+
   it.each([
     ['AZERTY', { KeyQ: 'a', KeyA: 'q', KeyW: 'z', KeyZ: 'w', KeyM: ',' }],
     ['QWERTZ', { KeyZ: 'y' }],
