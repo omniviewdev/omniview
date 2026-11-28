@@ -661,8 +661,9 @@ func TestAControlServerThatFailedToStartLeavesNoOwnServer(t *testing.T) {
 		},
 	}
 	before := ownservers.Addresses()
-	require.NoError(t, os.Chmod(runtime, 0o500)) // the discovery cannot be published
-	t.Cleanup(func() { _ = os.Chmod(runtime, 0o700) })
+	// The discovery cannot be published: its directory is a file now. Unlike a mode bit, that holds for any user, root included, on any system.
+	require.NoError(t, os.RemoveAll(runtime))
+	require.NoError(t, os.WriteFile(runtime, []byte("not a directory"), 0o600))
 	_, err = Start(context.Background(), config)
 	require.Error(t, err, "the control: the start fails")
 	assert.ElementsMatch(t, before, ownservers.Addresses())
