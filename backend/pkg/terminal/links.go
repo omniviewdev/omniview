@@ -22,15 +22,15 @@ func (m *Manager) ChannelResolveLink(presented, rowDirectory, text string) (Link
 	if err != nil {
 		return LinkResolution{}, err
 	}
-	out := s.resolveLink(m.links, m.linkSlots, rowDirectory, text)
+	out := s.resolveLink(m.links, m.linkSlots, s.directory, rowDirectory, text)
 	if s.ending.Load() {
 		return LinkResolution{}, ChannelNotFound()
 	}
 	return out, nil
 }
 
-func (s *session) resolveLink(links *linkresolve.Resolver, slots chan struct{}, rowDirectory, text string) LinkResolution {
-	dir, reason := s.linkDirectory(slots, rowDirectory)
+func (s *session) resolveLink(links *linkresolve.Resolver, slots chan struct{}, where func() (string, UnknownReason), rowDirectory, text string) LinkResolution {
+	dir, reason := s.linkDirectory(slots, where, rowDirectory)
 	if dir == "" {
 		return UnknownLink(reason)
 	}
@@ -43,8 +43,8 @@ func (s *session) resolveLink(links *linkresolve.Resolver, slots chan struct{}, 
 }
 
 // linkDirectory is the directory to resolve in: the row's when it is vouched for, else the shell's own.
-func (s *session) linkDirectory(slots chan struct{}, rowDirectory string) (string, LinkReason) {
-	current, why, answered := askDirectory(slots, linkDirectoryBudget, s.directory)
+func (s *session) linkDirectory(slots chan struct{}, where func() (string, UnknownReason), rowDirectory string) (string, LinkReason) {
+	current, why, answered := askDirectory(slots, linkDirectoryBudget, where)
 	if !answered {
 		return "", LinkTimeout
 	}

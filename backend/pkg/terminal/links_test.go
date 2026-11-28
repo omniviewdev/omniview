@@ -3,10 +3,15 @@
 package terminal
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/omniviewdev/omniview/backend/pkg/terminal/linkresolve"
 )
 
 func TestOnlyADirectoryTheShellProvedOrIsInIsVouchedFor(t *testing.T) {
@@ -72,4 +77,30 @@ func TestTheQuestionOfWhereTheShellIsIsBoundedInTimeAndInStuckQuestions(t *testi
 	assert.Equal(t, "/here", path)
 	assert.Empty(t, reason)
 	assert.Empty(t, free, "the slot is given back")
+}
+
+func TestAResolutionWhoseShellDirectoryQuestionHangsAnswersTimeoutAndNeverWaits(t *testing.T) {
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.go"), []byte("x"), 0o600))
+	links := linkresolve.NewDefault()
+	slots := make(chan struct{}, 4)
+	gate := make(chan struct{})
+	t.Cleanup(func() { close(gate) })
+	s := &session{}
+
+	done := make(chan LinkResolution, 1)
+	go func() {
+		done <- s.resolveLink(links, slots, func() (string, UnknownReason) { <-gate; return dir, "" }, "", "a.go")
+	}()
+	select {
+	case got := <-done:
+		assert.Equal(t, UnknownLink(LinkTimeout), got)
+	case <-time.After(10 * time.Second):
+		t.Fatal("the resolution waits for the question of where the shell is")
+	}
+	assert.Len(t, slots, 1, "the stuck question holds a slot of the pool")
+	// the control: a question that answers
+	got := s.resolveLink(links, slots, func() (string, UnknownReason) { return dir, "" }, "", "a.go")
+	assert.Equal(t, LinkResolution{Kind: LinkFile, Path: filepath.Join(dir, "a.go"), Line: 0, Col: 0, Reason: ""}, got)
 }
