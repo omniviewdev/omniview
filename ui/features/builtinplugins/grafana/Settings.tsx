@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Card, Checkbox, Input, Stack, Text } from '@omniviewdev/base-ui';
-import { MetricClient } from '@omniviewdev/runtime/api';
-import { Browser } from '@omniviewdev/runtime/runtime';
+import { MetricClient, openExternalURL } from '@omniviewdev/runtime/api';
 import type { MetricDataSource, MetricDefinition, ProviderConnection, PluginSettingsBodyProps, MetricsObservationSpec } from '@omniviewdev/runtime';
 import { Mappings } from './Mappings';
 import './grafana.css';
@@ -341,7 +340,7 @@ export default function GrafanaSettings({ registerNavigation }: Partial<PluginSe
       </Stack>}
       <div hidden={step !== 1}><Stack direction="column" spacing={2}>
         <Text size="sm">{editing.kind === 'grafana' ? 'Administration → Users and access → Service accounts. Create an account, grant datasource query access, then add a token.' : editing.public_config.credentialKind === 'prometheus-token' ? 'Use a bearer token with query access from your Prometheus-compatible service.' : 'Create a Cloud access policy with metrics:read. Use this stack’s query endpoint and instance ID.'}</Text>
-        <Button size="sm" variant="ghost" onClick={async () => Browser.OpenURL(editing.kind === 'grafana' ? 'https://grafana.com/docs/grafana/latest/administration/service-accounts/#add-a-token-to-a-service-account-in-grafana' : editing.public_config.credentialKind === 'prometheus-token' ? 'https://prometheus.io/docs/operating/security/' : 'https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/').catch(err => {
+        <Button size="sm" variant="ghost" onClick={async () => openExternalURL(editing.kind === 'grafana' ? 'https://grafana.com/docs/grafana/latest/administration/service-accounts/#add-a-token-to-a-service-account-in-grafana' : editing.public_config.credentialKind === 'prometheus-token' ? 'https://prometheus.io/docs/operating/security/' : 'https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/').catch(err => {
           setError(String(err));
         })}><LuExternalLink size={14} aria-hidden />{editing.kind === 'grafana' ? 'Service account setup' : editing.public_config.credentialKind === 'prometheus-token' ? 'Authentication guidance' : 'Cloud access policy setup'}</Button>
         <label>Credential type<MetricsSelect label="Credential type" value={editing.public_config.credentialKind ?? (editing.kind === 'grafana' ? 'grafana-service-account' : 'cloud-access-policy')} onChange={value => {

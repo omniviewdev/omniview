@@ -1,12 +1,26 @@
 import React from 'react';
 
 import { networker } from '../../internal/models';
-import { Browser } from '@wailsio/runtime';
+import { Call } from '@wailsio/runtime';
 import {
   ClosePortForwardSession,
   FindPortForwardSessions,
   StartResourcePortForwardingSession,
 } from '../../internal/networker/Client';
+
+/**
+ * Opens an address in the system's browser through the host's opener (`AppService.OpenExternalURL`), which checks it (http and https, no user information, not one of the
+ * host's own servers) and starts the browser without a shell. This package stands alone (it depends on the Wails runtime only), so it calls the bound method by name; a refusal
+ * (`{ opened: false, reason }`) opens nothing and is swallowed here: a forward that started is not undone by an address that was not opened.
+ */
+async function openThroughHost(address: string): Promise<void> {
+  try {
+    await Call.ByName('main.AppService.OpenExternalURL', address);
+  } catch {
+    // the host could not start the browser: nothing to undo
+  }
+}
+
 
 export type PortForwardResourceOpts = {
   /**
@@ -104,7 +118,7 @@ export function useResourcePortForwarder({ pluginID, connectionID, resourceID }:
       const session = await StartResourcePortForwardingSession(pluginID, connectionID, sessionOpts);
       setSessions([...sessions, session]);
       if (opts.openInBrowser) {
-        Browser.OpenURL(`http://localhost:${session.remote_port}`);
+        void openThroughHost(`http://localhost:${session.remote_port}`);
       }
 
       return session;

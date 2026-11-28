@@ -13,5 +13,8 @@ export class ExternalURLRefusedError extends Error {
  * host's own servers, at most 2,083 bytes) and starts the browser without a shell. Resolves when the host opened it.
  */
 export async function openExternalURL(address: string): Promise<void> {
-  await OpenExternalURL(address);
+  const answer = await OpenExternalURL(address);
+  if (!answer.opened) {
+    throw new ExternalURLRefusedError(String(answer.reason ?? ''));
+  }
 }

@@ -1,6 +1,6 @@
 // URLs and OSC 8 hyperlinks in the terminal's output, through the host's opener (issue #696 step 1), in a real xterm, in both engines at both viewports. The far end is the fixture's synthetic shell (terminal-fixture.tsx), whose command
 // `hyperlinks <address of the page's own server>` prints hyperlinks whose text and target differ (terminal-host.mjs), and the window's way to open an address is the fixture's (`window.__opened`: every address the page asked the host to open,
-// the stand-in for `Browser.OpenURL`). `window.open` and `confirm` are counted by a script that runs before the page's own: the default handler of an emulator's hyperlink asks with `confirm` and opens a window, and the probe asserts that
+// the stand-in for the host's opener, `openExternalURL` of `AppService.OpenExternalURL`, which the page calls instead of the runtime's own `Browser.OpenURL`). `window.open` and `confirm` are counted by a script that runs before the page's own: the default handler of an emulator's hyperlink asks with `confirm` and opens a window, and the probe asserts that
 // neither is ever called. Every section waits for a state and never for a time: a page that is asked for something is read until it says it (`waitForFunction`, which wakes on a frame), a count is a count, and what must not happen is proven
 // after a number of frames and not of milliseconds.
 //

@@ -7,7 +7,7 @@ import MarkdownPreview from '@uiw/react-markdown-preview';
 import { useParams, useNavigate } from 'react-router';
 import { LuDownload, LuEllipsis, LuExternalLink } from 'react-icons/lu';
 import { usePluginManager, usePlugin } from '@/hooks/plugin/usePluginManager';
-import { Browser } from '@omniviewdev/runtime/runtime';
+import { openExternalURL } from '@omniviewdev/runtime/api';
 import PluginUpdateButton from './PluginUpdateButton';
 import UninstallPluginModal from './UninstallPluginModal';
 import PluginChangelog from './sections/PluginChangelog';
@@ -154,7 +154,7 @@ const PluginDetails: FC = () => {
                 type='button'
                 className={styles.RepoLink}
                 onClick={() => {
-                  void Browser.OpenURL(displayRepository);
+                  void openExternalURL(displayRepository);
                 }}
               >
                 <LuExternalLink size={12} />

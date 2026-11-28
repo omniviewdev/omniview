@@ -1215,7 +1215,7 @@ function IdleTicker() {
 }
 
 /**
- * Every address the window was asked to open outside itself, in order (`window.__opened`): `openExternal` is what the Terminal tool is given to open a link. `?openExternal=off` gives it none, as a window that cannot open one has; `?control=open-twice`
+ * Every address the window was asked to open outside itself, in order (`window.__opened`): `openExternal` is what the Terminal tool is given to open a link: in the app it is the host's opener (`openExternalURL`, the bound `AppService.OpenExternalURL`, which checks the address and answers `opened` or a refusal that is the call's rejection), and here it records. `?openExternal=off` gives it none, as a window that cannot open one has; `?control=open-twice`
  * records each call twice; `?control=open-given` gives it whatever `?openExternal=off` says. `?control=search-eager` asks for the find's lazy chunk when the page loads.
  */
 const openExternal = async (url: string): Promise<void> => {

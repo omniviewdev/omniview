@@ -1,7 +1,7 @@
 import type { PortForwardResourceOpts } from './types';
 import { ALL_SESSIONS_KEY } from './usePortForwardSessions';
 import { FindPortForwardSessionRequest } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/networker/models';
-import { Browser } from '@wailsio/runtime';
+import { openExternalURL } from '../../openExternal';
 import {
   ClosePortForwardSession,
   FindPortForwardSessions,
@@ -98,7 +98,8 @@ export function useResourcePortForwarder({
         attempt,
       );
       if (opts.openInBrowser) {
-        Browser.OpenURL(`http://localhost:${result.local_port}`);
+        // The host checks the address, and a refusal (the port is one of the host's own) does not undo a forward that started.
+        void openExternalURL(`http://localhost:${result.local_port}`).catch(() => undefined);
       }
       return result;
     },

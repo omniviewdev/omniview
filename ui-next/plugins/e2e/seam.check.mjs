@@ -169,7 +169,7 @@
 //   r8  find in the scrollback, the context menu and the links of the Terminal tool (T3a, `checkTerminalFindMenu`), over the real host and the engine's own keyboard and pointer. A known output (200 numbered lines, the word in other cases and as part of other words, three marker lines) is printed through the real shell and the find is opened by the platform's chord (Command F on a Mac, Control F and Control Shift F elsewhere; the other platform's chord opens nothing):
 //      its counts are those of a reference scan of the same rows (plain, Match case, Match whole word, a regular expression, `Invalid pattern`, `No results`), Enter, Shift+Enter, the Next and Previous buttons and F3 step by one and wrap, the match the count points at is the one the screen has selected, Escape and the Close button give the keyboard back to the shell, opening and closing the bar changes no size and sends no resize, the code of the find is requested only
 //      once a find is made, a find after a reload finds a line of the replayed scrollback, and with 1,000,000 lines flooding in the bar answers the pointer (while the shell has not printed its last line), counts right at the end and the shell still takes what is typed (more than 20,000 matches say `20,000+`). The context menu opens on a right click, Shift+F10 and the Menu key (Copy not available with nothing selected and saying why, Paste, Select all, Clear, Find: each does what it says, the clipboard is the page's own stub), Escape closes it and gives the keyboard back, and a program that has the mouse gets
-//      the right click and no menu opens unless Shift is held. A web address in the output says `Follow link (cmd + click)` (`ctrl` elsewhere) when the pointer is on it and is followed by that modifier and a click as exactly one call of the runtime's `Browser.OpenURL` (the Browser object, method 0, the address as its argument), which the check intercepts and answers 200 so that the host never opens a browser on this machine; a plain click, a `javascript:` line and a `file:` line make none. The same for a hyperlink the program writes (OSC 8, printed by the real shell: the words show one address, the program names another): the hover, a plain click that makes no call, the modifier and a click that makes one, and a `javascript:` and a `file:` hyperlink that make none; and no link ever calls `window.open` or asks a question (`confirm`, `alert`, `prompt`: the page's own are watched and no dialog opens). No request fails in the phase.
+//      the right click and no menu opens unless Shift is held. A web address in the output says `Follow link (cmd + click)` (`ctrl` elsewhere) when the pointer is on it and is followed by that modifier and a click as exactly one call of the host's opener (`AppService.OpenExternalURL`, by its id, the address as its argument), which the check intercepts and answers 200 so that the host never opens a browser on this machine; a plain click, a `javascript:` line and a `file:` line make none. The same for a hyperlink the program writes (OSC 8, printed by the real shell: the words show one address, the program names another): the hover, a plain click that makes no call, the modifier and a click that makes one, and a `javascript:` and a `file:` hyperlink that make none; and no link ever calls `window.open` or asks a question (`confirm`, `alert`, `prompt`: the page's own are watched and no dialog opens). No request fails in the phase.
 //
 //   r9  where a terminal opens and what it is called (#695 steps 1 to 5, `checkTerminalOpenWhere`, phase `terminal-where`), over the real host and the real bash and zsh of the machine (a machine with no zsh runs bash alone and says so). A shell chosen in the menu beside the `+` is named on its tab and says its own name to `echo $0` and to `ps`; a terminal started in /tmp with an entry in `launch.env` has `pwd` equal to /tmp and to the host's own cwd fact (read once `pwd` has answered: no wait for time) and the entry in its environment, and a refused env name (`WAILS_MCP_TOKEN`, a name with `=`) is refused with the typed error that names `launch.env`, shows no value and starts no terminal; New terminal here after `cd /usr` starts a shell whose `pwd` is /usr, the directory the host said and the page asked for; a program's `ESC ] 0 ; title BEL` is on the tab while it runs and the shell's name is back after it, and a title of 100,000 characters with a control character is bounded and clean; a renamed tab keeps its name while programs set titles (the host's title frame reached the page) and after a reload; Restart starts the same shell in the directory the ended one STARTED in, under another id, in the same tab with its name, with the ended terminal's transcript above the new shell's, and for a page that reloaded with the environment it was asked to start with. The page has no gesture that sends a start directory or an environment yet (a profile with either is for a later step), so the check writes them into the page's own `CreateTerminal` (`addToNextCreate`) and says so. SEAM_TERMINAL_ONLY=r9 runs it alone; SEAM_CONTROL=terminal-where runs it with every control of WHERE_CONTROLS made in turn (a premise broken before the act, or a fault planted in the shell or the host, each seen by the assertion it is named for); SEAM_CONTROL=<one of them> makes that one only, and SEAM_REMOVE=<one of them> leaves that control's assertion out, which must let its fault pass undetected
 //
@@ -180,7 +180,7 @@
 //      host's operator starts the connection (`StartConnection`) and the window hears it (`connection/status`). The press of the page's button asks the host once (`StartResourcePortForwardingSession`, in the page's own plugin and connection) and the page says
 //      `Forward session <id> on 127.0.0.1:<local>` (the host and the port that the row's mapping says); the Ports tool is revealed with exactly one row, the forward the host lists (its answer states the host its plugin listens on, `local_host`, the loopback): its resource, the mapping `127.0.0.1:<local> → :8080/TCP`, the connection by its NAME (its id is
 //      nowhere on screen) and Running, with one handler for each of the five host events it follows (and one more for `closed`, which the window's count of the forwards its pages started listens to while it holds one) and one call for the list. A client of the check's own (Node's `net`) connects to `127.0.0.1:<local>`: the first line is `PF1-FIXTURE-HELLO` and a line it writes comes back.
-//      Open in browser is one call of the runtime's `Browser.OpenURL` (the Browser object, method 0, `http://127.0.0.1:<local>`), which the check intercepts with `page.route` and answers 200 so that the host never opens a browser on this machine, and never `window.open`, a question or a window of the browser; Copy address puts `127.0.0.1:<local>` on the clipboard (the page's own stub) and says `Address copied`;
+//      Open in browser is one call of the host's opener (`AppService.OpenExternalURL`, by its id; `http://127.0.0.1:<local>`), which the check intercepts with `page.route` and answers 200 so that the host never opens a browser on this machine, and never `window.open`, a question or a window of the browser; Copy address puts `127.0.0.1:<local>` on the clipboard (the page's own stub) and says `Address copied`;
 //      the row's menu (a right click, Shift+F10) offers the same three and runs them, one at a time (what each item caused is read from where each record stood just before it was chosen: Copy writes the address once and asks the runtime to open nothing, Open makes one call that opens it and writes nothing to the clipboard, and neither uses window.open, a question or a window of the browser; the menu's Stop is the one that
 //      stops the second forward below). A reload brings the row back from the host's list as it was, with one call for the list, and a second forward started from the page is a second row
 //      that the host's `created` event made, with no call for the list. The page's second button asks for the local port its last answer gave: the host cannot give it twice and refuses it (a 422 that RUNTIME_ALLOW names, by the call), the page says `Refused PROVIDER_ERROR:` and one plain line, and nothing else changes: no second row, nothing more in the host's list, no `created` event, and the forward that
@@ -432,7 +432,7 @@ const PORTS_CONTROLS = {
   'calls-shown': /the tool reads the host's list once when it comes on screen/,
   'tcp-greeting': /a client of the local port is greeted by the target/,
   'tcp-echo': /a client of the local port gets back what it writes/,
-  'open-call': /Open in browser makes one call of the runtime's Browser\.OpenURL/,
+  'open-call': /Open in browser makes one call of the host's opener/,
   'open-not-window': /Open in browser never uses window\.open/,
   'copy-clipboard': /Copy address puts the forward's address on the clipboard, once/,
   'copy-announced': /Copy address is announced as Address copied/,
@@ -440,7 +440,7 @@ const PORTS_CONTROLS = {
   'menu-keyboard': /Shift\+F10 on a button of the row opens a menu of the three actions/,
   'menu-copies': /the menu's Copy address writes the forward's address to the clipboard once/,
   'menu-copy-no-open': /the menu's Copy address asks the runtime to open nothing/,
-  'menu-opens': /the menu's Open in browser asks the runtime to open the forward's address once/,
+  'menu-opens': /the menu's Open in browser asks the host to open the forward's address once/,
   'menu-open-no-copy': /the menu's Open in browser writes nothing to the clipboard/,
   'menu-not-window': /the menu's actions never use window\.open/,
   'reload-row': /after a reload the row is back from the host's list as it was/,
@@ -11052,8 +11052,14 @@ function findIn(rows, term, { caseSensitive = false, wholeWord = false, regex = 
 }
 
 /**
- * The call the runtime makes to open an address in the host's browser, as the check's net for it reads a request body: Wails' own `Browser.OpenURL` (`{object: 9, method: 0, args: {url}}`: @wailsio/runtime 3.1.0's objectNames.Browser and its only method),
- * or a bound call whose name says it opens an address. `undefined` for anything else: the exec lane's calls carry typed text and addresses as arguments, and they are not this.
+ * The id of the host's opener, `main.AppService.OpenExternalURL`, as the bindings carry it (`$Call.ByID(1691046826, address)` in the generated `appservice.ts`). The page opens an address through it, and through nothing else.
+ */
+const OPEN_EXTERNAL_URL_ID = 1691046826;
+
+/**
+ * The call the page makes to open an address in the host's browser, as the check's net for it reads a request body: the host's opener (`{object: 0, method: 0, args: {methodID: 1691046826, args: [address]}}`, shape `host-opener`),
+ * Wails' own `Browser.OpenURL` (`{object: 9, method: 0, args: {url}}`, shape `runtime`: the page no longer makes it, and the checks fail if it does), or a bound call whose name says it opens an address. `undefined` for anything
+ * else: the exec lane's calls carry typed text and addresses as arguments, and they are not this.
  */
 function openUrlCallOf(text) {
   let body;
@@ -11064,9 +11070,15 @@ function openUrlCallOf(text) {
   }
 
   if (body?.object === 9) return { shape: 'runtime', object: body.object, method: body.method, url: String(body.args?.url ?? '') };
+  if (body?.args?.methodID === OPEN_EXTERNAL_URL_ID) return { shape: 'host-opener', object: body.object, method: body.method, url: String(body.args?.args?.[0] ?? '') };
   const name = body?.args?.methodName;
   if (typeof name === 'string' && /Open(URL|External|Link)/i.test(name)) return { shape: 'bound', object: body.object, method: body.method, url: String(body.args?.args?.[0] ?? '') };
   return undefined;
+}
+
+/** What the check answers a call that opens an address: the host's opener answers its typed result (`opened`), the runtime's own call and a bound call answer 200 with nothing. The host never opens a browser on this machine. */
+function openUrlAnswer(call) {
+  return call.shape === 'host-opener' ? { status: 200, contentType: 'application/json', body: '{"opened":true}' } : { status: 200, contentType: 'text/plain', body: '' };
 }
 
 /** The count a find says, read as numbers: the place of the current match, how many there are, and whether the count stopped at the limit. `undefined` for words (`No results`, `Invalid pattern`) or nothing. */
@@ -11090,7 +11102,7 @@ const KNOWN_COMMAND = [
  * count points at is the one selected on the screen, Escape closes the bar and gives the keyboard back to the shell, opening it changes no size, its code is requested only once a find is made, a find after a reload finds a line of the replayed scrollback, and
  * the page stays usable while 1,000,000 lines flood in with the bar open (a count past 20,000 says 20,000+). (2) The context menu opens on a right click and on Shift+F10 and the Menu key: Copy (not available with nothing selected), Paste, Select all, Clear and Find do what
  * they say, Escape closes it and gives the keyboard back, and a program that has the mouse gets the right click unless Shift is held. (3) Links: a web address in the output says how to follow it and is followed by the platform's modifier and a click, as one call of the host's
- * `Browser.OpenURL` (which the check intercepts, so that the host never opens a browser on this machine); a plain click, a `javascript:` line and a `file:` line never make it; a hyperlink the program writes (OSC 8) is treated the same, and no link calls `window.open` or asks a question.
+ * the host's opener, `AppService.OpenExternalURL` (which the check intercepts and answers, so that the host never opens a browser on this machine); a plain click, a `javascript:` line and a `file:` line never make it; a hyperlink the program writes (OSC 8) is treated the same, and no link calls `window.open` or asks a question.
  */
 async function checkTerminalFindMenu(page, base, engine) {
   const errors = [];
@@ -11607,7 +11619,7 @@ async function checkTerminalFindMenu(page, base, engine) {
     }
 
     opened.push(call);
-    await route.fulfill({ status: 200, contentType: 'text/plain', body: '' });
+    await route.fulfill(openUrlAnswer(call));
   });
   // The check's net for a window or a question is asked what it records before the links are used: a call made here lands in it, and what it holds is then taken away, so that what it holds at the end is what the links did.
   const netAdded = await page.evaluate(() => {
@@ -11682,7 +11694,7 @@ async function checkTerminalFindMenu(page, base, engine) {
   const openedUrls = opened.map((call) => call.url);
   assert.deepEqual(openedUrls, [address], `${engine}: ${mac ? 'Command' : 'Control'} and a click on the address makes one call that opens it, carrying the address (${JSON.stringify(opened)})`);
   const openedShapes = opened.map((call) => [call.shape, call.object, call.method]);
-  assert.deepEqual(openedShapes, [['runtime', 9, 0]], `${engine}: the call that opens it is the runtime's own Browser.OpenURL: the Browser object (9), its method 0`);
+  assert.deepEqual(openedShapes, [['host-opener', 0, 0]], `${engine}: the call that opens it is the host's opener (AppService.OpenExternalURL, by its id), and never the runtime's own Browser.OpenURL (object 9)`);
   for (const row of [1, 2]) {
     await hoverRow(row);
     await settle(10);
@@ -11708,7 +11720,7 @@ async function checkTerminalFindMenu(page, base, engine) {
   await holdsWithin(() => opened.length > 1, 10_000);
   await settle();
   const oscCalls = opened.slice(1).map((call) => [call.shape, call.object, call.method, call.url]);
-  assert.deepEqual(oscCalls, [['runtime', 9, 0, oscAddress]], `${engine}: ${mac ? 'Command' : 'Control'} and a click on a hyperlink the program wrote (OSC 8) makes one call that opens it: the runtime's own Browser.OpenURL (object 9, method 0) carrying its address (${JSON.stringify(opened)})`);
+  assert.deepEqual(oscCalls, [['host-opener', 0, 0, oscAddress]], `${engine}: ${mac ? 'Command' : 'Control'} and a click on a hyperlink the program wrote (OSC 8) makes one call that opens it: the host's opener (AppService.OpenExternalURL) carrying its address (${JSON.stringify(opened)})`);
   for (const row of [4, 5]) {
     await hoverRow(row);
     await settle(10);
@@ -13120,7 +13132,7 @@ function takeOut(list, item) {
  * though the host's operator starts the connection (`StartConnection`) and the window hears it (`connection/status`). The press of the page's button asks the host once (`StartResourcePortForwardingSession`, in the page's own plugin and connection) and the page says `Forward session <id> on 127.0.0.1:<local>`
  * (the host and the port that the row's mapping says); the Ports tool is revealed with exactly one row, the forward the host lists (its answer states the host its plugin listens on, `local_host`, the loopback): its resource, the mapping `127.0.0.1:<local> → :8080/TCP`, the connection by its NAME
  * (its id is nowhere on screen) and Running, with one handler for each of the five host events it follows (and one more for `closed`, which the window's count of the forwards its pages started listens to while it holds one) and one call for the list. A client of the check's own (Node's `net`) connects to
- * `127.0.0.1:<local>`: the first line is `PF1-FIXTURE-HELLO` and a line it writes comes back. Open in browser is one call of the runtime's `Browser.OpenURL` (the Browser object, method 0, `http://127.0.0.1:<local>`), which the check intercepts with `page.route` and answers 200 so that the host never opens a browser on this machine,
+ * `127.0.0.1:<local>`: the first line is `PF1-FIXTURE-HELLO` and a line it writes comes back. Open in browser is one call of the host's opener (`AppService.OpenExternalURL`, by its id; `http://127.0.0.1:<local>`), which the check intercepts with `page.route` and answers 200 so that the host never opens a browser on this machine,
  * and never `window.open`, a question or a window of the browser; Copy address puts `127.0.0.1:<local>` on the clipboard (the page's own stub) and says `Address copied`; the row's menu (a right click, Shift+F10) offers the same three and runs them, one at a time (what each item caused is read from where each record stood just before it was chosen:
  * Copy writes the address once and asks the runtime to open nothing, Open makes one call that opens it and writes nothing to the clipboard, and neither uses window.open, a question or a window of the browser; the menu's Stop is the one that stops the second forward below). A reload brings the row back from the host's list as it was, with one call for the list, and a second forward started from the page is a second row that the host's `created` event made, with no
  * call for the list. The page's second button asks for the local port its last answer gave: the host cannot give it twice and refuses it (a 422 that RUNTIME_ALLOW names, by the call), the page says `Refused PROVIDER_ERROR:` and one plain line, and nothing else changes: no second row, nothing more in the host's list, no `created`
@@ -13234,7 +13246,7 @@ async function checkPorts(browser, engine, binary, work) {
         const call = openUrlCallOf(text);
         if (call !== undefined) {
           opened.push(call);
-          await route.fulfill({ status: 200, contentType: 'text/plain', body: '' });
+          await route.fulfill(openUrlAnswer(call));
           return;
         }
 
@@ -13348,9 +13360,9 @@ async function checkPorts(browser, engine, binary, work) {
           }, words),
       };
     };
-    /** A call of Browser.OpenURL that the route is made to have taken, as a record of its own in the check's list of them (`opened`), and the undo that takes out that very record and no other: the calls the product made stay in the list, however late they were made. */
+    /** A call of the host's opener that the route is made to have taken, as a record of its own in the check's list of them (`opened`), and the undo that takes out that very record and no other: the calls the product made stay in the list, however late they were made. */
     const openFault = () => {
-      const forged = { shape: 'runtime', object: 9, method: 0, url: 'http://127.0.0.1:1' };
+      const forged = { shape: 'host-opener', object: 0, method: 0, url: 'http://127.0.0.1:1' };
       return {
         perturb: async () => {
           opened.push(forged);
@@ -13686,7 +13698,7 @@ async function checkPorts(browser, engine, binary, work) {
       },
     );
 
-    // 3. THE ACTIONS: Open in browser is one call of the runtime's Browser.OpenURL (intercepted), Copy address is the clipboard and its words, and the row's menu offers and runs the same three.
+    // 3. THE ACTIONS: Open in browser is one call of the host's opener (intercepted), Copy address is the clipboard and its words, and the row's menu offers and runs the same three.
     await rowButton(id1, 'open').click();
     await waitUntil("the call that opens the forward's address (intercepted)", () => opened.length > 0, 15_000);
     await settle(10);
@@ -13698,7 +13710,7 @@ async function checkPorts(browser, engine, binary, work) {
       forgedOpen.undo,
       async () => {
         const made = opened.map((call) => [call.shape, call.object, call.method, call.url]);
-        assert.deepEqual(made, [['runtime', 9, 0, `http://127.0.0.1:${String(local)}`]], `${engine}: Open in browser makes one call of the runtime's Browser.OpenURL (the Browser object, 9, its method 0) carrying the forward's address over http (${JSON.stringify(opened)})`);
+        assert.deepEqual(made, [['host-opener', 0, 0, `http://127.0.0.1:${String(local)}`]], `${engine}: Open in browser makes one call of the host's opener (AppService.OpenExternalURL) carrying the forward's address over http (${JSON.stringify(opened)})`);
       },
     );
     await asserting(
@@ -13803,7 +13815,7 @@ async function checkPorts(browser, engine, binary, work) {
       menuOpenFault.undo,
       async () => {
         const made = opened.slice(atOpen.opened).map((call) => [call.shape, call.object, call.method, call.url]);
-        assert.deepEqual(made, [['runtime', 9, 0, `http://${address}`]], `${engine}: the menu's Open in browser asks the runtime to open the forward's address once: one call of Browser.OpenURL (the Browser object, 9, its method 0) carrying the address over http (what it made: ${JSON.stringify(made)})`);
+        assert.deepEqual(made, [['host-opener', 0, 0, `http://${address}`]], `${engine}: the menu's Open in browser asks the host to open the forward's address once: one call of its opener (AppService.OpenExternalURL) carrying the address over http (what it made: ${JSON.stringify(made)})`);
       },
     );
     const menuOpenCopies = clipboardFault('menu-open-no-copy');

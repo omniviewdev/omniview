@@ -1,10 +1,11 @@
 import { activityClient, ActivityProvider, useActivities } from '@omniviewdev/runtime';
 import { NetworkerClient, WindowClient } from '@omniviewdev/runtime/api';
 import { window as windowModels } from '@omniviewdev/runtime/models';
-import { Browser, Events, Window } from '@omniviewdev/runtime/runtime';
+import { Events, Window } from '@omniviewdev/runtime/runtime';
 import { useEffect, useLayoutEffect, useState } from 'react';
 import { isNativeWindow, loadNotices, loadSession, noticesStorage, resolveWindowName, windowStorage, type LoadedNotices, type LoadedSession } from '../../shell';
 import { productionApi } from './connections';
+import { openExternal } from './openExternal';
 import { ExtensionAuthority } from './extensionAuthority';
 import { ExtensionWindow } from './extensionWindow';
 import { ExtensionAuthorityContext } from './extensionAuthorityContext';
@@ -51,14 +52,6 @@ function closeWindow(): void {
  */
 async function showSettingsWindow(): Promise<void> {
   await WindowClient.OpenSettings('');
-}
-
-/**
- * Opens an address outside the app, in the system's browser: the host's own call (`Browser.OpenURL`), which the Terminal tool uses for a link a person follows in a terminal's output. The tool gives it only http and https addresses; the host
- * checks the address again and may refuse it (one with a shell metacharacter in it), and a refusal is the call's rejection, which the tool turns into a warning on the console.
- */
-async function openExternal(url: string): Promise<void> {
-  await Browser.OpenURL(url);
 }
 
 /** The id of the forward a closed event of the host is about: its payload is the session, and its `id` is the only thing of it read here. */

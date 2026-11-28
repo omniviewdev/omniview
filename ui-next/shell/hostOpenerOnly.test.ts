@@ -23,18 +23,19 @@ function sourcesUnder(directory: string): string[] {
     if (statSync(path).isDirectory()) {
       return SKIPPED_DIRECTORIES.has(name) ? [] : sourcesUnder(path);
     }
+
     return /\.(ts|tsx)$/.test(name) && !/\.(test|spec)\.(ts|tsx)$/.test(name) && !name.endsWith('.d.ts') ? [path] : [];
   });
 }
 
 describe('the page opens addresses through the host\'s opener', () => {
   it('finds a direct call of the runtime\'s browser opener, and not a comment that names it (the control of the scan)', () => {
-    expect(directOpenerCalls("await Browser.OpenURL(url);")).toHaveLength(1);
-    expect(directOpenerCalls("onClick={() => { void Browser.OpenURL(x); }}")).toHaveLength(1);
-    expect(directOpenerCalls("export const BrowserOpenURL = (url) => BrowserOpenURL(url);")).toHaveLength(1);
-    expect(directOpenerCalls(" * the host's own call (`Browser.OpenURL`), which opens it")).toHaveLength(0);
-    expect(directOpenerCalls("// Browser.OpenURL(url) is what it was")).toHaveLength(0);
-    expect(directOpenerCalls("await openExternalURL(url);")).toHaveLength(0);
+    expect(directOpenerCalls('await Browser.OpenURL(url);')).toHaveLength(1);
+    expect(directOpenerCalls('onClick={() => { void Browser.OpenURL(x); }}')).toHaveLength(1);
+    expect(directOpenerCalls('export const BrowserOpenURL = (url) => BrowserOpenURL(url);')).toHaveLength(1);
+    expect(directOpenerCalls(' * the host\'s own call (`Browser.OpenURL`), which opens it')).toHaveLength(0);
+    expect(directOpenerCalls('// Browser.OpenURL(url) is what it was')).toHaveLength(0);
+    expect(directOpenerCalls('await openExternalURL(url);')).toHaveLength(0);
   });
 
   it('has no page code that calls Browser.OpenURL', () => {

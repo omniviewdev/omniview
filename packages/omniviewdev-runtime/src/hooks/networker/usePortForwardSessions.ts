@@ -4,7 +4,8 @@ import {
   ClosePortForwardSession,
   ListAllPortForwardSessions,
 } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/networker/servicewrapper';
-import { Browser, Events } from '@wailsio/runtime';
+import { Events } from '@wailsio/runtime';
+import { openExternalURL } from '../../openExternal';
 import { useNotifications } from '../../activity/context';
 import { createErrorHandler, parseAppError } from '../../errors/parseAppError';
 
@@ -63,7 +64,7 @@ export function usePortForwardSessions() {
     sessions,
     activeSessions,
     closeSession: closeMutation.mutateAsync,
-    openInBrowser: (localPort: number) => Browser.OpenURL(`http://localhost:${localPort}`),
+    openInBrowser: (localPort: number) => openExternalURL(`http://localhost:${localPort}`),
   };
 }
 
