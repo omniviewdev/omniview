@@ -222,7 +222,20 @@ export function createSelectors(): Selectors {
       layouts.set(tool, next === null ? null : Object.freeze(next));
       return layouts.get(tool) ?? null;
     },
-    isShown: (state, id) => shownOf(state)?.session === id,
+    isShown: (state, id) => {
+      const shown = shownOf(state);
+      if (shown === null) {
+        return false;
+      }
+
+      if (shown.session === id) {
+        return true;
+      }
+
+      // Every pane of the shown tool's group is on screen with it: one lookup in the group, not a layout built for each body.
+      const session = own(state.sessions, id);
+      return session?.tool === shown.tool && own(state.panes, shown.tool)?.panes.some((pane) => pane.session === id) === true && sessionVisible(state, session);
+    },
     pluginOff: (state, id) => {
       const session = own(state.sessions, id);
       return session !== undefined && !isLive(state, session.plugin);

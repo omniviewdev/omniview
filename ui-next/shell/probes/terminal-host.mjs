@@ -689,6 +689,8 @@ export function createHost(options = {}) {
     /** What every `SaveState` call carried, in order: the window's slots are the page's own state, and a capability must never be in one. */
     saved: [],
     created: [],
+    /** The terminals whose directory the page asked for (`ChannelTerminalCwd`), in order: where a split begins. */
+    cwds: [],
     refused: [],
     closed: [],
     dismissed: [],
@@ -1862,7 +1864,7 @@ export function createHost(options = {}) {
     byCap.set(cap, pty.id);
     // A new terminal is on its lease from the moment it is made: a page that dies before it opens the stream leaves no shell behind.
     startLease(pty);
-    log.created.push({ id: pty.id, cap, lease_ms: lease, cols, rows });
+    log.created.push({ id: pty.id, cap, lease_ms: lease, cols, rows, cwd: launch.cwd ?? null });
     log.resizes.push({ stream: 0, id: pty.id, rows, cols, at: performance.now() });
     defer(() => out(pty, BANNER));
     return { ...infoOf(pty), cap };
@@ -1988,6 +1990,7 @@ export function createHost(options = {}) {
 
       case 'ChannelTerminalCwd': {
         const pty = find(args[0]);
+        log.cwds.push(pty?.id ?? null);
         if (pty === undefined) throw gone();
         return { path: '/home/user' };
       }

@@ -1104,6 +1104,94 @@ describe('a window that was reloaded finds its terminals again (T2-go)', () => {
     });
   });
 
+  describe('what `Split terminal` starts (`splitHere`: #697 step 6)', () => {
+    const SHELL: TerminalDirectory = { state: 'known', path: '/usr', source: 'shell' };
+    let counter = 0;
+    const targetFor = (): TerminalTarget => {
+      counter += 1;
+      return { plugin: HOST, id: 'local', title: 'Terminal', sessionId: `term-split-${String(counter)}`, open: () => keyedFeed() };
+    };
+
+    beforeEach(() => {
+      counter = 0;
+      vi.mocked(localHereTarget).mockReset();
+      vi.mocked(localHereTarget).mockImplementation(targetFor);
+    });
+
+    function withTerminal(directory: (() => Promise<TerminalDirectory>) | undefined) {
+      const r = reloaded({});
+      const stop = r.terminals.attach();
+      const opened = r.terminals.sessions.open(found('term-a', keyedFeed(directory === undefined ? {} : { directory })));
+      return { ...r, stop, id: opened?.id ?? '' };
+    }
+
+    it('starts a NEW terminal in the directory the feed says, in a pane beside the session it was pressed in: never a copy, and the host\'s fact is what places it', async () => {
+      const directory = vi.fn(async () => Promise.resolve(SHELL));
+      const r = withTerminal(directory);
+      await r.terminals.splitHere(r.id, 1000);
+      expect(directory).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(localHereTarget).mock.calls.map(([where]) => where)).toEqual([SHELL]);
+      const state = r.store.getSnapshot();
+      expect(Object.keys(state.sessions)).toEqual(['term-a', 'term-split-1']);
+      expect(state.panes.terminal?.panes.map((pane) => pane.session)).toEqual(['term-a', 'term-split-1']);
+      expect(state.active.terminal).toBe('term-split-1');
+      expect(r.terminals.sessions.takeFocus('term-split-1')).toBe(true);
+      r.stop();
+    });
+
+    it('opens nothing when the panel has no room for another pane, and starts no process: the room is asked before the host is', async () => {
+      const directory = vi.fn(async () => Promise.resolve(SHELL));
+      const r = withTerminal(directory);
+      await r.terminals.splitHere(r.id, 150);
+      expect(localHereTarget).not.toHaveBeenCalled();
+      expect(directory).not.toHaveBeenCalled();
+      expect(Object.keys(r.store.getSnapshot().sessions)).toEqual(['term-a']);
+      r.stop();
+    });
+
+    it('opens nothing for a feed that cannot say where it is or a session that is not there, and tells whether it can (`canSplit`)', async () => {
+      const r = withTerminal(undefined);
+      expect(r.terminals.canSplit(r.id)).toBe(false);
+      expect(r.terminals.canSplit('no-such-session')).toBe(false);
+      await r.terminals.splitHere(r.id, 1000);
+      await r.terminals.splitHere('no-such-session', 1000);
+      expect(localHereTarget).not.toHaveBeenCalled();
+      expect(Object.keys(r.store.getSnapshot().sessions)).toEqual(['term-a']);
+      const withDirectory = withTerminal(async () => Promise.resolve(SHELL));
+      expect(withDirectory.terminals.canSplit(withDirectory.id)).toBe(true);
+      r.stop();
+      withDirectory.stop();
+    });
+
+    it('puts the new pane beside the pane the split was pressed in, though the keyboard went to another pane while the host answered', async () => {
+      const answer = Promise.withResolvers<TerminalDirectory>();
+      const r = withTerminal(async () => answer.promise);
+      // A second and a third terminal beside the first (three panes), the keyboard in the last.
+      r.terminals.sessions.open(found('term-b', keyedFeed()), { split: { extent: 1000 } });
+      r.terminals.sessions.open(found('term-c', keyedFeed()), { split: { extent: 1000 } });
+      expect(r.store.getSnapshot().panes.terminal?.panes.map((pane) => pane.session)).toEqual(['term-a', 'term-b', 'term-c']);
+      const splitting = r.terminals.splitHere('term-a', 1000);
+      await turns();
+      answer.resolve(SHELL);
+      await splitting;
+      expect(r.store.getSnapshot().panes.terminal?.panes.map((pane) => pane.session)).toEqual(['term-a', 'term-split-1', 'term-b', 'term-c']);
+      r.stop();
+    });
+
+    it('is what the body\'s Split runs, given the length the deck measured', async () => {
+      const directory = vi.fn(async () => Promise.resolve(SHELL));
+      const r = withTerminal(directory);
+      const session = r.store.getSnapshot().sessions[r.id];
+      const body = r.terminals.bodyOf(session, true);
+      const props = body.props as { readonly onSplit: (id: string, extent: number) => void };
+      props.onSplit(r.id, 1000);
+      await turns();
+      expect(directory).toHaveBeenCalledTimes(1);
+      expect(r.store.getSnapshot().panes.terminal?.panes).toHaveLength(2);
+      r.stop();
+    });
+  });
+
   describe('the shells `New terminal` offers', () => {
     /** A list of shells the test changes, as the page's store of what the host lists does when the settings change. */
     function shellList(initial: unknown) {

@@ -230,7 +230,8 @@ Closed, so you do not look for them: B-98 and B-99 (SDK #84 and #86, in v0.22.0)
 | Shell or profile choice, directory and environment at create, "new terminal here", title from the program, rename, restart an ended terminal | not started | #695 |
 | Links: URLs, `file:line:col`, OSC 8, open in the IDE | not started | #696 |
 | Font, cursor, scrollback, Option as Meta, bell, GPU choice, copy on select, paste warning | not started | #697 |
-| Split panes; terminals in the editor area | not started (the editor area does not exist) | #697 |
+| Split panes | **in progress**: the model, the layout, the sash and Split terminal are in (`status/T6-panes-model.md`, `status/T6-panes-layout.md`); focus movement by key, the saved ratios and the reload probe are not | #697 |
+| Terminals in the editor area | not started (the editor area does not exist) | #697 |
 | Paste sanitising, `onBinary`, create-once WebGL, IME, accessible view | not started | #698 |
 | Agent `run` tool, "last command" | not started (SDK tag first) | #699 |
 | Pod exec in the Terminal tool, the shared contract for local and plugin sessions | not started (SDK tag gate first) | #700 |

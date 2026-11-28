@@ -2565,3 +2565,38 @@ describe('restarting an ended terminal (`restart`)', () => {
     expect(h.sessions.canRestart(over?.id ?? '')).toBe(true);
   });
 });
+
+describe('a split (#697 step 6): a NEW terminal in a pane beside the one in front', () => {
+  it('opens its session in a pane beside the active session\'s, a new process under a new id, and makes it the active pane', () => {
+    const h = harness();
+    const first = h.target();
+    const one = h.sessions.open(first.target);
+    const second = h.target();
+    const two = h.sessions.open(second.target, { split: { extent: 1000 } });
+    expect(two?.id).not.toBe(one?.id);
+    const group = h.store.getSnapshot().panes.terminal;
+    expect(group?.panes.map((pane) => pane.session)).toEqual([one?.id, two?.id]);
+    expect(group?.ratios).toEqual([0.5, 0.5]);
+    expect(h.store.getSnapshot().active.terminal).toBe(two?.id);
+    expect(first.feed.closed()).toBe(0);
+  });
+
+  it('opens a session in no pane when it is not a split: the tool shows one session at a time, as before', () => {
+    const h = harness();
+    h.sessions.open(h.target().target);
+    h.sessions.open(h.target().target);
+    expect(h.store.getSnapshot().panes).toEqual({});
+  });
+
+  it('is refused when the panel has no room for another pane: nothing opens, the process that was started is closed again, and the refusal is warned', () => {
+    const h = harness();
+    h.sessions.open(h.target().target);
+    const crowded = h.target();
+    expect(h.sessions.open(crowded.target, { split: { extent: 150 } })).toBeUndefined();
+    expect(Object.keys(h.store.getSnapshot().sessions)).toHaveLength(1);
+    expect(h.store.getSnapshot().panes).toEqual({});
+    expect(crowded.feed.closed()).toBe(1);
+    expect(h.warn).toHaveBeenCalledTimes(1);
+    expect(h.sessions.feedOf('term-2')).toBeUndefined();
+  });
+});

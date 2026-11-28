@@ -468,6 +468,10 @@
     "probe": true,
     "controls": []
   },
+  "ui-next/shell/probes/terminal-panes-probe.mjs": {
+    "probe": true,
+    "controls": []
+  },
   "ui-next/shell/probes/terminal-probe.mjs": {
     "probe": true,
     "controls": [
@@ -616,7 +620,20 @@
       "settings-scrollback-lost",
       "settings-font-unloaded-open",
       "settings-font-unloaded-live",
-      "settings-cell-unmeasured"
+      "settings-cell-unmeasured",
+      "panes-unequal",
+      "panes-wrong-directory",
+      "panes-focus-stays",
+      "panes-min-lost",
+      "panes-reset-lost",
+      "panes-keys-lost",
+      "panes-sash-not-a-stop",
+      "panes-fit-lost",
+      "panes-full-enabled",
+      "panes-gl-every-show",
+      "panes-axe",
+      "panes-order-lost",
+      "panes-remounted"
     ]
   },
   "ui-next/shell/probes/terminal-reattach-b-probe.mjs": {

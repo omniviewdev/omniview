@@ -4,6 +4,7 @@ import { platformOf } from '../../core/chords';
 import type { Session, SessionId } from '../../core/panel';
 import { copyToClipboard } from '../logs/clipboard';
 import { PanelEmpty } from '../PanelEmpty';
+import { usePaneRoom } from '../panes/room';
 import { useMaybeRenaming } from '../renaming';
 import { toggleChordText } from '../words';
 import { readAppearance, SWATCH_ROLES } from './appearance';
@@ -18,7 +19,7 @@ import { useTerminalLinks, useTerminalMenu } from './menu';
 import { createScreen } from './screen';
 import { screenReaderWords, type ScreenReaderSource } from './screenReader';
 import { laneOf } from './state';
-import { HELD_RENAME, TerminalToolbar } from './TerminalToolbar';
+import { HELD_RENAME, NO_DIRECTORY, NO_PANES, NO_ROOM, TerminalToolbar } from './TerminalToolbar';
 import type { TerminalSessions } from './TerminalSessions';
 import { TERMINAL_GONE, TERMINAL_ICON } from './tool';
 import styles from './TerminalBody.module.css';
@@ -147,13 +148,17 @@ type TerminalBodyProps = {
   readonly name?: string | undefined;
   /** Opens a new terminal where this session's terminal is (the menu's "New terminal here"): the window's own way to do it, which asks the session's feed where it is. Absent: the menu has no such item. */
   readonly onNewHere?: ((session: SessionId) => void) | undefined;
+  /** Splits the terminal: a NEW terminal where this one is, in a pane beside it (the toolbar's Split terminal), given the length the deck says the panes would share. Absent: the toolbar has no Split. */
+  readonly onSplit?: ((session: SessionId, extent: number) => void) | undefined;
+  /** Whether this terminal can say where it is, which a split needs: the host's fact (the feed's `directory`). */
+  readonly canSplit?: boolean | undefined;
 };
 
 /**
  * The body of a Terminal session. A session with no feed (restored from the last run: the host keeps no output across a restart, or its terminal is not adopted yet) has nothing to draw: it says that the earlier output is gone
  * and how to get a shell again, in the empty state the panel has for it, and draws the screen when the registry gives it a feed.
  */
-export function TerminalBody({ sessions, session, visible, load, screenReader, preferences, name, onNewHere }: TerminalBodyProps) {
+export function TerminalBody({ sessions, session, visible, load, screenReader, preferences, name, onNewHere, onSplit, canSplit }: TerminalBodyProps) {
   const feed = useSyncExternalStore(sessions.subscribeFeeds, () => sessions.feedOf(session.id));
   // The person pressed a control in the lane (Take it back) and wants the keyboard in the screen the registry makes for it: the request lives here, which that screen does not replace.
   const keyboard = useRef(false);
@@ -204,6 +209,8 @@ export function TerminalBody({ sessions, session, visible, load, screenReader, p
       restart={restart}
       takeKeyboard={takeKeyboard}
       onNewHere={onNewHere}
+      onSplit={onSplit}
+      canSplit={canSplit === true}
     />
   );
 }
@@ -225,10 +232,13 @@ type TerminalViewProps = {
   readonly takeKeyboard: () => boolean;
   /** Opens a new terminal where this one is (the menu's "New terminal here"): the window's own way to do it. Absent: the menu has no such item. */
   readonly onNewHere: ((session: SessionId) => void) | undefined;
+  readonly onSplit: ((session: SessionId, extent: number) => void) | undefined;
+  readonly canSplit: boolean;
 };
 
-function TerminalView({ sessions, session, feed, visible, load, screenReader, preferences, name, takeBack, restart, takeKeyboard, onNewHere }: TerminalViewProps) {
+function TerminalView({ sessions, session, feed, visible, load, screenReader, preferences, name, takeBack, restart, takeKeyboard, onNewHere, onSplit, canSplit }: TerminalViewProps) {
   const host = useRef<HTMLDivElement>(null);
+  const room = usePaneRoom();
   const hintId = useId();
   const platform = platformOf(navigator);
   const label = name ?? (session.scope === '' ? session.title : `${session.title} · ${session.scope}`);
@@ -430,6 +440,14 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader, pr
           onCopy={copy}
           onRename={renaming === null || session.held === true ? undefined : rename}
           renameReason={session.held === true ? HELD_RENAME : undefined}
+          onSplit={
+            onSplit === undefined || room === null || !room.fits || !canSplit
+              ? undefined
+              : () => {
+                onSplit(session.id, room.extent());
+              }
+          }
+          splitReason={onSplit === undefined ? undefined : !canSplit ? NO_DIRECTORY : room === null ? NO_PANES : NO_ROOM}
         />
       </div>
       <div className={styles.main}>

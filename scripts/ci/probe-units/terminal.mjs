@@ -409,4 +409,24 @@ export const units = [
     // An ESTIMATE from the laptop, to be set from the first nightly figure.
     seconds: 100,
   },
+  // The panes of the Terminal tool (issue #697 step 6, the layout): Split terminal and the panes it makes (equal within a pixel, 80 px at least, one terminal in each, started where the host says the first is), the sash's drag and keys, a window made
+  // narrower, a split refused when no pane fits, the WebGL contexts of three panes hidden and shown ten times, and axe (the sections are in terminal-panes.mjs; the host is the probe's own). WebKit and Chromium at both viewports. 240 s is an
+  // ESTIMATE from the laptop (one engine at one viewport took 105 s with the build of the fixture): the nightly corrects it.
+  {
+    id: 'terminal-panes',
+    name: 'Probe that Split terminal makes panes that are equal, hold 80 px, follow the sash and the window, and keep the WebGL contexts at one for each terminal',
+    script: 'ui-next/shell/probes/terminal-panes-probe.mjs',
+    env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/terminal-panes-probe.json' },
+    seconds: 240,
+  },
+  {
+    id: 'terminal-controls-panes',
+    name: 'Probe that the panes probe sees panes that are unequal, a split that is not where the host said, a keyboard that stays, a pane under 80 px, a sash that does not reset or hear its keys, one that is not a Tab stop, panes never fitted, a split with no room, a context for each showing and a violation',
+    script: 'ui-next/shell/probes/terminal-probe.mjs',
+    env: { FONT_DELAY_MS: '40' },
+    controls: ['panes-unequal', 'panes-wrong-directory', 'panes-focus-stays', 'panes-min-lost', 'panes-reset-lost', 'panes-keys-lost', 'panes-sash-not-a-stop', 'panes-fit-lost', 'panes-full-enabled', 'panes-gl-every-show', 'panes-axe', 'panes-order-lost', 'panes-remounted'],
+    plants: 'page',
+    // An ESTIMATE from the laptop, to be set from the first nightly figure.
+    seconds: 240,
+  },
 ];
