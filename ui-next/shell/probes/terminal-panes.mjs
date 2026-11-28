@@ -161,17 +161,19 @@ export const PANES_CONTROLS = {
       window.__host = async (id, method, args) => call(id, method, method === 'SaveState' ? JSON.parse(JSON.stringify(args).replaceAll('\\"layout\\"', '\\"layoutx\\"')) : args);
     },
   },
-  // The host cannot say which terminals are left: the page keeps every pane of the saved group, the gone one included.
+  // The host cannot say which terminals are left (while the page is away in the scenario of a gone terminal): the page keeps every pane of the saved group, the gone one included.
   'panes-gone-kept': {
     assertion: 'panes.gone',
     section: 'panes-gone',
+    stage: 'gone-away',
     init: () => {
       const call = window.__host;
       window.__host = async (id, method, args) => {
-        if (method === 'ListChannelTerminals') throw new Error('the host could not list');
+        if (method === 'ListChannelTerminals' && window.sessionStorage.getItem('probe.refuse-list') === '1') throw new Error('the host could not list');
         return call(id, method, args);
       };
     },
+    after: (page) => page.evaluate(() => window.sessionStorage.setItem('probe.refuse-list', '1')),
   },
   // The lane of the ended terminal's pane has no Restart.
   'panes-ended-closed': {
@@ -597,6 +599,7 @@ export function createPanesSections({ check, note, report, runAxe }) {
       const before = await shape();
       const url = page.url();
       const ids = host.log.created.map((made) => made.id);
+      await perturb(ctx, page, 'gone-away');
       await page.goto('about:blank');
       host.vanish(ids[1]);
       const drawn = await back(page, host, url, 2, 2);
@@ -630,9 +633,12 @@ export function createPanesSections({ check, note, report, runAxe }) {
       await page.goto('about:blank');
       host.end(ids[1]);
       const drawn = await back(page, host, url, 3, 3);
-      await perturb(ctx, page, 'ended');
       const after = await shape();
-      const restart = await page.evaluate(() => [...document.querySelectorAll('[data-shell-part="panelDeck"] > [data-shell-part="panelBody"]:not([hidden])')].map((body) => body.querySelector('[data-shell-part="terminalRestart"]') !== null));
+      const restartOffers = () => page.evaluate(() => [...document.querySelectorAll('[data-shell-part="panelDeck"] > [data-shell-part="panelBody"]:not([hidden])')].map((body) => body.querySelector('[data-shell-part="terminalRestart"]') !== null));
+      // The lane of the ended terminal is drawn when the host's word of its end reaches the page: waited for, not slept for.
+      await until(async () => (await restartOffers()).join() === 'false,true,false');
+      await perturb(ctx, page, 'ended');
+      const restart = await restartOffers();
       const problems = [];
       if (!drawn || after.sessions.join() !== before.sessions.join()) problems.push(`${String(after.sessions.length)} panes after the reload (${after.sessions.join()}), not the 3 it had`);
       if (restart.join() !== 'false,true,false') problems.push(`the panes that offer Restart are ${JSON.stringify(restart)}, not only the middle one`);
