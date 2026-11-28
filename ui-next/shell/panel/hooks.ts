@@ -149,3 +149,18 @@ export function usePaneActive(id: SessionId): boolean {
     return group?.panes.some((pane) => pane.session === id && pane.id === group.active) === true;
   });
 }
+
+/** Where a session's body is among the panes drawn, as `2/3` (its place from 1, and how many), or an empty string when its tool shows one session: a string, so that the slot renders only when it changes. */
+export function usePaneSeatOf(id: SessionId): string {
+  const { store } = usePanel();
+  return usePanelSelector((state) => {
+    const tool = Object.hasOwn(state.sessions, id) ? state.sessions[id].tool : undefined;
+    if (tool === undefined || !Object.hasOwn(state.panes, tool)) {
+      return '';
+    }
+
+    const layout = store.selectors.paneLayout(state, tool);
+    const at = layout === null ? -1 : layout.panes.findIndex((pane) => pane.session === id);
+    return layout === null || at < 0 || layout.panes.length < 2 ? '' : `${String(at + 1)}/${String(layout.panes.length)}`;
+  });
+}

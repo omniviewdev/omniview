@@ -228,6 +228,20 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
 
       sessions.open(target, { reveal: false });
     }
+
+    leaveGonePanes();
+  };
+
+  /**
+   * The host has answered and a saved terminal in a pane has no feed: it is gone (its lease ended, the host restarted), and a pane with nothing in it is no use, so the pane closes and its share goes to the others. Its tab stays, ended, as
+   * the tab of a gone terminal always did. A host that could not answer is not an answer (`findTerminals` leaves the saved tabs as they are), and a terminal the host lists as ended keeps its pane, whose lane offers a restart.
+   */
+  const leaveGonePanes = (): void => {
+    for (const pane of store.getSnapshot().panes[TERMINAL_TOOL_ID]?.panes ?? []) {
+      if (sessions.feedOf(pane.session) === undefined) {
+        store.leavePane(pane.session);
+      }
+    }
   };
 
   /** Asks the host, once, for the terminals left for this window. An answer that comes while no window is attached waits for the next one; one that never comes, or is a refusal, leaves the saved tabs as they are. */

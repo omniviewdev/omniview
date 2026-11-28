@@ -79,7 +79,7 @@ function step(store: PanelStore, next: () => number, tally: Tally): { name: stri
   const toolId = pick(TOOLS);
   const paneTool = grouped.length > 0 && next() % 5 !== 0 ? pick(grouped) : toolId;
   const extent = pick(EXTENTS);
-  const roll = next() % 18;
+  const roll = next() % 19;
   switch (roll) {
     case 0:
     case 1:
@@ -176,6 +176,19 @@ function step(store: PanelStore, next: () => number, tally: Tally): { name: stri
       }
 
       return { name: 'reorder' };
+    case 17: {
+      // A terminal that is gone after a reload: a session in a pane leaves it and stays a tab (`leavePane`), and one that is in no pane is refused.
+      const inPanes = Object.values(state.panes).flatMap((group) => group.panes.map((pane) => pane.session));
+      const target = inPanes.length > 0 && next() % 6 !== 0 ? pick(inPanes) : pick([...ids, 'ghost']);
+      const result = store.leavePane(target);
+      count(tally, `leave:${result.status}`);
+      if (result.status === 'done') {
+        expect(Object.hasOwn(store.getSnapshot().sessions, target), 'a pane that leaves keeps its session').toBe(true);
+      }
+
+      return { name: 'leave' };
+    }
+
     default:
       if (next() % 2 === 0) {
         store.show({ tool: toolId });
@@ -322,7 +335,7 @@ describe('the panes under random operations', () => {
       'sash:done': 100, 'sash:noop': 5, 'sash:refused': 30,
       'equalise:done': 20, 'equalise:noop': 50, 'equalise:refused': 50,
       'fit:done': 8, 'fit:noop': 50, 'fit:refused': 50,
-      'close:in a pane': 100, 'close:in no pane': 100, 'close:dissolved a group': 50, 'activate:maybe swapped': 100,
+      'leave:done': 30, 'leave:refused': 30, 'close:in a pane': 100, 'close:in no pane': 100, 'close:dissolved a group': 50, 'activate:maybe swapped': 100,
       'layout:2 panes': 1000, 'layout:3 panes': 500, 'layout:4 panes': 200, 'min:checked': 500, 'restore:group whole': 40, 'cap:group cut': 3, 'old:panes stripped': 30,
     };
     for (const [event, floor] of Object.entries(floors)) {

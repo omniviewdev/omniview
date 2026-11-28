@@ -211,7 +211,11 @@ export function closeSession(state: PanelState, id: SessionId): Step<CloseResult
  * Closes a session that is in a pane of a group: its pane goes with it and its share passes to the others in proportion. When it was the active pane the focus passes to the pane after it, else the one before; when
  * one pane is left the group is dissolved and that pane's session is the tool's, as before the split. A session that is in no pane is closed as any other.
  */
-function closePane(state: PanelState, session: Session, group: PaneGroup): Step<CloseResult> {
+/**
+ * The state's `active` and `panes` once a session's pane is gone from its group (`session` is in `group`): its share goes to the others in proportion, the focus passes as written below, and a group left with one pane is dissolved.
+ * What a close and a pane that leaves (`leavePane`) have in common; the close also removes the session.
+ */
+export function withoutPane(state: PanelState, session: Session, group: PaneGroup): Pick<PanelState, 'active' | 'panes'> {
   const at = group.panes.findIndex((pane) => pane.session === session.id);
   const panes = group.panes.filter((_, index) => index !== at);
   const others = group.ratios.filter((_, index) => index !== at);
@@ -229,13 +233,19 @@ function closePane(state: PanelState, session: Session, group: PaneGroup): Step<
   }
 
   const { [session.tool]: _group, ...otherGroups } = state.panes;
+  return {
+    active: Object.freeze({ ...state.active, [session.tool]: active.session }),
+    panes: Object.freeze(panes.length < 2 ? otherGroups : { ...otherGroups, [session.tool]: Object.freeze({ ...group, panes: Object.freeze(panes), ratios: Object.freeze(others.map((ratio) => ratio / total)), active: active.id }) }),
+  };
+}
+
+function closePane(state: PanelState, session: Session, group: PaneGroup): Step<CloseResult> {
   const { [session.id]: _closed, ...sessions } = state.sessions;
   const next = patch(state, {
+    ...withoutPane(state, session, group),
     sessions: Object.freeze(sessions),
     order: Object.freeze(state.order.filter((one) => one !== session.id)),
     mounted: Object.freeze(state.mounted.filter((one) => one !== session.id)),
-    active: Object.freeze({ ...state.active, [session.tool]: active.session }),
-    panes: Object.freeze(panes.length < 2 ? otherGroups : { ...otherGroups, [session.tool]: Object.freeze({ ...group, panes: Object.freeze(panes), ratios: Object.freeze(others.map((ratio) => ratio / total)), active: active.id }) }),
   });
   const settledState = settle(next);
   return { state: settledState, result: { status: 'done', closed: session.id, active: effectiveSession(settledState, session.tool) } };

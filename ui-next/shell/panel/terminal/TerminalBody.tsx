@@ -4,7 +4,7 @@ import { platformOf } from '../../core/chords';
 import type { Session, SessionId } from '../../core/panel';
 import { copyToClipboard } from '../logs/clipboard';
 import { PanelEmpty } from '../PanelEmpty';
-import { usePaneRoom } from '../panes/room';
+import { usePaneRoom, usePaneSeat } from '../panes/room';
 import { useMaybeRenaming } from '../renaming';
 import { toggleChordText } from '../words';
 import { readAppearance, SWATCH_ROLES } from './appearance';
@@ -245,9 +245,12 @@ type TerminalViewProps = {
 function TerminalView({ sessions, session, feed, visible, load, screenReader, preferences, bells, name, takeBack, restart, takeKeyboard, onNewHere, onSplit, canSplit }: TerminalViewProps) {
   const host = useRef<HTMLDivElement>(null);
   const room = usePaneRoom();
+  const seat = usePaneSeat();
   const hintId = useId();
   const platform = platformOf(navigator);
   const label = name ?? (session.scope === '' ? session.title : `${session.title} · ${session.scope}`);
+  // In a group of panes the input says which pane it is in and how many there are, so that a screen reader announces it when the keyboard arrives (the pane chords).
+  const input = `Terminal input, ${seat === null || seat.count < 2 ? '' : `pane ${String(seat.index + 1)} of ${String(seat.count)}, `}${label}`;
   // The find bar's session is made before the screen: the screen's keys (the find chord, F3, Escape) open the bar, step the find and close the bar through it, and `useTerminalFind` below draws the bar once the screen is there.
   const [finding] = useState(createFindSession);
   const [screen] = useState(() => {
@@ -262,7 +265,7 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader, pr
         bells?.ring(session.id);
       },
       platform,
-      label: `Terminal input, ${label}`,
+      label: input,
       descriptionId: hintId,
       screenReader,
       frame: frameOf,
@@ -339,8 +342,8 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader, pr
 
   // The shell said its name and the tab was renamed: the emulator's input is named again, so that what a screen reader says for it is what the tab says.
   useEffect(() => {
-    screen.rename(`Terminal input, ${label}`);
-  }, [screen, label]);
+    screen.rename(input);
+  }, [screen, input]);
 
   // A new theme, a new text size or a new density is a new look: the root says so by its attributes, and the screen reads its swatches again.
   useEffect(() => {

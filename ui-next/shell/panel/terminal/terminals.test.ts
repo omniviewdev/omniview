@@ -2,7 +2,7 @@ import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactElement } from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { createPanelStore, HOST, PANEL_VERSION, restorePanel, type PanelState, type PanelStore, type Session } from '../../core/panel';
+import { checkInvariants, createPanelStore, HOST, PANEL_VERSION, restorePanel, type PanelState, type PanelStore, type Session } from '../../core/panel';
 import { focusTab } from '../focus';
 import type { EngineAppearance } from './engine';
 import type { TerminalBusy, TerminalDirectory, TerminalFeedHandle, TerminalTarget } from './feed';

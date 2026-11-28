@@ -592,7 +592,7 @@ describe('the pane chords (the keyboard moves between panes)', () => {
       });
     }
 
-    const inputs = (): HTMLElement[] => slots().filter((slot) => !slot.hidden).map((slot) => slot.querySelector<HTMLElement>('textarea') as HTMLElement);
+    const inputs = (): HTMLElement[] => slots().filter((slot) => !slot.hidden).map((slot) => slot.querySelector<HTMLElement>('textarea')!);
     return { panel, store: panel.store, inputs };
   }
 

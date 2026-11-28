@@ -1,5 +1,4 @@
-import type { PanelStore } from '../core/panel';
-import type { ShowOptions } from '../core/panel';
+import { paneToward, type PaneStep, type PanelStore, type SessionId, type ShowOptions } from '../core/panel';
 
 // Where the focus goes when the panel opens and closes (ch16 S105, S116; the mock's `focusPanel` and `focusPage`). The regions say where their focus goes (`data-shell-region`,
 // `data-shell-focus`, as ../useRegionKeys.ts reads them): opening the panel puts the focus on its tool on screen, and closing it from inside returns the focus to the page, so an action
@@ -91,4 +90,32 @@ export function focusTab(strip: 'sessionTabs' | 'panelTools', id: string): void 
     const tabs = document.querySelectorAll<HTMLElement>(`${PANEL} [data-shell-part="${strip}"] [role="tab"]`);
     [...tabs].find((tab) => tab.dataset.tabId === id)?.focus();
   });
+}
+
+const PANE_BODY = '[data-shell-part="panelBody"][data-session-id]';
+
+/** Puts the keyboard in the body of a pane: its emulator's input (where a terminal takes the keys), else the first control it has. False when the body has nothing to take it. */
+export function focusPaneBody(session: SessionId): boolean {
+  const body = [...document.querySelectorAll<HTMLElement>(PANE_BODY)].find((one) => one.getAttribute('data-session-id') === session);
+  const target = body?.querySelector<HTMLElement>('.xterm-helper-textarea') ?? body?.querySelector<HTMLElement>('button, [tabindex="0"], textarea, input');
+  target?.focus();
+  return target !== undefined && target !== null && document.activeElement === target;
+}
+
+/**
+ * The pane chords (`paneChordOf`): moves the keyboard from the active pane of the tool on screen to the pane `step` asks for, and makes that pane the active one. False when there is nowhere to go (one pane, the end of a row), so that the key is
+ * left alone.
+ */
+export function moveToPane(store: PanelStore, step: PaneStep): boolean {
+  const shown = store.selectors.shown(store.getSnapshot());
+  const layout = shown === null ? null : store.selectors.paneLayout(store.getSnapshot(), shown.tool);
+  const target = layout === null ? undefined : paneToward(layout, step);
+  const pane = layout?.panes.find((one) => one.id === target);
+  if (shown === null || pane === undefined || target === undefined) {
+    return false;
+  }
+
+  store.focusPane(shown.tool, target);
+  focusPaneBody(pane.session);
+  return true;
 }

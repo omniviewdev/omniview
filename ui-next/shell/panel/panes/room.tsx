@@ -23,6 +23,7 @@ export function usePaneRoom(): PaneRoom | null {
 export type PaneSeat = { readonly index: number; readonly count: number };
 
 const SeatContext = createContext<PaneSeat | null>(null);
+// The provider is always there, with `null` for a tool that shows one session: a body whose tree gains a wrapper when its tool is split would be remounted, and its emulator with it.
 
 export const PaneSeatProvider = SeatContext.Provider;
 

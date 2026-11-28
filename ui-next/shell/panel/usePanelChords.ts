@@ -1,13 +1,13 @@
 import { useEffect } from 'react';
-import { panelChordOf, platformOf } from '../core/chords';
+import { paneChordOf, panelChordOf, platformOf } from '../core/chords';
 import type { PanelStore } from '../core/panel';
-import { focusTab, inPanel, togglePanel, togglePanelMaximized } from './focus';
+import { focusTab, inPanel, moveToPane, togglePanel, togglePanelMaximized } from './focus';
 
 /**
  * The panel's chords, on the document for as long as the shell is mounted (ch16 S106, S118): Command or Control J toggles the panel from anywhere, and while the focus is in the panel
  * Close session is Command W on a Mac and Control Shift W elsewhere. `core/chords.ts` holds the rules. The listener is in the capture phase so that it sees the key before the tab chords
  * do: the page's Close tab (Command W) must not also close the page when the user meant the session. With no session on screen the chord is the panel's and does nothing, rather than closing
- * a page the user was not looking at.
+ * a page the user was not looking at. The pane chords (#697 step 6) are here too: they move the keyboard to the next, the previous or the neighbouring pane of the tool on screen.
  */
 export function usePanelChords(store: PanelStore | undefined): void {
   useEffect(() => {
@@ -17,6 +17,16 @@ export function usePanelChords(store: PanelStore | undefined): void {
 
     const platform = platformOf(navigator);
     const listener = (event: KeyboardEvent) => {
+      // The pane chords move the keyboard between the panes of the tool on screen; a key that goes nowhere is left alone.
+      const pane = paneChordOf(event, platform, inPanel(event.target));
+      if (pane !== undefined) {
+        if (moveToPane(store, pane.action)) {
+          event.preventDefault();
+        }
+
+        return;
+      }
+
       const chord = panelChordOf(event, platform, inPanel(event.target));
       if (chord === undefined) {
         return;

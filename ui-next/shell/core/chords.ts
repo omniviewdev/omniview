@@ -118,6 +118,32 @@ export function panelChordOf(event: KeyLike, platform: Platform, inPanel: boolea
 /** What a pane chord asks: to move the keyboard to the next or previous pane of the tool on screen (wrapping), or to the pane to the left, right, above or below. */
 export type PaneChord = { readonly action: 'next' | 'previous' | 'left' | 'right' | 'up' | 'down' };
 
-export function paneChordOf(_event: KeyLike, _platform: Platform, _inPanel: boolean): PaneChord | undefined {
-  return undefined;
+export function paneChordOf(event: KeyLike, platform: Platform, inPanel: boolean): PaneChord | undefined {
+  if (!inPanel || event.defaultPrevented === true || event.isComposing === true || event.keyCode === 229) {
+    return undefined;
+  }
+
+  // Command Option on a Mac (VS Code's). Elsewhere Alt and the arrows are the shell's (word movement) and Control without Shift is the terminal's, so the chord is Control Shift (AltGr is Control and Alt: a character).
+  const held = platform === 'mac' ? event.metaKey && event.altKey && !event.ctrlKey && !event.shiftKey : event.ctrlKey && event.shiftKey && !event.metaKey && !event.altKey && event.getModifierState?.('AltGraph') !== true;
+  if (!held) {
+    return undefined;
+  }
+
+  switch (event.code) {
+    case 'ArrowLeft':
+      return { action: 'left' };
+    case 'ArrowRight':
+      return { action: 'right' };
+    // Control Shift Up and Down select the output of the previous and the next command in a terminal: not here.
+    case 'ArrowUp':
+      return platform === 'mac' ? { action: 'up' } : undefined;
+    case 'ArrowDown':
+      return platform === 'mac' ? { action: 'down' } : undefined;
+    case 'BracketRight':
+      return { action: 'next' };
+    case 'BracketLeft':
+      return { action: 'previous' };
+    default:
+      return undefined;
+  }
 }

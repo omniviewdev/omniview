@@ -2,8 +2,8 @@ import { isIconName } from '@omniviewdev/kit';
 import { useRef } from 'react';
 import type { SessionId } from '../core/panel';
 import { usePanel } from './context';
-import { useActiveSession, useActiveTool, useIsShown, useMounted, useOpen, usePaneActive, usePaneId, usePaneIndex, usePaneLayout, usePaneShare, useSession, useToolItem } from './hooks';
-import { PaneRoomProvider } from './panes/room';
+import { useActiveSession, useActiveTool, useIsShown, useMounted, useOpen, usePaneActive, usePaneId, usePaneIndex, usePaneLayout, usePaneSeatOf, usePaneShare, useSession, useToolItem } from './hooks';
+import { PaneRoomProvider, PaneSeatProvider } from './panes/room';
 import { deckOrder } from './panes/order';
 import { PaneSash } from './panes/PaneSash';
 import { usePaneDeck } from './panes/usePaneDeck';
@@ -29,6 +29,7 @@ function BodySlot({ id, prefix }: SlotProps) {
   const share = usePaneShare(id);
   const pane = usePaneId(id);
   const active = usePaneActive(id);
+  const seat = usePaneSeatOf(id);
   if (session === undefined) {
     return null;
   }
@@ -59,7 +60,7 @@ function BodySlot({ id, prefix }: SlotProps) {
           : undefined
       }
     >
-      {renderBody(session, shown)}
+      <PaneSeatProvider value={seat === '' ? null : { index: Number(seat.split('/')[0]) - 1, count: Number(seat.split('/')[1]) }}>{renderBody(session, shown)}</PaneSeatProvider>
     </div>
   );
 }

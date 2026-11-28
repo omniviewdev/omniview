@@ -1,5 +1,5 @@
 import { equalRatios, fitRatios, minRatio, moveBoundary, PANE_MIN_PX } from './ratios';
-import { openSession } from './sessions';
+import { openSession, withoutPane } from './sessions';
 import { effectiveSession, identifier, own, patch, refuse, sessionVisible, settle, toolVisible, unchanged, type Context, type Step } from './state';
 import type { PaneAxis, PaneGroup, PaneId, PaneLayout, PanelResult, PanelState, SessionId, SessionInput, SplitResult, ToolId } from './types';
 
@@ -148,10 +148,43 @@ export function fitPanes(state: PanelState, tool: ToolId, extent: number): Step<
 /** How the keyboard moves between the panes of a group. */
 export type PaneStep = 'next' | 'previous' | 'left' | 'right' | 'up' | 'down';
 
-export function paneToward(_layout: PaneLayout, _step: PaneStep): PaneId | undefined {
-  return undefined;
+/**
+ * The pane the keyboard goes to from the active one, or undefined when there is none: the next and the previous wrap round; left and right are the way of a row and up and down the way of a column, and stop at the ends. In a column left and
+ * right are the previous and the next pane too (a platform whose chords have no up and down); in a row up and down are nothing. A group of one pane, or an active pane that is not among them, has nowhere to go.
+ */
+export function paneToward(layout: PaneLayout, step: PaneStep): PaneId | undefined {
+  const at = layout.panes.findIndex((pane) => pane.id === layout.active);
+  const count = layout.panes.length;
+  if (at < 0 || count < 2) {
+    return undefined;
+  }
+
+  if (step === 'next') {
+    return layout.panes[(at + 1) % count].id;
+  }
+
+  if (step === 'previous') {
+    return layout.panes[(at + count - 1) % count].id;
+  }
+
+  const along = layout.axis === 'row' ? step === 'left' || step === 'right' : true;
+  if (!along) {
+    return undefined;
+  }
+
+  return layout.panes[at + (step === 'left' || step === 'up' ? -1 : 1)]?.id;
 }
 
-export function leavePane(state: PanelState, _session: SessionId): Step<PanelResult> {
-  return unchanged(state);
+/**
+ * A session leaves its pane and stays a tab: for a terminal that is not there any more after a reload, whose pane is no use and whose share belongs to the others. The share goes in proportion, the focus passes as when a pane closes, a
+ * group left with one pane is dissolved. A session that is in no pane, or not there, is `missing`.
+ */
+export function leavePane(state: PanelState, session: SessionId): Step<PanelResult> {
+  const found = own(state.sessions, session);
+  const group = found === undefined ? undefined : own(state.panes, found.tool);
+  if (found === undefined || group?.panes.some((pane) => pane.session === session) !== true) {
+    return refuse(state, 'missing', `${session} is in no pane.`);
+  }
+
+  return { state: settle(patch(state, withoutPane(state, found, group))), result: DONE };
 }
