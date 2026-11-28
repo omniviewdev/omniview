@@ -16,6 +16,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/omniviewdev/omniview/internal/ownservers"
+
 	"github.com/google/uuid"
 
 	"github.com/omniviewdev/omniview/backend/extensiondiagnostics"
@@ -44,6 +46,7 @@ type Server struct {
 	discovery   *devsession.DiscoveryStore
 	token       []byte
 	host        string
+	unregister  func()
 	http        *http.Server
 	ctx         context.Context
 	cancel      context.CancelFunc
@@ -74,8 +77,10 @@ func Start(ctx context.Context, c Config) (*Server, error) {
 	}
 	s := newServer(ctx, c, token)
 	s.host = listener.Addr().String()
+	s.unregister = ownservers.Add(s.host)
 	s.http = &http.Server{Handler: http.HandlerFunc(s.serveHTTP), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 8192}
 	if err := s.Refresh(ctx, c.Descriptor); err != nil {
+		s.unregister()
 		listener.Close()
 		s.cancel()
 		return nil, err
@@ -140,6 +145,10 @@ func (s *Server) Close(ctx context.Context) error {
 		if err != nil {
 			_ = s.http.Close()
 		}
+	}
+	// The address stays an own server while the server may still answer: it is removed once the listener is closed.
+	if s.unregister != nil {
+		s.unregister()
 	}
 wait:
 	for _, done := range pending {

@@ -320,7 +320,7 @@ tasks:
       - |
         set -e
         HOST_MODFILE="$({{.HOST_BOOTSTRAP}})"
-        GOWORK=off GOFLAGS= go test -tags devcontrol -modfile="$HOST_MODFILE" ./internal/devcontrol/host/... -count=1
+        GOWORK=off GOFLAGS= go test -tags devcontrol -modfile="$HOST_MODFILE" ./internal/devcontrol/... -count=1
 
   check:c02-corpus:
     summary: Generate fresh C02 SDK-to-gRPC-to-host errors at C02_ERROR_CORPUS

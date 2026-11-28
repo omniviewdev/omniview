@@ -18,9 +18,13 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	settingsservice "github.com/omniviewdev/omniview/backend/pkg/settings"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devsession"
+	"github.com/omniviewdev/omniview/internal/ownservers"
 	settingsstore "github.com/omniviewdev/omniview/internal/settings/store"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
@@ -611,4 +615,56 @@ func TestCoreApplyFailureReportsDurableCommit(t *testing.T) {
 	if got, readErr := provider.GetInt("limits.count"); readErr != nil || got != 9 {
 		t.Fatalf("saved value was not published: %d, %v", got, readErr)
 	}
+}
+
+// The development control server is a server of the host: its address is one the host's URL opener refuses while it listens, and not after.
+func TestTheControlServerIsAnOwnServerWhileItListens(t *testing.T) {
+	store, err := devsession.OpenDiscoveryStore(t.TempDir())
+	require.NoError(t, err)
+	process, err := devsession.CaptureProcess(os.Getpid(), devsession.ProcessOwner{WorkspaceID: testWorkspace, Generation: "own-generation", Role: "host", Source: t.TempDir()})
+	require.NoError(t, err)
+	descriptor := devcontract.InstanceDescriptor{SchemaVersion: devcontract.SchemaVersion, WorkspaceID: testWorkspace, InstanceID: "7da9b9de-d833-4075-b3a7-1e74c7051387", Generation: "own-generation", Kind: "development", StateRoot: t.TempDir(), Process: process}
+	fixture, _, _ := fixtureServer(t)
+	s, err := Start(context.Background(), Config{
+		Descriptor: descriptor, Discovery: store,
+		Adapters: Adapters{
+			Inspect:  func(context.Context) (devcontract.InstanceDescriptor, error) { return descriptor, nil },
+			Plugins:  fixturePlugins{},
+			Dev:      fixtureDev{},
+			Settings: fixture.adapters.Settings,
+		},
+	})
+	require.NoError(t, err)
+	endpoint, err := url.Parse(s.Endpoint())
+	require.NoError(t, err)
+	assert.Contains(t, ownservers.Addresses(), endpoint.Host)
+	require.NoError(t, s.Close(context.Background()))
+	assert.NotContains(t, ownservers.Addresses(), endpoint.Host)
+}
+
+// A control server that could not start is not listening: its address is not an own server, and nothing stays registered.
+func TestAControlServerThatFailedToStartLeavesNoOwnServer(t *testing.T) {
+	runtime := t.TempDir()
+	store, err := devsession.OpenDiscoveryStore(runtime)
+	require.NoError(t, err)
+	process, err := devsession.CaptureProcess(os.Getpid(), devsession.ProcessOwner{WorkspaceID: testWorkspace, Generation: "failed-generation", Role: "host", Source: t.TempDir()})
+	require.NoError(t, err)
+	descriptor := devcontract.InstanceDescriptor{SchemaVersion: devcontract.SchemaVersion, WorkspaceID: testWorkspace, InstanceID: "7da9b9de-d833-4075-b3a7-1e74c7051388", Generation: "failed-generation", Kind: "development", StateRoot: t.TempDir(), Process: process}
+	fixture, _, _ := fixtureServer(t)
+	config := Config{
+		Descriptor: descriptor, Discovery: store,
+		Adapters: Adapters{
+			Inspect:  func(context.Context) (devcontract.InstanceDescriptor, error) { return descriptor, nil },
+			Plugins:  fixturePlugins{},
+			Dev:      fixtureDev{},
+			Settings: fixture.adapters.Settings,
+		},
+	}
+	before := ownservers.Addresses()
+	// The discovery cannot be published: its directory is a file now. Unlike a mode bit, that holds for any user, root included, on any system.
+	require.NoError(t, os.RemoveAll(runtime))
+	require.NoError(t, os.WriteFile(runtime, []byte("not a directory"), 0o600))
+	_, err = Start(context.Background(), config)
+	require.Error(t, err, "the control: the start fails")
+	assert.ElementsMatch(t, before, ownservers.Addresses())
 }

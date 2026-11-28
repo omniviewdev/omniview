@@ -283,6 +283,7 @@
     {"fqn": "github.com/omniviewdev/omniview/internal/uiinspection.Service.GetStatus", "decision": "allow", "reason": "read-only UI inspection status (Q12)"},
     {"fqn": "main.AppService.GetInstanceInfo", "decision": "allow", "reason": "boot read of the instance descriptor: host paths and loopback endpoints, no credentials"},
     {"fqn": "main.AppService.GetOperatingSystem", "decision": "allow", "reason": "pure read of the OS name"},
+    {"fqn": "main.AppService.OpenExternalURL", "decision": "deny", "reason": "opens an address in the host's browser: starts another program on the machine; the host checks the scheme, userinfo, its own servers and the length"},
     {"fqn": "main.AppService.OpenFileSelectionDialog", "decision": "deny", "reason": "opens a native file dialog on the host and returns host paths"},
     {"fqn": "main.AppService.SaveFileDialog", "decision": "deny", "reason": "opens a native save dialog on the host"},
     {"fqn": "main.AppService.WriteFileContent", "decision": "deny", "reason": "arbitrary file write on the host (os.WriteFile at a caller-chosen path)"},

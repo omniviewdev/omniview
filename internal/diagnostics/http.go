@@ -112,6 +112,14 @@ func StartHTTP(ctx context.Context, service *Service, options HTTPOptions) (*HTT
 	return s, nil
 }
 
+// Address is where the endpoint listens, as host:port; empty for no server (a nil one is the endpoint that could not start).
+func (s *HTTPServer) Address() string {
+	if s == nil {
+		return ""
+	}
+	return strings.TrimPrefix(s.identity.Endpoint, "http://")
+}
+
 func (s *HTTPServer) Close() error {
 	s.once.Do(func() {
 		close(s.done)

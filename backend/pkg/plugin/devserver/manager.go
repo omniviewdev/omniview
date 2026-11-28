@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"sync"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -37,11 +39,14 @@ type PluginReloader interface {
 // DevServerManager manages dev server instances for plugins in development mode.
 // It is exposed as a Wails binding. All public methods are callable from the frontend.
 type DevServerManager struct {
-	app                       *application.App
-	ctx                       context.Context
-	logger                    logging.Logger
-	mu                        sync.RWMutex
-	instances                 map[string]*DevServerInstance // pluginID -> instance
+	app       *application.App
+	ctx       context.Context
+	logger    logging.Logger
+	mu        sync.RWMutex
+	instances map[string]*DevServerInstance // pluginID -> instance
+	// stop stops an instance (inst.Stop): a field so that a test can look at the manager while a stop is in progress.
+	stop                      func(*DevServerInstance) error
+	stopping                  map[string]*DevServerInstance // pluginID -> an instance that StopDevServer is stopping: not in instances, its servers may still answer
 	ports                     *PortAllocator
 	pluginRef                 PluginRef
 	pluginReloader            PluginReloader
@@ -72,6 +77,8 @@ func NewDevServerManager(
 		logger:           logger.Named("DevServerManager"),
 		mu:               sync.RWMutex{},
 		instances:        make(map[string]*DevServerInstance),
+		stopping:         make(map[string]*DevServerInstance),
+		stop:             (*DevServerInstance).Stop,
 		ports:            NewPortAllocator(stateRoot),
 		pluginRef:        pluginRef,
 		pluginReloader:   pluginReloader,
@@ -343,15 +350,20 @@ func (m *DevServerManager) StopDevServer(pluginID string) error {
 		)
 	}
 	delete(m.instances, pluginID)
+	m.stopping[pluginID] = inst // its servers may answer until Stop returns
 	m.mu.Unlock()
 
-	if err := inst.Stop(); err != nil {
+	if err := m.stop(inst); err != nil {
 		m.mu.Lock()
 		m.instances[pluginID] = inst
+		delete(m.stopping, pluginID)
 		m.mu.Unlock()
 		m.emitStatus(pluginID, inst.State())
 		return err
 	}
+	m.mu.Lock()
+	delete(m.stopping, pluginID)
+	m.mu.Unlock()
 	m.ports.ReleaseByPlugin(pluginID)
 	m.ports.SavePIDs()
 
@@ -522,4 +534,19 @@ func (m *DevServerManager) emitErrors(pluginID string, errors []BuildError) {
 		return
 	}
 	m.app.Event.Emit(EventDevServerError, DevServerErrorPayload{PluginID: pluginID, Errors: errors})
+}
+
+// ListenAddresses are the addresses of the Vite servers of the instances, as host:port: servers of this machine that the host started.
+func (m *DevServerManager) ListenAddresses() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]string, 0, len(m.instances)+len(m.stopping))
+	for _, group := range []map[string]*DevServerInstance{m.instances, m.stopping} {
+		for _, inst := range group {
+			if inst.vitePort > 0 {
+				out = append(out, net.JoinHostPort("127.0.0.1", strconv.Itoa(inst.vitePort)))
+			}
+		}
+	}
+	return out
 }

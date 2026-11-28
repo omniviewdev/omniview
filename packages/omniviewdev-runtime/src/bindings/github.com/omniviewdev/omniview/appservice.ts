@@ -13,6 +13,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as opener$0 from "./backend/pkg/opener/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as devcontract$0 from "./internal/devcontract/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -36,11 +39,22 @@ export function GetOperatingSystem(): $CancellablePromise<string> {
 }
 
 /**
+ * OpenExternalURL opens an address in the system's browser after the host's checks: http and https only, no user information, not one of the host's own
+ * servers, at most 2,083 bytes (backend/pkg/opener). A refusal is the answer `{ opened: false, reason }` with the reason `scheme`, `userinfo`,
+ * `own-server`, `malformed` or `too-long`; the call fails only when the system's browser could not be started. Nothing here is a shell command.
+ */
+export function OpenExternalURL(address: string): $CancellablePromise<opener$0.Result> {
+    return $Call.ByID(1691046826, address).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+/**
  * OpenFileSelectionDialog opens a native file selection dialog using the v3 Dialog API.
  */
 export function OpenFileSelectionDialog(opts: $models.FileDialogOptions): $CancellablePromise<string[]> {
     return $Call.ByID(2957909098, opts).then(($result: any) => {
-        return $$createType1($result);
+        return $$createType2($result);
     });
 }
 
@@ -60,4 +74,5 @@ export function WriteFileContent(path: string, content: string): $CancellablePro
 
 // Private type creation functions
 const $$createType0 = devcontract$0.InstanceDescriptor.createFrom;
-const $$createType1 = $Create.Array($Create.Any);
+const $$createType1 = opener$0.Result.createFrom;
+const $$createType2 = $Create.Array($Create.Any);
