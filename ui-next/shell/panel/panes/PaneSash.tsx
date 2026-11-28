@@ -77,7 +77,6 @@ export function PaneSash({ deck, tool, axis, boundary, sessions, ratios, prefix 
       data-shell-part="paneSash"
       data-axis={axis}
       data-boundary={boundary}
-      style={{ '--_order': String(2 * boundary + 1) }}
       onPointerDown={sash.pointerDown}
       onPointerMove={sash.pointerMove}
       onPointerUp={sash.pointerUp}

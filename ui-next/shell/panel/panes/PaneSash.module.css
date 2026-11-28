@@ -6,7 +6,6 @@
     position: relative;
     /* Above the bodies it divides: the hit area reaches 3 px into each, and a body that comes after the sash in the layout's order would otherwise be painted over it. */
     z-index: 1;
-    order: var(--_order, 0);
     flex: 0 0 5px;
     box-sizing: border-box;
     background-color: transparent;

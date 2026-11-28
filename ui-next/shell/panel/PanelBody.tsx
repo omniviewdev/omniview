@@ -39,7 +39,7 @@ function BodySlot({ id, prefix }: SlotProps) {
       id={bodyId(prefix, id)}
       className={styles.slot}
       hidden={!shown}
-      style={{ '--_share': placed ? String(share) : undefined, '--_order': placed ? String(2 * index) : undefined }}
+      style={{ '--_share': placed ? String(share) : undefined }}
       data-shell-part="panelBody"
       data-session-id={id}
       data-pane={placed ? pane : undefined}

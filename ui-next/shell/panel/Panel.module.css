@@ -107,10 +107,8 @@
   .slot {
     display: flex;
     flex: 1 1 0;
-    /* The share of a body in a group of panes (`--_share`, the model's ratio: the bodies share the room in proportion, so a pane that is hidden gives its room to the others); a body alone has none and grows as it always did. */
+    /* The share of a body in a group of panes (`--_share`, the model's ratio; the document holds the panes in the group's order, `panes/order.ts`, so no `order` is needed: the bodies share the room in proportion, so a pane that is hidden gives its room to the others); a body alone has none and grows as it always did. */
     flex-grow: var(--_share, 1);
-    /* Where the body sits in its group of panes (`--_order`: twice its index, so that a sash is the odd number between two bodies); a body alone has none. */
-    order: var(--_order, 0);
     min-inline-size: 0;
     min-block-size: 0;
   }

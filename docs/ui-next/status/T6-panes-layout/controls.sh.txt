@@ -18,7 +18,7 @@ root, out = os.environ['ROOT'], os.environ['OUT']
 PANEL, CORE = 'ui-next/shell/panel', 'ui-next/shell/core/panel'
 # The tests of the layout: the panes' page tests, the split's, the registry's and the model's panes.
 FILES = [
-  f'{PANEL}/panes/Panes.test.tsx', f'{PANEL}/terminal/TerminalSplit.test.tsx', f'{PANEL}/terminal/TerminalSessions.test.ts', f'{PANEL}/terminal/terminals.test.ts',
+  f'{PANEL}/panes/Panes.test.tsx', f'{PANEL}/panes/PaneEmulators.test.tsx', f'{PANEL}/terminal/TerminalSplit.test.tsx', f'{PANEL}/terminal/TerminalSessions.test.ts', f'{PANEL}/terminal/terminals.test.ts',
   f'{CORE}/panes.test.ts', f'{CORE}/panes.fuzz.test.ts',
 ]
 
@@ -31,12 +31,11 @@ CONTROLS = [
   ('split-button-enabled-with-no-room', 'panel', 'terminal/TerminalBody.tsx', 'onSplit === undefined || room === null || !room.fits || !canSplit', 'onSplit === undefined || room === null || !canSplit', r'TerminalSplit\.test\.tsx.*cannot apply when no other pane fits'),
   ('sash-minimum-lost', 'panel', 'panes/sash.ts', 'const min = minRatio(extent, ratios.length);', 'const min = 0.0001;', r'Panes\.test\.tsx.*(80 px|minimum)'),
   ('sash-double-click-does-nothing', 'panel', 'panes/PaneSash.tsx', '      onDoubleClick={sash.reset}\n', '', r'Panes\.test\.tsx.*Enter and on a double click'),
-  ('sash-commits-on-every-move', 'panel', 'panes/sash.ts', '      session.raw = coordinate(event);\n', '      session.raw = coordinate(event);\n      store.moveSash(tool, boundary, positionOf(session.raw, session.geometry, boundary), session.geometry.extent);\n', r'Panes\.test\.tsx.*tells the model once'),
+  ('sash-commits-on-every-move', 'panel', 'panes/sash.ts', '      session.raw = coordinate(event, session.axis);\n', '      session.raw = coordinate(event, session.axis);\n      store.moveSash(session.tool, session.boundary, positionOf(session.raw, session.geometry, session.boundary), session.geometry.extent);\n', r'Panes\.test\.tsx.*tells the model once'),
   ('sash-escape-keeps-the-drag', 'panel', 'panes/sash.ts', "if (event.key === 'Escape' && drag !== null) {", 'if (false as boolean) {', r'Panes\.test\.tsx.*Escape'),
   ('sash-keys-ignore-the-axis', 'panel', 'panes/sash.ts', "const forward = axis === 'row' ? 'ArrowRight' : 'ArrowDown';", "const forward = 'ArrowRight';", r'Panes\.test\.tsx.*up and down arrows'),
   ('sash-measured-at-the-press-only', 'panel', 'panes/sash.ts', 'const now = geometry() ?? session.geometry;', 'const now = session.geometry;', r'Panes\.test\.tsx.*reads the deck again'),
   ('sash-orientation-always-vertical', 'panel', 'panes/PaneSash.tsx', "aria-orientation={axis === 'column' ? 'horizontal' : 'vertical'}", "aria-orientation=\"vertical\"", r'Panes\.test\.tsx.*(stacked|column)'),
-  ('bodies-not-placed-in-the-groups-order', 'panel', 'PanelBody.tsx', "'--_order': placed ? String(2 * index) : undefined", "'--_order': undefined", r'Panes\.test\.tsx.*group\'s order'),
   ('bodies-take-no-share', 'panel', 'PanelBody.tsx', "'--_share': placed ? String(share) : undefined", "'--_share': undefined", r'Panes\.test\.tsx.*group\'s order'),
   ('the-active-pane-is-not-marked', 'panel', 'PanelBody.tsx', "data-pane-active={placed && active ? '' : undefined}", 'data-pane-active={undefined}', r'Panes\.test\.tsx.*which pane is the active one'),
   ('a-split-remounts-every-body', 'panel', 'PanelBody.tsx', '<BodySlot key={item.session} id={item.session} prefix={prefix} />', '<BodySlot key={`${item.session}:${String(mounted.length)}`} id={item.session} prefix={prefix} />', r'PaneEmulators\.test\.tsx.*constructs one for each pane'),
@@ -52,7 +51,7 @@ CONTROLS = [
 # The controls whose fault the named tests alone catch: with those tests skipped the copy passes. Every other control stays red with them skipped (another test catches it as well).
 SOLE = {
   'split-asks-the-host-before-the-room', 'split-button-enabled-with-no-directory', 'split-button-enabled-with-no-room', 'sash-minimum-lost', 'sash-double-click-does-nothing', 'sash-escape-keeps-the-drag',
-  'sash-keys-ignore-the-axis', 'sash-measured-at-the-press-only', 'sash-orientation-always-vertical', 'bodies-not-placed-in-the-groups-order', 'the-resize-of-the-deck-is-not-fitted',
+  'sash-keys-ignore-the-axis', 'sash-measured-at-the-press-only', 'sash-orientation-always-vertical', 'the-resize-of-the-deck-is-not-fitted',
   'the-room-for-one-more-is-always-yes', 'the-split-length-forgets-the-new-sash', 'the-active-pane-is-not-marked',
 }
 
