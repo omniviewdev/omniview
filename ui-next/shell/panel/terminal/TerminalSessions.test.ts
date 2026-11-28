@@ -2230,7 +2230,6 @@ describe('opening an address outside the app (T3a: what a person follows from a 
     'http://localhost:3000',
     'http://127.0.0.1:8080/health',
     'http://[::1]:8080/',
-    'https://user:secret@example.com/private',
     'https://example.com/a%20b?q=a+b&r=%C3%A9#frag',
     'https://münchen.example/straße',
   ])('opens %j: an http or https address with a host, whatever else is in it', (address) => {
@@ -2250,6 +2249,8 @@ describe('opening an address outside the app (T3a: what a person follows from a 
     'ftp://example.com/file',
     'mailto:someone@example.com',
     'vscode://file/etc/hosts',
+    'https://user:secret@example.com/private',
+    'https://accounts.example%2Fsignin@evil.example/login',
     'ms-msdt:/id PCWDiagnostic',
     'blob:https://example.com/2b6f',
     'about:blank',

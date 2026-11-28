@@ -8,7 +8,7 @@ import xtermCss from '@xterm/xterm/css/xterm.css?inline';
 import { PALETTE_ROLES } from './appearance';
 import { FIND_LIMIT, type Engine, type EngineAppearance, type EngineMarker, type EngineOptions, type EngineRenderer, type Finder, type FindOptions, type FindState, type LinkHandler, type LinkHover } from './engine';
 import { findDecorations } from './findColours';
-import { isListedTarget, MAX_LINE, webAddressesIn } from './links/scan';
+import { isListedTarget, MAX_LINE, MAX_TARGET, webAddressesIn } from './links/scan';
 
 // The emulator: xterm.js behind the host's `Engine` (docs/ui-next/status/T1.md, "The renderer"). This is the ONLY file that imports `@xterm/*`, and it is reached only through `loadEngine.ts`'s dynamic import, so
 // a window that never opens a terminal never fetches it. The GPU renderer is a second chunk inside it, fetched the first time a terminal is shown with the GPU on screen.
@@ -283,10 +283,15 @@ export function createXtermEngine(options: EngineOptions): Engine {
   // printed addresses go to: the host's rule for a link, the key that is held and the schemes it follows, is one rule for both. It does nothing while the host has set none. Only http and https are offered at all.
   terminal.options.linkHandler = {
     activate: (event, uri) => {
-      linking?.handler.activate(uri, event);
+      if (uri.length <= MAX_TARGET) {
+        linking?.handler.activate(uri, event);
+      }
     },
     hover: (event, uri, range) => {
-      linking?.handler.hover(hoverOf(event, uri, range));
+      // A target is the host's to read and the person's to see: one over what the emulator itself accepts (2,083) is no link here.
+      if (uri.length <= MAX_TARGET) {
+        linking?.handler.hover(hoverOf(event, uri, range));
+      }
     },
     leave: () => {
       linking?.handler.hover(undefined);
@@ -312,7 +317,13 @@ export function createXtermEngine(options: EngineOptions): Engine {
 
   terminal.parser.registerOscHandler(8, (data) => {
     // `params;uri`: the parameters never hold a semicolon, and the address may.
-    const uri = data.slice(data.indexOf(';') + 1);
+    const semicolon = data.indexOf(';');
+    if (semicolon === -1) {
+      // The emulator ignores a sequence with no `;` (it is no hyperlink and ends none), and so does this: a phantom link here would hide the addresses printed after it.
+      return false;
+    }
+
+    const uri = data.slice(semicolon + 1);
     endHyperlink();
     if (uri !== '' && isListedTarget(uri)) {
       const marker = terminal.registerMarker(0);
@@ -758,21 +769,45 @@ export function createXtermEngine(options: EngineOptions): Engine {
           continue;
         }
 
-        let text = head.translateToString(true);
-        for (let next = start + 1; next < start + WRAP_ROWS && text.length < MAX_LINE; next += 1) {
-          const row = active.getLine(next);
-          if (row?.isWrapped !== true) {
+        // The line as text, and for each character the row and the cell it is in: a wide character is one character in two cells, so the place of a match is read from the cells and not from its offset in the text.
+        let text = '';
+        const cells: Array<{ readonly row: number; readonly column: number }> = [];
+        for (let row = start; row < start + WRAP_ROWS && text.length < MAX_LINE; row += 1) {
+          const line = row === start ? head : active.getLine(row);
+          if (line === undefined || (row !== start && !line.isWrapped)) {
             break;
           }
 
-          text += row.translateToString(true);
+          let rowText = '';
+          const rowCells: Array<{ readonly row: number; readonly column: number }> = [];
+          for (let column = 0; column < cols; column += 1) {
+            const cell = line.getCell(column);
+            if (cell === undefined || cell.getWidth() === 0) {
+              continue;
+            }
+
+            const chars = cell.getChars() === '' ? ' ' : cell.getChars();
+            rowText += chars;
+            rowCells.push(...Array.from({ length: chars.length }, () => ({ row, column })));
+          }
+
+          // The right edge of a row that goes on in the next is kept as it is; the last row is trimmed.
+          const next = active.getLine(row + 1);
+          const continues = next?.isWrapped === true;
+          const keep = continues ? rowText.length : rowText.trimEnd().length;
+          text += rowText.slice(0, keep);
+          cells.push(...rowCells.slice(0, keep));
         }
 
         for (const { index, uri } of webAddressesIn(text)) {
-          const row = start + Math.floor(index / cols);
-          const at = place(row, index % cols);
+          const where = cells[index];
+          if (where === undefined) {
+            continue;
+          }
+
+          const at = place(where.row, where.column);
           const inside = hyperlinks.some((one) => at >= place(one.marker.line, one.column) && at <= (one.end === undefined ? Infinity : place(one.end.marker.line, one.end.column)));
-          if (row >= top && row < bottom && !inside) {
+          if (where.row >= top && where.row < bottom && !inside) {
             found.push({ at, uri });
           }
         }

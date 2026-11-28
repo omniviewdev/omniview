@@ -1021,7 +1021,7 @@ export function createHost(options = {}) {
         // (`hyperlinks <the address of the page's own server>`), once as a hyperlink and once printed.
         const own = args[0] ?? 'http://localhost:1/api';
         const link = (uri, text) => `\u001b]8;;${uri}\u001b\\${text}\u001b]8;;\u001b\\`;
-        out(pty, `${[`shown: ${link('https://b.example/login', 'https://a.example')} end`, `script: ${link('javascript:alert(1)', 'script link')} end`, `file: ${link('file:///etc/passwd', 'file link')} end`, `dev: ${link('http://localhost:3000/', 'dev server link')} end`, `own: ${link(own, 'own server link')} end`, `printed: ${own}/printed end`].join('\r\n')}\r\n`);
+        out(pty, `${[`shown: ${link('https://b.example/login', 'https://a.example')} end script: ${link('javascript:alert(1)', 'script link')} end file: ${link('file:///etc/passwd', 'file link')} end`, `dev: ${link('http://localhost:3000/', 'dev server link')} end own: ${link(own, 'own server link')} end userinfo: ${link('https://accounts.google.com%2Fsignin@evil.example/login', 'userinfo link')} end idn: ${link('https://\u0430pple.com/x', 'idn link')} end`, `printed: ${own}/printed end`].join('\r\n')}\r\n`);
         break;
       }
       case 'mouse-on':

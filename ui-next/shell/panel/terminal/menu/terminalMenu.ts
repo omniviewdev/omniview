@@ -1,4 +1,5 @@
 import type { MenuItem } from '@omniviewdev/kit';
+import { linkLabel } from '../links/links';
 import { NO_COMMANDS, NO_OUTPUT } from '../gutter/words';
 import { NO_SELECTION } from '../TerminalToolbar';
 
@@ -80,7 +81,7 @@ export function terminalMenu(actions: TerminalMenuActions, { selected, input, he
       items: targets.map((target, index) => ({
         kind: 'action',
         id: `link-${String(index)}`,
-        label: target,
+        label: linkLabel(target),
         onSelect: () => {
           openLink(target);
         },

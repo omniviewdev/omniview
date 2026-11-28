@@ -20,19 +20,43 @@ export function followsWith(event: Pick<MouseEvent, 'metaKey' | 'ctrlKey'>, plat
 }
 
 /**
- * Whether an address is one to follow: `http://` or `https://`, a host that parses, and no space, control character or backslash anywhere (a valid address has none; the reader of one would tidy them away or take them for something else). The emulator finds only these in the output, and the registry refuses the rest again before it asks the window to open anything, but a link can
- * name any scheme (a program writes what it likes) and another scheme starts another program on the machine, so the handler does not pass one on: `file:` among them, which the system opens with whatever is registered for the file, on
- * the machine that runs the host. The slashes are asked for as the registry asks for them: the address parser reads `http:example.com` as a web address, and nothing that writes a link means it.
+ * Whether an address is one to follow: `http://` or `https://`, a host that parses, no user name or password, no space, control character or backslash anywhere, and no longer than the emulator takes (2,083). The emulator finds only
+ * web addresses in the output, and the registry refuses the rest again before it asks the window to open anything, but a link can name any scheme (a program writes what it likes) and another scheme starts another program on the
+ * machine, so the handler does not pass one on: `file:` among them, which the system opens with whatever is registered for the file, on the machine that runs the host. A user name is refused because it can look like a host
+ * (`https://accounts.example%2Fsignin@evil.example/`): what is read before the `@` is not the host the click goes to, and nothing that writes a link means one. The slashes are asked for as the registry asks for them: the address
+ * parser reads `http:example.com` as a web address.
  */
 export function isWebAddress(uri: string): boolean {
-  if (!/^https?:\/\/[^\s\p{Cc}\\]+$/iu.test(uri)) {
+  if (uri.length > MAX_ADDRESS || !/^https?:\/\/[^\s\p{Cc}\\]+$/iu.test(uri)) {
     return false;
   }
 
   try {
-    return new URL(uri).hostname !== '';
+    const address = new URL(uri);
+    return address.hostname !== '' && address.username === '' && address.password === '';
   } catch {
     return false;
+  }
+}
+
+/** The longest address a link may have: the emulator's own limit for a hyperlink's target. */
+export const MAX_ADDRESS = 2083;
+
+/** The host of an address as the browser will read it (punycode for an international name, with its port): what a click really goes to. An address that does not parse is given back as it is. */
+export function hostOf(uri: string): string {
+  try {
+    return new URL(uri).host;
+  } catch {
+    return uri;
+  }
+}
+
+/** An address as a menu names it: as the browser reads it, so the scheme and the host come first and an international name shows as punycode. An address that does not parse is given back as it is. */
+export function linkLabel(uri: string): string {
+  try {
+    return new URL(uri).href;
+  } catch {
+    return uri;
   }
 }
 

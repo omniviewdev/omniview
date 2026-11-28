@@ -467,7 +467,7 @@ export const units = [
     name: 'Probe that the urls probe sees a target that is not shown, a window that is opened, the text opened for the target, a file, a script or the host\'s own server followed, a menu that names a link by its text and a violation',
     script: 'ui-next/shell/probes/terminal-probe.mjs',
     env: { FONT_DELAY_MS: '40' },
-    controls: ['urls-target-hidden', 'urls-window-open', 'urls-text-opened', 'urls-file-allowed', 'urls-script-allowed', 'urls-own-allowed', 'urls-keys-text', 'urls-tooltip-axe'],
+    controls: ['urls-target-hidden', 'urls-host-hidden', 'urls-window-open', 'urls-text-opened', 'urls-file-allowed', 'urls-script-allowed', 'urls-own-allowed', 'urls-userinfo-allowed', 'urls-keys-text', 'urls-tooltip-axe'],
     plants: 'page',
     seconds: 150,
   },

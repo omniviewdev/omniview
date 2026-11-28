@@ -264,3 +264,22 @@ describe('Open link', () => {
     expect(ids.indexOf('open-link')).toBeLessThan(ids.indexOf('terminals'));
   });
 });
+
+describe('Open link names the address as the browser reads it', () => {
+  it('has the host right after the scheme, in punycode for an international name', () => {
+    const actions = { ...fakes(), openLink: vi.fn() };
+    const items = terminalMenu(actions, { selected: true, input: true, links: ['https://\u0430pple.com/x'] });
+    const found = items.find((item) => item.id === 'open-link');
+    if (found?.kind !== 'submenu') {
+      throw new Error('no submenu');
+    }
+
+    expect(found.items.map((item) => ('label' in item ? item.label : undefined))).toEqual(['https://xn--pple-43d.com/x']);
+    const [first] = found.items;
+    if (first?.kind === 'action') {
+      first.onSelect();
+    }
+
+    expect(actions.openLink).toHaveBeenCalledExactlyOnceWith('https://\u0430pple.com/x');
+  });
+});

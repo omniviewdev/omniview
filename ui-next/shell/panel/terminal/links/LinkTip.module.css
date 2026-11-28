@@ -43,6 +43,15 @@
     white-space: nowrap;
   }
 
+  /* The host the click goes to, as the browser reads it (punycode for an international name): a line of its own, whole, ahead of the target, so that a long target can never push it out of the box. It breaks anywhere only
+     when a name is wider than the tooltip. */
+  .host {
+    display: block;
+    overflow-wrap: anywhere;
+    font-weight: 600;
+    white-space: normal;
+  }
+
   /* Where the click goes (#696 step 1): the target, whole in the document and in what is read aloud, because the text of a hyperlink and its target may differ and the person decides on the target. It breaks anywhere, so that no
      address is wider than the tooltip, and past eight lines the rest is cut from the picture only. */
   .target {

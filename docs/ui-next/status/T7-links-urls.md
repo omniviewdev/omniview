@@ -22,6 +22,9 @@ T3a (#703) already made printed `http` and `https` addresses and OSC 8 hyperlink
 5. **The tooltip keeps the whole target** in the document and in what a screen reader says (the person decides on the target); the picture clamps to eight lines of at most 32 rem (`overflow-wrap: anywhere`).
 6. **One rule, two callers.** `isWebAddress` (scheme, slashes, a host, no space or control character or backslash) lives in `links/links.ts`; the registry's own copy (`isOpenable`) is deleted. `TerminalSessions.canFollow(uri)` (can open, web address, not the host's own server) is what the hook asks for the tooltip and the click, and what the menu asks for its items.
 
+7. **Review round (FIX FIRST on `25daed0e2`).** (a) An address with a user name or password is refused (`isWebAddress`): `https://accounts.google.com%2Fsignin...@evil.example/` read as google and opened evil. (b) The tooltip puts the HOST on a line of its own, from `new URL(uri).host` (punycode for an international name, so a Cyrillic `а` shows as `xn--pple-43d.com`), unclamped, ahead of the clamped target; the menu names an item by `new URL(uri).href` (scheme and host first, punycode). (c) An OSC 8 with no `;` is no link and ends none (the emulator ignores it; a phantom link hid every address printed after it). (d) A target over 2,083 characters is no link: `isWebAddress` and the engine's `linkHandler` drop it, so no 100,000-character tooltip or live region. (e) `viewLinks` reads places from the buffer's CELLS (a wide character is one character in two cells), so the text of a hyperlink after CJK is not taken for a second link. (f) Tests for the `VIEW_LINKS` slice, the `HYPERLINKS` cap and the alternate-screen filter (their mutants survived the first round). The red run of this round: 16 tests failed by assertion before the code (user names, length, host line, punycode, menu label, phantom link, 50 cap, 128 cap, wide characters, hover length); tests and code are in one commit.
+8. **The allow-list lives in the page only.** The host's `Browser.OpenURL` (Wails) validates neither the scheme nor loopback (it refuses shell metacharacters only), so every refusal above is a page rule; a page that is compromised, or any other caller of the binding, is not held by it. Predates this change; filed on #696 by the lead.
+
 ## 3. Tests, red then green
 
 | | sha | what |
@@ -34,7 +37,7 @@ T3a (#703) already made printed `http` and `https` addresses and OSC 8 hyperlink
 
 ## 4. Controls, run whole
 
-`ui-next/shell/probes/terminal-urls-controls.sh` (from the repository root; exit 0 only when every control is seen; `FIXTURE_DIST=<dir>` reuses a build of the fixture). Result of the last run: **15 of 15 seen**, exit 0.
+`ui-next/shell/probes/terminal-urls-controls.sh` (from the repository root; exit 0 only when every control is seen; `FIXTURE_DIST=<dir>` reuses a build of the fixture). Result of the last run: **26 of 26 seen** (10 probe, 16 source, after the review round), exit 0.
 
 | half | control | seen by |
 |---|---|---|

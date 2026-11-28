@@ -3,7 +3,7 @@ import type { Platform } from '../../../core/chords';
 import type { LinkHover } from '../engine';
 import type { TerminalScreen } from '../screen';
 import type { TerminalSessions } from '../TerminalSessions';
-import { followsWith, followWords } from './links';
+import { followsWith, followWords, hostOf } from './links';
 import styles from './LinkTip.module.css';
 
 // The links in a terminal's output (T3a): a web address the emulator finds is a link the pointer can hover and click, and the host decides what a click does. VS Code and JetBrains ask for Command (Control elsewhere) with
@@ -77,6 +77,7 @@ function LinkTip({ x, y, words, target }: LinkTipProps) {
       style={{ '--_x': `${String(x)}px`, '--_y': `${String(y)}px` }}
     >
       <span className={styles.words}>{words}</span>
+      <span className={styles.host}>{hostOf(target)}</span>
       <span className={styles.target}>{target}</span>
     </div>
   );

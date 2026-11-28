@@ -551,3 +551,31 @@ describe('an address the registry will not follow', () => {
     expect(rig.openExternal).toHaveBeenCalledExactlyOnceWith('http://localhost:3000/');
   });
 });
+
+// The host first (#696 review): the target is long enough to push its host out of a clamped box, so the host is a line of its own, as the browser reads it, ahead of the target.
+describe('the host', () => {
+  it('is a line of its own, between the words and the target, whatever the target is', () => {
+    const rig = mount({ follows: () => true });
+    rig.hover({ uri: `https://b.example/${'a'.repeat(1900)}`, x: 120, y: 80 });
+    const tip = page.getByRole('tooltip');
+    expect(Array.from(tip.children).map((child) => (child.textContent ?? '').slice(0, 30))).toEqual(['Follow link (cmd + click)', 'b.example', `https://b.example/${'a'.repeat(12)}`]);
+  });
+
+  it('is the one the browser reads: an international name shows as punycode', () => {
+    const rig = mount({ follows: () => true });
+    rig.hover({ uri: 'https://\u0430pple.com/x', x: 120, y: 80 });
+    expect(page.getByRole('tooltip').children[1]).toHaveTextContent('xn--pple-43d.com');
+  });
+
+  it('is never shown for an address with a user name, which nothing follows: no tooltip at all', () => {
+    const rig = mount();
+    rig.hover({ uri: `https://accounts.google.com%2Fsignin${'a'.repeat(700)}@evil.example/login`, x: 120, y: 80 });
+    expect(page.queryByRole('tooltip')).toBeNull();
+  });
+
+  it('is never shown for a target over the length the emulator accepts: no tooltip and no live region of 100,000 characters', () => {
+    const rig = mount();
+    rig.hover({ uri: `https://b.example/${'a'.repeat(100_000)}`, x: 120, y: 80 });
+    expect(page.queryByRole('tooltip')).toBeNull();
+  });
+});

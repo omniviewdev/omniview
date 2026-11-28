@@ -44,11 +44,13 @@ probe() { # name assertion
   fi
 }
 probe urls-target-hidden urls.target
+probe urls-host-hidden urls.target
 probe urls-window-open urls.open
 probe urls-text-opened urls.open
 probe urls-file-allowed urls.refuse
 probe urls-script-allowed urls.refuse
 probe urls-own-allowed urls.refuse
+probe urls-userinfo-allowed urls.refuse
 probe urls-keys-text urls.keys
 probe urls-tooltip-axe axe.urls
 
@@ -96,13 +98,22 @@ control() {
 
 vt() { npx vitest run "$@"; }
 terminal=ui-next/shell/panel/terminal
-control "page lets file: through (scheme)" $terminal/links/links.ts 's#/^https?:\\/\\/\[^\\s\\p{Cc}\\\\\]+\$/iu#/^(https?|file):\\/\\/[^\\s\\p{Cc}\\\\]+$/iu#;s#return new URL(uri).hostname !== .*;#return true;#' vt $terminal/links $terminal/TerminalSessions.test.ts
+control "page lets file: through (scheme)" $terminal/links/links.ts 's#/^https?:#/^(https?|file):#;s#address.hostname !== .. \&\& ##' vt $terminal/links $terminal/TerminalSessions.test.ts
 control "page lets the host's own server through" $terminal/links/links.ts 's/  return bare(address.hostname) === bare(own.hostname) || isLoopback(address.hostname);/  return false;/' vt $terminal/links $terminal/TerminalSessions.test.ts
 control "page leaves the target out of the tooltip" $terminal/links/useTerminalLinks.tsx '/<span className={styles.target}>{target}<\/span>/d' vt $terminal/links
 control "page opens a window for the click" $terminal/TerminalSessions.ts 's/          await external(uri);/          window.open(uri);\n          await external(uri);/' vt $terminal/TerminalSessions.test.ts
 control "emulator hands over any scheme" $terminal/xtermEngine.ts 's/allowNonHttpProtocols: false,/allowNonHttpProtocols: true,/' vt $terminal/xtermEngine.test.ts -t "the links of a real emulator"
 control "emulator lists a script in Open link" $terminal/links/scan.ts 's#/\^https?:\\/\\/\[^\\s\\p{Cc}\\\\\]+\$/iu.test(uri)#true#' vt $terminal/xtermEngine.test.ts -t "the links in view"
-control "menu names a link by anything but its target" $terminal/menu/terminalMenu.ts 's/        label: target,/        label: "link",/' vt $terminal/menu
+control "page lets a user name through" $terminal/links/links.ts "s/ \&\& address.username === '' \&\& address.password === ''//" vt $terminal/links $terminal/TerminalSessions.test.ts
+control "tooltip leaves the host out" $terminal/links/useTerminalLinks.tsx '/<span className={styles.host}>/d' vt $terminal/links
+control "menu shows the address as written" $terminal/menu/terminalMenu.ts 's/label: linkLabel(target),/label: target,/' vt $terminal/menu
+control "emulator keeps a phantom hyperlink" $terminal/xtermEngine.ts 's/    if (semicolon === -1) {/    if (false) {/' vt $terminal/xtermEngine.test.ts -t "the links in view"
+control "view list not capped" $terminal/xtermEngine.ts 's/.slice(0, VIEW_LINKS)//' vt $terminal/xtermEngine.test.ts -t "the links in view"
+control "hyperlinks not capped" $terminal/xtermEngine.ts 's/hyperlinked.length > HYPERLINKS/false/' vt $terminal/xtermEngine.test.ts -t "the links in view"
+control "alternate screen filter gone" $terminal/xtermEngine.ts 's/hyperlinked.filter((one) => one.alternate === (active.type === .alternate.))/hyperlinked/' vt $terminal/xtermEngine.test.ts -t "the links in view"
+control "cells counted as characters" $terminal/xtermEngine.ts 's/place(where.row, where.column)/place(where.row, index % cols)/' vt $terminal/xtermEngine.test.ts -t "the links in view"
+control "hover target not capped" $terminal/xtermEngine.ts 's/      if (uri.length <= MAX_TARGET) {\n        linking?.handler.hover/XX/;s/if (uri.length <= MAX_TARGET) {/if (true) {/' vt $terminal/xtermEngine.test.ts -t "the links of a real emulator"
+control "menu names a link by anything but its target" $terminal/menu/terminalMenu.ts 's/label: linkLabel(target),/label: "link",/' vt $terminal/menu
 
 if [ $wrong -eq 0 ]; then
   echo "every control was seen"

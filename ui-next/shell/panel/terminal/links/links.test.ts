@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Platform } from '../../../core/chords';
-import { followsWith, followWords, isOwnServer, isWebAddress } from './links';
+import { followsWith, followWords, hostOf, isOwnServer, isWebAddress, linkLabel, MAX_ADDRESS } from './links';
 
 // The rules of a link in the terminal's output, as pure functions: what a hover says, which click follows it, and which addresses are followed at all. The hook gives them a tooltip and the registry; the rules are here.
 
@@ -38,7 +38,6 @@ describe('which addresses are followed', () => {
     'HTTPS://EXAMPLE.COM/PATH',
     'http://localhost:3000/',
     'http://127.0.0.1:8080/health',
-    'https://user@example.com:8443/x',
   ])('follows the web address %s', (uri) => {
     expect(isWebAddress(uri)).toBe(true);
   });
@@ -58,6 +57,10 @@ describe('which addresses are followed', () => {
     ['an address that does not parse', 'http://[::1'],
     ['nothing', ''],
     ['white space', '   '],
+    ['an address with a user name, which can hide the host the click goes to', 'https://user@example.com/'],
+    ['an address whose user name looks like another host', `https://accounts.google.com%2Fsignin${'a'.repeat(700)}@evil.example/login`],
+    ['an address with only a password', 'https://:secret@example.com/'],
+    ['an address over the length the emulator accepts', `https://example.com/${'a'.repeat(MAX_ADDRESS)}`],
   ])('does not follow %s', (_what, uri) => {
     expect(isWebAddress(uri)).toBe(false);
   });
@@ -120,5 +123,23 @@ describe('the host\'s own server', () => {
 
   it('has nothing to refuse when the window is not a web page (the native window\'s own scheme has no port to point at)', () => {
     expect(isOwnServer('http://localhost:34115/', { protocol: 'wails:', hostname: 'wails', port: '' })).toBe(false);
+  });
+});
+
+describe('what an address is shown as', () => {
+  it('has the host as the browser reads it: punycode for an international name, so that a lookalike letter is seen', () => {
+    expect(hostOf('https://\u0430pple.com/x')).toBe('xn--pple-43d.com');
+    expect(hostOf('http://localhost:3000/a')).toBe('localhost:3000');
+    expect(hostOf('https://Example.COM/')).toBe('example.com');
+  });
+
+  it('is named in a menu by the address as the browser reads it, with the host right after the scheme', () => {
+    expect(linkLabel('https://\u0430pple.com/x?y=1#z')).toBe('https://xn--pple-43d.com/x?y=1#z');
+    expect(linkLabel('https://b.example/login')).toBe('https://b.example/login');
+  });
+
+  it('keeps an address as it is when it does not parse: nothing is invented', () => {
+    expect(hostOf('http://[::1')).toBe('http://[::1');
+    expect(linkLabel('http://[::1')).toBe('http://[::1');
   });
 });

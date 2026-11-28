@@ -2433,6 +2433,68 @@ describe('the links of a real emulator', () => {
       close();
     });
 
+    it('lists no phantom link for a hyperlink sequence with no semicolon, which the emulator ignores: the addresses printed after it are still listed', async () => {
+      const { engine, write, close } = linked();
+      await write('\u001b]8;https://ghost.example/\u0007ghost text https://after.example/ end\r\n');
+      expect(engine.viewLinks()).toEqual(['https://after.example/']);
+      close();
+    });
+
+    it('says at most 50 links when more are in view, the first 50 in reading order', async () => {
+      const { engine, write, close } = linked();
+      const all = Array.from({ length: 60 }, (_, index) => `https://many.example/${String(index)}`);
+      for (let line = 0; line < 20; line += 1) {
+        await write(`${all.slice(line * 3, line * 3 + 3).join(' ')}\r\n`);
+      }
+
+      expect(engine.viewLinks()).toEqual(all.slice(0, 50));
+      close();
+    });
+
+    it('remembers only the newest 128 hyperlinks: older ones that are still in the scrollback are not listed', async () => {
+      const { engine, terminal, write, close } = linked();
+      let flood = '';
+      for (let line = 0; line < 110; line += 1) {
+        flood += `${[0, 1, 2].map((part) => hyperlink(`https://old.example/${String(line)}-${String(part)}`, 'x')).join(' ')}\r\n`;
+      }
+
+      await write(flood);
+      terminal.scrollToTop();
+      expect(engine.viewLinks()).toEqual([]);
+      terminal.scrollToBottom();
+      expect(engine.viewLinks().length).toBeGreaterThan(0);
+      close();
+    });
+
+    it('lists the hyperlinks of the screen it is on: one written on the main screen is not in view on the alternate screen, and is again when it is left', async () => {
+      const { engine, write, close } = linked();
+      await write(`${hyperlink('https://main.example/', 'main')}\r\n`);
+      await write('\u001b[?1049h');
+      expect(engine.viewLinks()).toEqual([]);
+      await write(`${hyperlink('https://alt.example/', 'alt')}\r\n`);
+      expect(engine.viewLinks()).toEqual(['https://alt.example/']);
+      await write('\u001b[?1049l');
+      expect(engine.viewLinks()).toEqual(['https://main.example/']);
+      close();
+    });
+
+    it('puts the text of a hyperlink with its own target after wide characters: the cells are counted, not the characters', async () => {
+      const { engine, write, close } = linked();
+      await write(`\u6f22\u5b57\u6f22\u5b57\u6f22\u5b57 ${hyperlink('https://b.example/login', 'https://a.example')} end\r\n`);
+      expect(engine.viewLinks()).toEqual(['https://b.example/login']);
+      close();
+    });
+
+    it('is told of no hover on a hyperlink whose target is over 2,083 characters', async () => {
+      const { write, pointer, hovers, clicks, close } = linked();
+      await write(`see ${hyperlink(`https://b.example/${'a'.repeat(100_000)}`, 'the docs')} now\r\n`);
+      pointer.over(6, 1);
+      pointer.click(6, 1);
+      expect(hovers).toEqual([]);
+      expect(clicks).toEqual([]);
+      close();
+    });
+
     it('does not take the hyperlink from the emulator: a click on it still reaches the handler with its target, once', async () => {
       const { write, pointer, clicks, close } = linked();
       await write(`see ${hyperlink(DOCS, 'the docs')} now\r\n`);

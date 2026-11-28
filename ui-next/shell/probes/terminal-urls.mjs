@@ -6,7 +6,7 @@
 //
 // The decisions the sections hold the page to (docs/ui-next/status/T7-links-urls.md has the reasons): a link opens through the opener and only with the platform's modifier (Command on a Mac, Control elsewhere); its target is SHOWN before it
 // opens; `javascript:`, `file:` and every scheme but http and https are refused; a link to the host's own server (the page's origin, or a loopback name on its port) is refused; and the links in view are reachable from the keyboard.
-//   urls-target   the pointer on a hyperlink whose text says `https://a.example` and whose target is `https://b.example/login` shows the target, with the words that say how to follow it, and the opener has not been called (urls.target)
+//   urls-target   (also: the host as the browser reads it, punycode for a lookalike, on a line of its own) the pointer on a hyperlink whose text says `https://a.example` and whose target is `https://b.example/login` shows the target, with the words that say how to follow it, and the opener has not been called (urls.target)
 //   urls-open     a plain click opens nothing; the platform's click opens the target once, and not the text; a dev server on another loopback port opens too; `window.open` and `confirm` are never called (urls.open)
 //   urls-refuse   a hyperlink to `javascript:`, to `file:`, to the host's own server, and the host's own address printed: no tooltip, and the modifier and a click open nothing (urls.refuse)
 //   urls-keys     the Menu key opens the terminal's menu, the arrow opens Open link, its items are the targets of the links in view (the host's own server, a script and a file are not), Enter opens the one chosen, once, and the keyboard is in
@@ -42,7 +42,8 @@ const HELPERS = () => {
     [...document.querySelectorAll('[role="tooltip"][popover]')].map((element) => ({
       text: (element.textContent ?? '').trim(),
       words: (element.children[0]?.textContent ?? '').trim(),
-      target: (element.children[1]?.textContent ?? '').trim(),
+      host: (element.children[1]?.textContent ?? '').trim(),
+      target: (element.children[2]?.textContent ?? '').trim(),
     }));
   lk.menus = () =>
     [...document.querySelectorAll('[role="menu"]')]
@@ -113,6 +114,17 @@ export const URLS_CONTROLS = {
     stage: 'tip',
     after: (page) =>
       page.evaluate(() => {
+        for (const tip of document.querySelectorAll('[role="tooltip"][popover]')) tip.children[2]?.remove();
+      }),
+  },
+  // The tooltip says where the click goes and leaves the host out (or it is cut off with a long target).
+  'urls-host-hidden': {
+    assertion: 'urls.target',
+    section: 'urls-target',
+    engines: ['chromium'],
+    stage: 'tip',
+    after: (page) =>
+      page.evaluate(() => {
         for (const tip of document.querySelectorAll('[role="tooltip"][popover]')) tip.children[1]?.remove();
       }),
   },
@@ -148,6 +160,8 @@ export const URLS_CONTROLS = {
   'urls-file-allowed': { assertion: 'urls.refuse', section: 'urls-refuse', engines: ['chromium'], stage: 'click', after: follows('file link', 'file:///etc/passwd') },
   // A javascript: link is followed.
   'urls-script-allowed': { assertion: 'urls.refuse', section: 'urls-refuse', engines: ['chromium'], stage: 'click', after: follows('script link', 'javascript:alert(1)') },
+  // A link with a user name, which can hide the host, is followed.
+  'urls-userinfo-allowed': { assertion: 'urls.refuse', section: 'urls-refuse', engines: ['chromium'], stage: 'click', after: follows('userinfo link', 'https://accounts.google.com%2Fsignin@evil.example/login') },
   // A link to the host's own server is followed (the address is the page's own origin, which the plant reads from the page).
   'urls-own-allowed': {
     assertion: 'urls.refuse',
@@ -325,10 +339,14 @@ export function createUrlsSections({ check, note, runAxe }) {
       await perturb(ctx, page, 'tip');
       const tip = (await tips(page))[0];
       const calls = (await opened(page)).length - before;
+      // A hyperlink whose host is a lookalike (a Cyrillic a): the host line is what the browser will read, in punycode.
+      await hoverAt(page, 'idn link');
+      await page.waitForFunction(() => window.__lk.tips().some((one) => one.host !== 'b.example'), null, { timeout: 8000 }).catch(() => undefined);
+      const idn = (await tips(page))[0];
       check(
         'urls.target',
-        point !== null && shown && tip?.words === wantWords(mac) && tip?.target === TARGET && !tip.text.includes(TEXT) && calls === 0,
-        `${tag}: on the hyperlink whose text says ${TEXT}${point === null ? ' (NOT found on the screen)' : ''} the tooltip is ${JSON.stringify(tip)} (the words ${JSON.stringify(wantWords(mac))} and the target ${TARGET}, and not the text), and the opener was called ${String(calls)} times before the click (none)`,
+        point !== null && shown && tip?.words === wantWords(mac) && tip?.host === 'b.example' && tip?.target === TARGET && !tip.text.includes(TEXT) && calls === 0 && idn?.host === 'xn--pple-43d.com',
+        `${tag}: on the hyperlink whose text says ${TEXT}${point === null ? ' (NOT found on the screen)' : ''} the tooltip is ${JSON.stringify(tip)} (the words ${JSON.stringify(wantWords(mac))}, the host b.example on a line of its own and the target ${TARGET}, and not the text), and on the lookalike hyperlink the host line is ${JSON.stringify(idn?.host)} (xn--pple-43d.com), and the opener was called ${String(calls)} times before the click (none)`,
       );
       note(`urls target ${tag}: the tooltip says ${JSON.stringify(tip)} before any call (${String(calls)} calls)`);
     } finally {
@@ -377,7 +395,7 @@ export function createUrlsSections({ check, note, runAxe }) {
       const modifier = modifierOf(mac);
       await perturb(ctx, page, 'click');
       const rows = [];
-      for (const [name, text] of [['script', 'script link'], ['file', 'file link'], ['own server', 'own server link'], ['own server, printed', `${own}/api/printed`]]) {
+      for (const [name, text] of [['script', 'script link'], ['file', 'file link'], ['user name', 'userinfo link'], ['own server', 'own server link'], ['own server, printed', `${own}/api/printed`]]) {
         const point = await hoverAt(page, text);
         if (point === null) {
           rows.push({ name, found: false });
@@ -443,7 +461,7 @@ export function createUrlsSections({ check, note, runAxe }) {
       const calls = await opened(page);
       const back = await page.evaluate(() => window.__lk.active());
       const window_ = await windows(page);
-      const expected = [TARGET, DEV];
+      const expected = [TARGET, DEV, 'https://xn--pple-43d.com/x'];
       check(
         'urls.keys',
         menu && reached && sub && JSON.stringify(labels) === JSON.stringify(expected) && !labels.some((label) => label?.startsWith(own)) && chosen && done && JSON.stringify(calls) === JSON.stringify([TARGET]) && back?.terminal === true && window_.open === 0,
