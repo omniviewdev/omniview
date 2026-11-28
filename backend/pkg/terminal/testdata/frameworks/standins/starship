@@ -1,0 +1,49 @@
+#!/bin/sh
+# STAND-IN for the starship binary (starship/starship, ISC; read at b9432ccbf0b86e3be8598361c54450a4485e1aca). The real
+# one draws a prompt from the user's config; this one draws the tests' prompt and keeps what the init scripts pass it.
+# What it copies from upstream is the shape the shells see:
+#   src/init/mod.rs:165-171   `starship init bash|fish` print a stub that asks `starship init <shell> --print-full-init`;
+#   src/init/mod.rs:163       `starship init zsh` prints the full script at once;
+#   src/init/mod.rs:243       `::STARSHIP::` in the init script is replaced by the path of the binary;
+#   src/init/starship.{bash,zsh,fish}   (vendored unchanged in ../vendor/starship) call `starship prompt --status=<n>` and
+#                                       `starship time`.
+# Not copied: the modules, the configuration, the timing of a real binary. STANDIN_STARSHIP_OSC133=1 makes the prompt carry
+# its own OSC 133 A and B, wrapped as the shell needs ($STARSHIP_SHELL), to stand for a starship version that draws them.
+# STANDIN_STATUS_LOG, when set, receives the --status value of every `prompt` call: it is what the init script read as the
+# status of the user's command.
+here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+case ${1-} in
+  init)
+    shell=${2-}
+    if [ "${3-}" = --print-full-init ] || [ "$shell" = zsh ]; then
+      exec sed "s|::STARSHIP::|$here/starship|g" "$here/../vendor/starship/starship.$shell"
+    fi
+    case $shell in
+      bash) printf 'eval -- "$(%s init bash --print-full-init)"' "$here/starship" ;;
+      fish) printf 'source (%s init fish --print-full-init | psub)' "$here/starship" ;;
+    esac
+    ;;
+  time)
+    # Milliseconds since the epoch, with no %N so that it also runs on macOS.
+    printf '%s\n' $(( $(date +%s) * 1000 ))
+    ;;
+  prompt)
+    shift
+    for arg in "$@"; do
+      case $arg in
+        --continuation) printf '> '; exit 0 ;;
+        --right) exit 0 ;;
+        --status=?*) [ -z "${STANDIN_STATUS_LOG-}" ] || printf '%s\n' "${arg#--status=}" >>"$STANDIN_STATUS_LOG" ;;
+      esac
+    done
+    if [ "${STANDIN_STARSHIP_OSC133-}" = 1 ]; then
+      case ${STARSHIP_SHELL-} in
+        zsh) printf '%%{\033]133;A\007%%}P> %%{\033]133;B\007%%}' ;;
+        bash) printf '\\[\033]133;A\007\\]P> \\[\033]133;B\007\\]' ;;
+        *) printf '\033]133;A\007P> \033]133;B\007' ;;
+      esac
+    else
+      printf 'P> '
+    fi
+    ;;
+esac

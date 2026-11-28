@@ -334,3 +334,15 @@ func (l *Log) noteCwd(dir []byte, trusted bool) string {
 	}
 	return *slot
 }
+
+// forgetCwd makes the directory unknown: a directory the shell moved to could not be read (see Scanner.unknownCwd). One that came
+// with the nonce clears both slots (the shell proved it moved). One that came without clears only what OSC 7 said: any program can
+// print it, and it must not take away what the shell proved.
+func (l *Log) forgetCwd(trusted bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.loose = ""
+	if trusted {
+		l.trusted = ""
+	}
+}

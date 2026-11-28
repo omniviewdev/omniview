@@ -61,7 +61,8 @@ if [[ -n ${__omniview_shim-} ]]; then
   }
   if (( ! ${+P9K_VERSION} )); then
     typeset -ga precmd_functions preexec_functions
-    preexec_functions+=(__omniview_preexec)
+    # First: a framework's own preexec (powerlevel10k, zsh4humans) prints OSC 133;C, and the line the nonce vouches for has to come before it.
+    preexec_functions=(__omniview_preexec $preexec_functions)
     precmd_functions=(__omniview_precmd_first $precmd_functions __omniview_precmd_last)
   fi
   unset __omniview_shim __omniview_zd_set __omniview_zd_val

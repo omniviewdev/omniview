@@ -64,8 +64,10 @@ if status is-interactive
         end
 
         function __omniview_postexec --on-event fish_postexec
+            # $status is the user's command's until the first command of this handler: `test` would make it 0 (fish 3.7 prints no D itself).
+            set -l __omniview_last $status
             test $__omniview_native = 0; or return
-            printf '\e]133;D;%d\a' $status
+            printf '\e]133;D;%d\a' $__omniview_last
         end
 
         function __omniview_prompt --on-event fish_prompt
