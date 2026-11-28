@@ -2685,6 +2685,18 @@ describe('the file links of a real emulator (#696 step 4)', () => {
     close();
   });
 
+  it('waits for the settle before it asks: nothing is asked a moment before it has passed, and one question after', async () => {
+    const { write, pointer, asked, timed, close } = filed();
+    await write('see src/a.go:12:3 now\r\n');
+    timed();
+    pointer.over(8, 1, CMD);
+    await vi.advanceTimersByTimeAsync(FILE_LINK_SETTLE_MS - 1);
+    expect(asked).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(asked).toHaveLength(1);
+    close();
+  });
+
   it('asks about at most 10 candidates of a line, however many it holds', async () => {
     const { write, pointer, asked, timed, settle, close } = filed();
     await write(`${Array.from({ length: 30 }, (_, index) => `f${String(index)}.go:1`).join(' ')}\r\n`);

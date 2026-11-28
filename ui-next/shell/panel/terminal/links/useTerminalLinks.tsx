@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { Platform } from '../../../core/chords';
 import type { FileCandidates, FileLinkHandler, FileLinkHover, LinkHover, ResolvedFile } from '../engine';
 import type { TerminalFeedHandle } from '../feed';

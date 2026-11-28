@@ -242,9 +242,9 @@ export function createFilelinksSections({ check, note, runAxe }) {
     );
 
   /** A page of the fixture against the probe's host (the shell's integration on, the fixture tree): the panel is opened on the Terminal tool, a shell starts and its first prompt is on the screen. */
-  async function open(ctx) {
+  async function open(ctx, { integration = true } = {}) {
     const { browser, origin, viewport, control } = ctx;
-    const host = createHost({ integration: true, tree: TREE, ...control?.host?.options, faults: { ...control?.host?.faults } });
+    const host = createHost({ integration, tree: TREE, ...control?.host?.options, faults: { ...control?.host?.faults } });
     const context = await browser.newContext({ viewport, locale: 'en-US', timezoneId: 'UTC' });
     const served = await serveContext(context, host);
     if (ctx.engine === 'chromium') await context.addInitScript(LINUX);
@@ -529,7 +529,8 @@ export function createFilelinksSections({ check, note, runAxe }) {
   sections['files-foreign'] = async (ctx) => {
     const { engine, vp } = ctx;
     const tag = `${engine} ${vp}`;
-    const session = await open(ctx);
+    // The shell has no integration here: what runs is the host's own fact (its busy answer), which is what a program like ssh is told by; with the integration the shell's own marks would say that a command runs too.
+    const session = await open(ctx, { integration: false });
     const { page, host } = session;
     try {
       await page.keyboard.type('hold 60');

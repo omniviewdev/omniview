@@ -2,7 +2,6 @@ import type { FileCandidates, FileLinkHandler, FileLinkHover, ResolvedFile } fro
 import { FILE_LINK_SETTLE_MS } from '../engine';
 import { logicalLine, type Cell, type CellBuffer } from './cells';
 import { findFileLinks, FILE_LINK_LIMITS } from './fileLinks';
-import { webAddressesIn } from './scan';
 
 // The file-link provider (#696 step 4): which candidates of the hovered line are links. The matcher (`fileLinks.ts`) finds the candidates in the text of the logical line, `cells.ts` turns their offsets into cells through the
 // buffer, and the host (`FileLinkHandler.resolve`, which is `ChannelTerminalResolveLink`) says which of them name a file: a link is made only for those. Nothing here imports the emulator: `xtermEngine.ts` gives the terminal
@@ -14,7 +13,7 @@ import { webAddressesIn } from './scan';
 //     that waits is the way to the key.
 //   - BOUNDED. A line over 2,000 characters has no file links and is read for a bounded number of rows (the rows 2,001 characters fill), at most 10 candidates of a line are asked about, and the work for a line does not depend on how
 //     long the line the row belongs to is.
-//   - NO URL. A candidate inside a printed web address is the web link's: the host is never asked to look at a URL.
+//   - NO URL. The matcher gives no candidate inside a printed web address (it is the web link's): the host is never asked to look at a URL.
 
 /** The structure of an emulator's terminal the provider reads: its size, the active buffer's rows and the registry of link providers. */
 export type ProviderTerminal = {
@@ -45,17 +44,11 @@ export const VIEW_FILE_CANDIDATES = 40;
 /** One candidate of a logical line: the text as printed (the path and its suffix) and where it is. */
 type Candidate = { readonly text: string; readonly start: number; readonly end: number };
 
-/** The candidates of a logical line: those the matcher finds, less those inside a printed web address. */
+/** The candidates of a logical line: what the matcher finds (it gives none inside a web address: `xtermEngine.test.ts` holds that, over a real emulator), as the text printed. */
 function candidatesOf(text: string): Candidate[] {
-  const addresses = webAddressesIn(text).map(({ index, uri }) => ({ from: index, to: index + uri.length }));
-  const found: Candidate[] = [];
-  for (const one of findFileLinks(text)) {
-    if (!addresses.some((address) => one.start < address.to && address.from < one.end)) {
-      found.push({ text: text.slice(one.start, one.end), start: one.start, end: one.end });
-    }
-  }
-
-  return found.slice(0, FILE_LINK_LIMITS.maxLinks);
+  return findFileLinks(text)
+    .slice(0, FILE_LINK_LIMITS.maxLinks)
+    .map((one) => ({ text: text.slice(one.start, one.end), start: one.start, end: one.end }));
 }
 
 /** The cells a candidate covers, as the emulator's range: the first cell to the last, the last as wide as it is. Absent when the buffer no longer has them. */
