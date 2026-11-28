@@ -353,6 +353,18 @@ export function createXtermEngine(options: EngineOptions): Engine {
     return false;
   });
 
+  // A full reset (ESC c, which the screen writes before every replay) empties the screen but xterm 6 does not dispose the markers on it: the links written before it are gone from the screen and must be gone from the list. The handler
+  // answers `false`, so the emulator resets as it always did.
+  terminal.parser.registerEscHandler({ final: 'c' }, () => {
+    writing = undefined;
+    for (const one of [...hyperlinked]) {
+      one.marker.dispose();
+    }
+
+    hyperlinked.length = 0;
+    return false;
+  });
+
   /** The character in a cell of the buffer, as the search addon reads a line: an empty cell is nothing (a space to the addon), and the second half of a wide character is the character before it. */
   const characterAt = (row: number, column: number): string => {
     const cell = terminal.buffer.active.getLine(row)?.getCell(column);

@@ -108,6 +108,7 @@ control "page lets a user name through" $terminal/links/links.ts "s/ \&\& addres
 control "tooltip leaves the host out" $terminal/links/useTerminalLinks.tsx '/<span className={styles.host}>/d' vt $terminal/links
 control "menu shows the address as written" $terminal/menu/terminalMenu.ts 's/label: linkLabel(target),/label: target,/' vt $terminal/menu
 control "emulator keeps a phantom hyperlink" $terminal/xtermEngine.ts 's/    if (semicolon === -1) {/    if (false) {/' vt $terminal/xtermEngine.test.ts -t "the links in view"
+control "full reset keeps the links" $terminal/xtermEngine.ts "s/registerEscHandler({ final: 'c' }, () => {/registerEscHandler({ final: 'c' }, () => {\n    if (hyperlinked.length >= 0) {\n      return false;\n    }\n/" vt $terminal/xtermEngine.test.ts -t "the links in view"
 control "view list not capped" $terminal/xtermEngine.ts 's/.slice(0, VIEW_LINKS)//' vt $terminal/xtermEngine.test.ts -t "the links in view"
 control "hyperlinks not capped" $terminal/xtermEngine.ts 's/hyperlinked.length > HYPERLINKS/false/' vt $terminal/xtermEngine.test.ts -t "the links in view"
 control "alternate screen filter gone" $terminal/xtermEngine.ts 's/hyperlinked.filter((one) => one.alternate === (active.type === .alternate.))/hyperlinked/' vt $terminal/xtermEngine.test.ts -t "the links in view"

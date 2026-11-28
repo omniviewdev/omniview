@@ -2495,6 +2495,37 @@ describe('the links of a real emulator', () => {
       close();
     });
 
+    it('lists no hyperlink after a full reset (ESC c): the screen is empty, and the replay that follows is the only source of links', async () => {
+      const { engine, write, close } = linked();
+      await write(`${hyperlink('https://stale.example/', 'old')}\r\n`);
+      expect(engine.viewLinks()).toEqual(['https://stale.example/']);
+      await write('\u001bc');
+      expect(engine.viewLinks()).toEqual([]);
+      await write(`${hyperlink('https://replayed.example/', 'new')}\r\n`);
+      expect(engine.viewLinks()).toEqual(['https://replayed.example/']);
+      close();
+    });
+
+    it('lists no hyperlink of the screen after ED 2 clears it, as clear does, and keeps one written after', async () => {
+      const { engine, write, close } = linked();
+      await write(`${hyperlink('https://stale.example/', 'old')}\r\n`);
+      await write('\u001b[H\u001b[2J');
+      expect(engine.viewLinks()).toEqual([]);
+      await write(`${hyperlink('https://fresh.example/', 'new')}\r\n`);
+      expect(engine.viewLinks()).toEqual(['https://fresh.example/']);
+      close();
+    });
+
+    it('keeps the hyperlinks of the screen when only the scrollback is erased (ED 3), and drops the scrolled-off ones', async () => {
+      const { engine, terminal, write, close } = linked();
+      await write(`${hyperlink('https://old.example/', 'old')}\r\n${'filler\r\n'.repeat(40)}${hyperlink('https://screen.example/', 'screen')}\r\n`);
+      await write('\u001b[3J');
+      expect(engine.viewLinks()).toEqual(['https://screen.example/']);
+      terminal.scrollToTop();
+      expect(engine.viewLinks()).toEqual(['https://screen.example/']);
+      close();
+    });
+
     it('does not take the hyperlink from the emulator: a click on it still reaches the handler with its target, once', async () => {
       const { write, pointer, clicks, close } = linked();
       await write(`see ${hyperlink(DOCS, 'the docs')} now\r\n`);
