@@ -61,7 +61,8 @@ func (s *Service) StartPluginTraceReceiver(pluginID string) (string, string, fun
 	go func() { _ = server.Serve(listener) }()
 	unregister := ownservers.Add(listener.Addr().String())
 	cleanup := func() {
-		unregister()
+		// the address stays an own server while the server may still answer: it is removed once the server is shut down
+		defer unregister()
 		ctx, cancel := context.WithTimeout(context.Background(), pluginTraceTimeout)
 		defer cancel()
 		if shutdownErr := server.Shutdown(ctx); shutdownErr != nil {

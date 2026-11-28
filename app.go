@@ -8,11 +8,12 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/wailsapp/wails/v3/pkg/application"
+
 	"github.com/omniviewdev/omniview/backend/pkg/opener"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/instance"
 	"github.com/omniviewdev/omniview/internal/ownservers"
-	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 // AppService is the main application service for Wails v3.
@@ -175,4 +176,10 @@ func hostServers(sources ...func() []string) []string {
 		out = append(out, source()...)
 	}
 	return out
+}
+
+// ownServerSources are the sources of the servers that are not application servers or registered listeners: the diagnostics endpoint, the MCP relay and the Vite
+// servers of the dev instances.
+func ownServerSources(diagnostics, relay func() string, vite func() []string) func() []string {
+	return func() []string { return append([]string{diagnostics(), relay()}, vite()...) }
 }

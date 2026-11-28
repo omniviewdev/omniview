@@ -132,9 +132,6 @@ func (s *Server) Close(ctx context.Context) error {
 		}
 	}
 	s.closed = true
-	if s.unregister != nil {
-		s.unregister()
-	}
 	pending := make([]<-chan struct{}, 0, len(s.operations))
 	for _, op := range s.operations {
 		pending = append(pending, op.done)
@@ -147,6 +144,10 @@ func (s *Server) Close(ctx context.Context) error {
 		if err != nil {
 			_ = s.http.Close()
 		}
+	}
+	// The address stays an own server while the server may still answer: it is removed once the listener is closed.
+	if s.unregister != nil {
+		s.unregister()
 	}
 wait:
 	for _, done := range pending {

@@ -641,3 +641,29 @@ func TestTheControlServerIsAnOwnServerWhileItListens(t *testing.T) {
 	require.NoError(t, s.Close(context.Background()))
 	assert.NotContains(t, ownservers.Addresses(), endpoint.Host)
 }
+
+// A control server that could not start is not listening: its address is not an own server, and nothing stays registered.
+func TestAControlServerThatFailedToStartLeavesNoOwnServer(t *testing.T) {
+	runtime := t.TempDir()
+	store, err := devsession.OpenDiscoveryStore(runtime)
+	require.NoError(t, err)
+	process, err := devsession.CaptureProcess(os.Getpid(), devsession.ProcessOwner{WorkspaceID: testWorkspace, Generation: "failed-generation", Role: "host", Source: t.TempDir()})
+	require.NoError(t, err)
+	descriptor := devcontract.InstanceDescriptor{SchemaVersion: devcontract.SchemaVersion, WorkspaceID: testWorkspace, InstanceID: "7da9b9de-d833-4075-b3a7-1e74c7051388", Generation: "failed-generation", Kind: "development", StateRoot: t.TempDir(), Process: process}
+	fixture, _, _ := fixtureServer(t)
+	config := Config{
+		Descriptor: descriptor, Discovery: store,
+		Adapters: Adapters{
+			Inspect:  func(context.Context) (devcontract.InstanceDescriptor, error) { return descriptor, nil },
+			Plugins:  fixturePlugins{},
+			Dev:      fixtureDev{},
+			Settings: fixture.adapters.Settings,
+		},
+	}
+	before := ownservers.Addresses()
+	require.NoError(t, os.Chmod(runtime, 0o500)) // the discovery cannot be published
+	t.Cleanup(func() { _ = os.Chmod(runtime, 0o700) })
+	_, err = Start(context.Background(), config)
+	require.Error(t, err, "the control: the start fails")
+	assert.ElementsMatch(t, before, ownservers.Addresses())
+}

@@ -800,9 +800,7 @@ func main() {
 
 	// The opener refuses an address of the host's own servers: the server-mode port, the diagnostics endpoint and the MCP relay.
 	appService.setOwnServers(func() []string {
-		return hostServers(func() []string {
-			return append([]string{diagnosticsHTTP.Address(), mcpRelay.ListenAddress()}, devServerManager.ListenAddresses()...)
-		})
+		return hostServers(ownServerSources(diagnosticsHTTP.Address, mcpRelay.ListenAddress, devServerManager.ListenAddresses))
 	})
 
 	uiInspectionEnabled, _ := coreSettings.CategoryValues("developer")["ui_inspection_enabled"].(bool)

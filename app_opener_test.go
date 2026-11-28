@@ -57,3 +57,16 @@ func TestEveryListenerThatRegisteredItselfIsAnOwnServer(t *testing.T) {
 	remove()
 	assert.NotContains(t, hostServers(), "127.0.0.1:45671")
 }
+
+// The Vite servers of the dev instances, the diagnostics endpoint and the relay are own servers through the one wiring main uses.
+func TestTheWiringOfTheSourcesNamesTheViteServersTheDiagnosticsAndTheRelay(t *testing.T) {
+	sources := ownServerSources(func() string { return "127.0.0.1:45001" }, func() string { return "127.0.0.1:45002" }, func() []string { return []string{"127.0.0.1:45003"} })
+	service := NewAppService(devcontract.InstanceDescriptor{})
+	service.setOwnServers(func() []string { return hostServers(sources) })
+	for _, raw := range []string{"http://localhost:45001/", "http://127.0.0.1:45002/", "http://[::1]:45003/"} {
+		got, err := service.OpenExternalURL(raw)
+		require.NoError(t, err)
+		assert.Equal(t, opener.Result{Opened: false, Reason: opener.ReasonOwnServer}, got, raw)
+	}
+	assert.Equal(t, []string{"127.0.0.1:45001", "127.0.0.1:45002", "127.0.0.1:45003"}, sources())
+}
