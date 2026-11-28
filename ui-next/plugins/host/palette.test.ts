@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { isIconName } from '@omniviewdev/kit';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createPanelStore, createTabsStore, NEW_TERMINAL, seedChips, SCREEN_READER_COMMAND, TERMINAL_TOOL, type Destination, type PaletteStore, type PanelStore, type Route, type TabsStore } from '../../shell';
+import { createPanelStore, createTabsStore, NEW_TERMINAL, seedChips, SCREEN_READER_COMMAND, TERMINAL_TOOL, TERMINAL_TOOL_ID, type Destination, type PaletteStore, type PanelStore, type Route, type TabsStore } from '../../shell';
 import type { FrameV1, PaletteCommandV1, PaletteJsonV1, PaletteMatchProviderV1, PaletteRowV1, PaletteSearchProviderV1, PaletteV1, PanelHostV1, SidebarNodeV1 } from '../contract/v1';
 import { acme, answering, widgetPage } from '../testing';
 import { createContributions, HOME_PAGE, routeKey, type PluginSource } from './contributions';
@@ -159,6 +159,8 @@ type Setup = {
   readonly openSettings?: () => void;
   /** Starts a session in the Terminal tool. Present, the palette offers the New terminal command. */
   readonly newTerminal?: () => void;
+  /** Present, the palette offers the Terminal's pane commands (focus the next and the previous pane, resize a pane, equalise the panes). */
+  readonly terminalPanes?: boolean;
 };
 
 /** What a test holds of the palette it built: the palette and its store, the tab store, what the plugins and the published values are, and the handles that change them. */
@@ -202,7 +204,7 @@ function build(setup: Setup = {}): World {
     },
   });
   const watched = watching(setup.tabs === undefined ? tabs : setup.tabs(tabs));
-  const palette = createHostPalette({ tabs: watched.store, plugins, contributions, nodes, frames, panel: setup.panel, platform: setup.platform ?? 'mac', onCloseWindow: setup.onCloseWindow, remembered: setup.remembered, report: setup.report, panelHosts: setup.panelHosts, terminalScreenReader: setup.terminalScreenReader, openSettings: setup.openSettings, newTerminal: setup.newTerminal });
+  const palette = createHostPalette({ tabs: watched.store, plugins, contributions, nodes, frames, panel: setup.panel, platform: setup.platform ?? 'mac', onCloseWindow: setup.onCloseWindow, remembered: setup.remembered, report: setup.report, panelHosts: setup.panelHosts, terminalScreenReader: setup.terminalScreenReader, terminalPanes: setup.terminalPanes, openSettings: setup.openSettings, newTerminal: setup.newTerminal });
   return {
     palette,
     store: palette.store,
@@ -2484,5 +2486,61 @@ describe('the providers the plugins bring', () => {
       expect(vi.getTimerCount()).toBe(0);
       stop();
     });
+  });
+});
+
+// The Terminal's pane commands (#697 step 6): a terminal takes Tab and every Control chord, F6 leaves it, and a Mac browser keeps Command Option and the arrows, so the palette (F6, then Command K) is the way to the next and the previous
+// pane, to a sash and to equal panes on every platform. They are offered with the Terminal tool, and unavailable while it shows one terminal.
+describe('the Terminal\'s pane commands', () => {
+  const FOCUS_NEXT = 'Terminal: Focus Next Pane';
+  const FOCUS_PREVIOUS = 'Terminal: Focus Previous Pane';
+  const RESIZE = 'Terminal: Resize Pane…';
+  const EQUALISE = 'Terminal: Equalise Panes';
+
+  function withPanes(count: number) {
+    const panel = createPanelStore();
+    panel.registerTool(TERMINAL_TOOL);
+    panel.openSession({ tool: TERMINAL_TOOL_ID, plugin: 'host', title: 'zsh', state: 'running' });
+    for (let i = 2; i <= count; i += 1) {
+      panel.splitPane(TERMINAL_TOOL_ID, { plugin: 'host', title: `zsh ${String(i)}`, state: 'running' }, { extent: 1000 });
+    }
+
+    const w = build({ platform: 'mac', panel, terminalPanes: true });
+    w.open(at('acme', 'widgets'));
+    w.store.open({ kind: 'commands' });
+    return { w, panel };
+  }
+
+  it('are offered with the Terminal tool, in the Panel context, and are not offered without it', () => {
+    const { w } = withPanes(3);
+    for (const title of [FOCUS_NEXT, FOCUS_PREVIOUS, RESIZE, EQUALISE]) {
+      expect(titlesOf(w, 'commands')).toContain(title);
+    }
+
+    const without = build({ platform: 'mac', panel: createPanelStore() });
+    without.open(at('acme', 'widgets'));
+    without.store.open({ kind: 'commands' });
+    for (const title of [FOCUS_NEXT, FOCUS_PREVIOUS, RESIZE, EQUALISE]) {
+      expect(titlesOf(without, 'commands')).not.toContain(title);
+    }
+  });
+
+  it('say why they cannot run while the Terminal shows one terminal', () => {
+    const { w } = withPanes(1);
+    for (const title of [FOCUS_NEXT, FOCUS_PREVIOUS, RESIZE, EQUALISE]) {
+      expect(w.store.activate(rowTitled(w, title).id), title).toMatchObject({ status: 'refused', reason: 'unavailable' });
+    }
+  });
+
+  it('move the keyboard to the next and the previous pane once the palette is gone: the pane is the active one', async () => {
+    const { w, panel } = withPanes(3);
+    expect(panel.getSnapshot().panes.terminal?.active).toBe('p3');
+    expect(w.store.activate(rowTitled(w, FOCUS_PREVIOUS).id)).toMatchObject({ status: 'ran', outcome: 'done' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(panel.getSnapshot().panes.terminal?.active).toBe('p2');
+    w.store.open({ kind: 'commands' });
+    expect(w.store.activate(rowTitled(w, FOCUS_NEXT).id)).toMatchObject({ status: 'ran', outcome: 'done' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(panel.getSnapshot().panes.terminal?.active).toBe('p3');
   });
 });

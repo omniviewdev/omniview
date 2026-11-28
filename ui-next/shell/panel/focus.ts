@@ -1,4 +1,4 @@
-import { paneToward, type PaneStep, type PanelStore, type SessionId, type ShowOptions } from '../core/panel';
+import { paneToward, type PaneStep, type PanelStore, type SessionId, type ShowOptions, type ToolId } from '../core/panel';
 
 // Where the focus goes when the panel opens and closes (ch16 S105, S116; the mock's `focusPanel` and `focusPage`). The regions say where their focus goes (`data-shell-region`,
 // `data-shell-focus`, as ../useRegionKeys.ts reads them): opening the panel puts the focus on its tool on screen, and closing it from inside returns the focus to the page, so an action
@@ -118,4 +118,14 @@ export function moveToPane(store: PanelStore, step: PaneStep): boolean {
   store.focusPane(shown.tool, target);
   focusPaneBody(pane.session);
   return true;
+}
+
+/** Puts the keyboard on the sash after the active pane of a tool (before it, for the last pane), so that its arrow keys, Home, End and Enter work: the way to a sash for a person who cannot point and cannot use the pane chords. False when the tool has one pane or no sash is drawn. */
+export function focusSashOfActivePane(_store: PanelStore, _tool: ToolId): boolean {
+  return false;
+}
+
+/** Every pane of the tool the same share, against the length of the deck now (what a double click on a sash does). False when the tool has one pane or no deck is drawn. */
+export function equaliseTool(_store: PanelStore, _tool: ToolId): boolean {
+  return false;
 }

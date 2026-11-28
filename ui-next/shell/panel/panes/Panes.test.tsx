@@ -4,8 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ToolInput } from '../../core/panel';
 import type { ShellRegistration } from '../../registration';
 import { StaticShell } from '../../testing';
+import { equaliseTool, focusSashOfActivePane } from '../focus';
 import { staticPanel, type StaticSession } from '../testing';
-import { usePaneRoom } from './room';
+import { usePaneRoom, usePaneSeat } from './room';
 
 // The panes of a tool in the panel (#697 step 6, the layout): several bodies side by side, the sash between them, and what a click does. The model is tested in ../../core/panel; this is the DOM that carries it. The bodies are the
 // invented streams of ../testing.tsx (NO emulator: what a real emulator does with a pane's width is the probe's, in a real engine, and the fake one's in ../terminal/TerminalSplit.test.tsx). jsdom has no layout, so the deck's length is
@@ -709,5 +710,89 @@ describe('the pane chords (the keyboard moves between panes)', () => {
       press(one, 'ArrowRight');
     });
     expect(one).toHaveFocus();
+  });
+});
+
+describe('a way to a sash and to equal panes without a pointer or a chord (the palette\'s commands)', () => {
+  it('puts the keyboard on the sash after the active pane, and before it for the last pane, and the arrow keys then work', async () => {
+    const h = mount();
+    split(h, 3);
+    act(() => {
+      h.store.focusPane('terminal', 'p2');
+    });
+    let found = false;
+    act(() => {
+      found = focusSashOfActivePane(h.store, 'terminal');
+    });
+    expect(found).toBe(true);
+    expect(sashAt(1)).toHaveFocus();
+    const before = h.store.getSnapshot().panes.terminal?.ratios ?? [];
+    await h.user.keyboard('{ArrowRight}');
+    expect(h.store.getSnapshot().panes.terminal?.ratios[1]).toBeGreaterThan(before[1]);
+    act(() => {
+      h.store.focusPane('terminal', 'p3');
+    });
+    act(() => {
+      focusSashOfActivePane(h.store, 'terminal');
+    });
+    expect(sashAt(1)).toHaveFocus();
+    act(() => {
+      h.store.focusPane('terminal', 'p1');
+    });
+    act(() => {
+      focusSashOfActivePane(h.store, 'terminal');
+    });
+    expect(sashAt(0)).toHaveFocus();
+  });
+
+  it('has no sash to put the keyboard on with one pane, and says so', () => {
+    const h = mount();
+    expect(focusSashOfActivePane(h.store, 'terminal')).toBe(false);
+    expect(equaliseTool(h.store, 'terminal')).toBe(false);
+  });
+
+  it('shares the room equally again, against the length of the deck', () => {
+    const h = mount();
+    split(h, 3);
+    act(() => {
+      h.store.moveSash('terminal', 0, 0.1, DECK - 2 * SASH);
+    });
+    expect(h.store.getSnapshot().panes.terminal?.ratios).not.toEqual([1 / 3, 1 / 3, 1 / 3]);
+    let done = false;
+    act(() => {
+      done = equaliseTool(h.store, 'terminal');
+    });
+    expect(done).toBe(true);
+    expect(h.store.getSnapshot().panes.terminal?.ratios).toEqual([1 / 3, 1 / 3, 1 / 3]);
+  });
+});
+
+describe('the seat a body is given in its group (the screen reader\'s "pane 2 of 3")', () => {
+  function Seat() {
+    const seat = usePaneSeat();
+    return <div data-fixture="seat" data-seat={seat === null ? 'none' : `${String(seat.index + 1)} of ${String(seat.count)}`} />;
+  }
+
+  const seats = (): Array<string | null> => slots().filter((slot) => !slot.hidden).map((slot) => slot.querySelector('[data-fixture="seat"]')?.getAttribute('data-seat') ?? null);
+
+  it('is the pane\'s place and the number of panes, for each body, and none for a tool that shows one session', () => {
+    const panel = staticPanel({ tools: [TERMINAL], sessions: [running('zsh')], open: true, renderBody: () => <Seat /> });
+    render(<StaticShell registration={registration} panel={panel} />);
+    expect(seats()).toEqual(['none']);
+    act(() => {
+      panel.store.splitPane('terminal', { plugin: 'host', title: 'two', state: 'running' }, { extent: DECK });
+    });
+    act(() => {
+      panel.store.splitPane('terminal', { plugin: 'host', title: 'three', state: 'running' }, { extent: DECK });
+    });
+    expect(seats()).toEqual(['1 of 3', '2 of 3', '3 of 3']);
+    act(() => {
+      panel.store.closeSession(panel.store.getSnapshot().order[0]);
+    });
+    expect(seats()).toEqual(['1 of 2', '2 of 2']);
+    act(() => {
+      panel.store.closeSession(panel.store.getSnapshot().order[0]);
+    });
+    expect(seats()).toEqual(['none']);
   });
 });
