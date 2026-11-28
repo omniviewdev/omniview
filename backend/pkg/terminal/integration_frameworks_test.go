@@ -337,10 +337,15 @@ func TestTheStatusAFrameworksHookSeesIsTheUsersAndEveryCommandReachesTheFramewor
 		on, onPreexec, raw := seen(true)
 		require.GreaterOrEqual(t, len(on), 3)
 		assert.Equal(t, []string{"0", "1", "3"}, on[len(on)-3:], "the status the framework's hook saw after true, false and the command that ends with 3")
-		// fish draws the prompt again when it repaints (a resize, a late completion), and starship's prompt reads the status each time: the
-		// number of times is fish's, so the runs are compared by their last three, the ones after the three commands.
 		require.GreaterOrEqual(t, len(off), 3)
-		assert.Equal(t, off[len(off)-3:], on[len(on)-3:], "the statuses are what the same framework sees with no integration")
+		if c.shell == "fish" {
+			// fish draws the prompt again when it repaints (a resize, a late completion), and starship's prompt reads the status each
+			// time: how many times is fish's, so fish is compared by its last three, the ones after the three commands. bash and zsh
+			// have exactly one per prompt, and are compared whole: a status changed at the FIRST prompt shows there.
+			assert.Equal(t, off[len(off)-3:], on[len(on)-3:], "the statuses are what the same framework sees with no integration")
+		} else {
+			assert.Equal(t, off, on, "the statuses are what the same framework sees with no integration")
+		}
 		assert.Equal(t, offPreexec, onPreexec, "the commands the framework's preexec saw are the ones it sees with no integration")
 		if c.home == "bash-preexec" {
 			assert.Equal(t, "true\nfalse\n"+c.exit3+"\n", onPreexec, "bash-preexec's preexec is called for every command, the first one too")

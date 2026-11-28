@@ -79,6 +79,10 @@ run zsh-preexec-last "$Z" 's|preexec_functions=(__omniview_preexec $preexec_func
 # bash-preexec: the last hook no longer says the prompt is shown, and its first command is lost.
 run bash-preexec-first-command "$B" 's|\*__bp_precmd_invoke_cmd\*) local __bp_inside_preexec=1; __bp_preexec_interactive_mode=on ;;|*__bp_precmd_invoke_cmd*) : ;;|' "$T1 $T4" "TestAUsersCommandNamedLikeBashPreexecsIsStillRecorded TestBashPreexecWithExtdebugOrFunctraceRecordsEachCommandOnceWithItsOwnLine"
 
+# zsh: a trailing `false` in our zlogin changes the status the framework's hook sees at the FIRST prompt (only the whole comparison of
+# the statuses catches it, not the last three).
+run zsh-first-prompt-status "$Z" 's|^  unset __omniview_fd$|  unset __omniview_fd; false|' "$T4"
+
 # bash: the first prompt command returns 0, not the status: the framework's hook (starship's $?) sees 0 after `false`. (zsh hands
 # every hook the status of the command whatever a hook before it returns, so there the fault is to read $? late, below.)
 # bash 5.3: bash-preexec's PS0 hook and the epilogue of the prompt commands are taken for the user's command.
@@ -102,10 +106,11 @@ run bash-status-clobbered "$B" '0,/^    return "$__omniview_status"$/s||    retu
 run zsh-status-read-late "$Z" 's|^    local __omniview_last=$?$|    setopt localoptions; local __omniview_last=$?|' "$T1"
 # fish 3.7 (no marks of its own): the end mark reads $status after `test`, which makes it 0. Run with OMNIVIEW_TEST_FISHES=<fish 3.7>
 # (a fish 4 prints its own D and does not see it; the control is then undetected: the script requires 3.7 on the list).
-if "${OMNIVIEW_TEST_FISHES%%:*}" --version | grep -q "version 3"; then
+FISH1=${OMNIVIEW_TEST_FISHES%%:*}; [ -n "$FISH1" ] || FISH1=$(command -v fish)
+if [ -n "$FISH1" ] && "$FISH1" --version | grep -q "version 3"; then
 run fish-status-read-after-test "$F" 's|printf .\\e\]133;D;%d\\a. $__omniview_last|printf '"'"'\\e]133;D;%d\\a'"'"' $status|; s|^            set -l __omniview_last $status$|            true|' "$TF" "$T1"
 else
-  echo "CONTROL fish-status-read-after-test: NOT RUN (fish 4 prints its own end mark: put a fish 3.x first in OMNIVIEW_TEST_FISHES)"
+  echo "CONTROL fish-status-read-after-test: NOT RUN (fish under test is $("$FISH1" --version 2>&1); fish 4 prints its own end mark: put a fish 3.x first in OMNIVIEW_TEST_FISHES)"
 fi
 
 # fish: a builtin runs before the user's (starship's) fish_prompt, which then reads $status 0.
