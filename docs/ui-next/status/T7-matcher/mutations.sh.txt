@@ -153,7 +153,8 @@ run ipv6-taken \
 
 run image-tag-taken \
   's/return suffix\.dotCol === true && /return false \&\& /' \
-  'an image tag'
+  'an image tag
+a column after a dot is dropped on a name with no extension'
 
 run rate-taken \
   's/const rate = slashes === 1 && /const rate = false \&\& /' \
@@ -175,8 +176,12 @@ file url with an escaped ESC
 file url with an escaped bidirectional override'
 
 run curly-quotes-not-paired \
-  's/c === 0x201c \|\| c === 0x201d \? 3 : -1/-1/' \
+  's/c === 0x201c \|\| c === 0x201d \? 3 :/false ? 3 :/' \
   'curly quotes round a name with spaces'
+
+run single-curly-quotes-not-paired \
+  's/c === 0x2018 \|\| c === 0x2019 \? 4 :/false ? 4 :/' \
+  'single curly quotes round a name with spaces'
 
 run nbsp-not-a-space \
   's/const isSpace = \(c: number\): boolean => c === 32 \|\| c === 0xa0;/const isSpace = (c: number): boolean => c === 32;/' \

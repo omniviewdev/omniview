@@ -118,7 +118,7 @@ function decodeFilePath(path: string): string | null {
   return CONTROL.test(decoded) ? null : decoded;
 }
 
-const isQuote = (c: number): boolean => c === 34 || c === 39 || c === 96 || c === 0x201c || c === 0x201d;
+const isQuote = (c: number): boolean => c === 34 || c === 39 || c === 96 || c === 0x201c || c === 0x201d || c === 0x2018 || c === 0x2019;
 
 /**
  * Whether a UTF-16 unit ends a word: white space, a control character (ESC and a newline among them), the characters a path cannot hold (`<`, `>`, `|`), the box-drawing and block characters that tools draw trees
@@ -155,6 +155,8 @@ function endsPiece(c: number): boolean {
     case 34: // "
     case 0x201c:
     case 0x201d:
+    case 0x2018:
+    case 0x2019:
     case 38: // &
     case 39: // '
     case 40: // (
@@ -176,6 +178,7 @@ function startsSuffix(c: number): boolean {
   switch (c) {
     case 34: // "
     case 0x201d:
+    case 0x2019:
     case 35: // #
     case 39: // '
     case 40: // (
@@ -259,12 +262,12 @@ class Matcher {
   private findQuoted(): Quoted[] {
     const { t, n, limits } = this;
     const found: Quoted[] = [];
-    const open = [-1, -1, -1, -1];
+    const open = [-1, -1, -1, -1, -1];
     let i = 0;
     while (i < n && found.length < limits.maxLinks) {
       this.step();
       const c = t.charCodeAt(i);
-      const kind = c === 34 ? 0 : c === 39 ? 1 : c === 96 ? 2 : c === 0x201c || c === 0x201d ? 3 : -1;
+      const kind = c === 34 ? 0 : c === 39 ? 1 : c === 96 ? 2 : c === 0x201c || c === 0x201d ? 3 : c === 0x2018 || c === 0x2019 ? 4 : -1;
       if (kind >= 0) {
         const from = open[kind];
         if (from < 0) {

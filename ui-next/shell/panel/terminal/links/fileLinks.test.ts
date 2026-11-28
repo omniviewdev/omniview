@@ -163,6 +163,9 @@ const FORMATS: readonly Row[] = [
   ['file url with an escaped bidirectional override', 'file:///a%E2%80%AEb.js:1', []],
   ['curly quotes round a name with spaces', '\u201cmy file.txt\u201d, line 3', [{ path: 'my file.txt', line: 3, text: 'my file.txt\u201d, line 3' }]],
   ['curly quotes round a name with a colon suffix', '\u201csrc/a.go\u201d:12', [{ path: 'src/a.go', line: 12, text: 'src/a.go\u201d:12' }]],
+  ['single curly quotes round a name with spaces', '\u2018my file.txt\u2019, line 3', [{ path: 'my file.txt', line: 3, text: 'my file.txt\u2019, line 3' }]],
+  ['a column after a dot is dropped on a name with no extension, a Makefile among them: the image-tag rule wins', 'src/Makefile:12.5', []],
+  ['a line after a colon on the same Makefile is a link', 'src/Makefile:12', [{ path: 'src/Makefile', line: 12, text: 'src/Makefile:12' }]],
   ['a curly apostrophe in prose', 'it\u2019s src/a.go:3', [{ path: 'src/a.go', line: 3, text: 'src/a.go:3' }]],
 
   // Survivors of the review's mutants
