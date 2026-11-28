@@ -802,7 +802,7 @@ func main() {
 	appService.setOwnServers(func() []string {
 		return hostServers(ownServerSources(diagnosticsHTTP.Address, func() string {
 			status := hostProfiling.GetStatus()
-			return profilerAddress(status.Running, strings.TrimPrefix(status.URL, "http://"))
+			return profilerAddress(status.Running, status.URL)
 		}, devServerManager.ListenAddresses))
 	})
 

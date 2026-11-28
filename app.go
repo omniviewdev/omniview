@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"net"
+	"net/url"
 	"os"
 	"runtime"
 	"strconv"
@@ -190,12 +191,17 @@ func ownServerSources(diagnostics, profiler func() string, vite func() []string)
 	return func() []string { return append([]string{diagnostics(), profiler()}, vite()...) }
 }
 
-// profilerAddress is where the host profiler serves pprof while it runs, as host:port from its status; empty when it is off or failed to start.
-func profilerAddress(running bool, address string) string {
+// profilerAddress is where the host profiler serves pprof while it runs, as host:port taken from the URL of its status (`http://127.0.0.1:<port>/debug/pprof/`); empty
+// when it is off, failed to start, or has no address.
+func profilerAddress(running bool, statusURL string) string {
 	if !running {
 		return ""
 	}
-	return address
+	parsed, err := url.Parse(statusURL)
+	if err != nil {
+		return ""
+	}
+	return parsed.Host
 }
 
 // wailsMCPAddress is where Wails' own MCP server listens in the -tags mcp development builds (pkg/application/mcp_enabled.go): WAILS_MCP_HOST over 127.0.0.1 and
