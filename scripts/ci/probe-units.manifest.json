@@ -444,6 +444,10 @@
       "slot-undeclared"
     ]
   },
+  "ui-next/shell/probes/terminal-apply-probe.mjs": {
+    "probe": true,
+    "controls": []
+  },
   "ui-next/shell/probes/terminal-data-probe.mjs": {
     "probe": true,
     "controls": []
@@ -633,7 +637,16 @@
       "panes-gl-every-show",
       "panes-axe",
       "panes-order-lost",
-      "panes-remounted"
+      "panes-remounted",
+      "apply-blink-unfocused",
+      "apply-blink-off",
+      "apply-scrollback-not-live",
+      "apply-meta-not-live",
+      "apply-meta-layout-wrong",
+      "apply-bell-mark-lost",
+      "apply-bell-mark-stuck",
+      "apply-bell-off-fades",
+      "apply-bell-beeps"
     ]
   },
   "ui-next/shell/probes/terminal-reattach-b-probe.mjs": {

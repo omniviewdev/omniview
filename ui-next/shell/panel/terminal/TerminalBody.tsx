@@ -13,6 +13,8 @@ import { offersTakeBack, type TerminalFeedHandle, type TerminalFeedSnapshot } fr
 import { createFindSession, useTerminalFind } from './find';
 import { useCommandGutter } from './gutter/useCommandGutter';
 import { integrationWords } from './integration';
+import type { BellMarks } from './bells';
+import { readLayout, type KeyboardHost } from './layout';
 import type { PreferencesSource } from './preferences';
 import { loadXtermEngine } from './loadEngine';
 import { useTerminalLinks, useTerminalMenu } from './menu';
@@ -144,6 +146,8 @@ type TerminalBodyProps = {
   readonly screenReader: ScreenReaderSource;
   /** The person's terminal settings (`preferences.ts`): the emulator is made in them and follows them while it lives. Absent: the theme's own look and the host's defaults. */
   readonly preferences?: PreferencesSource | undefined;
+  /** The bell marks of the tabs (`bells.ts`): a bell in this terminal while it is not shown marks its tab, and the mark ends when it is shown. Absent: no mark. */
+  readonly bells?: BellMarks | undefined;
   /** The session as its tab names it, with the ordinal of a twin (`zsh (2)`: the panel's rule): the emulator's input is named by it. Absent, the title and the scope are. */
   readonly name?: string | undefined;
   /** Opens a new terminal where this session's terminal is (the menu's "New terminal here"): the window's own way to do it, which asks the session's feed where it is. Absent: the menu has no such item. */
@@ -158,7 +162,7 @@ type TerminalBodyProps = {
  * The body of a Terminal session. A session with no feed (restored from the last run: the host keeps no output across a restart, or its terminal is not adopted yet) has nothing to draw: it says that the earlier output is gone
  * and how to get a shell again, in the empty state the panel has for it, and draws the screen when the registry gives it a feed.
  */
-export function TerminalBody({ sessions, session, visible, load, screenReader, preferences, name, onNewHere, onSplit, canSplit }: TerminalBodyProps) {
+export function TerminalBody({ sessions, session, visible, load, screenReader, preferences, bells, name, onNewHere, onSplit, canSplit }: TerminalBodyProps) {
   const feed = useSyncExternalStore(sessions.subscribeFeeds, () => sessions.feedOf(session.id));
   // The person pressed a control in the lane (Take it back) and wants the keyboard in the screen the registry makes for it: the request lives here, which that screen does not replace.
   const keyboard = useRef(false);
@@ -204,6 +208,7 @@ export function TerminalBody({ sessions, session, visible, load, screenReader, p
       load={load ?? loadXtermEngine}
       screenReader={screenReader}
       preferences={preferences}
+      bells={bells}
       name={name}
       takeBack={takeBack}
       restart={restart}
@@ -223,6 +228,7 @@ type TerminalViewProps = {
   readonly load: EngineLoader;
   readonly screenReader: ScreenReaderSource;
   readonly preferences: PreferencesSource | undefined;
+  readonly bells: BellMarks | undefined;
   readonly name: string | undefined;
   /** The person pressed Take it back in the lane: asks the registry to take the terminal back, and keeps the request for the keyboard. */
   readonly takeBack: () => void;
@@ -236,7 +242,7 @@ type TerminalViewProps = {
   readonly canSplit: boolean;
 };
 
-function TerminalView({ sessions, session, feed, visible, load, screenReader, preferences, name, takeBack, restart, takeKeyboard, onNewHere, onSplit, canSplit }: TerminalViewProps) {
+function TerminalView({ sessions, session, feed, visible, load, screenReader, preferences, bells, name, takeBack, restart, takeKeyboard, onNewHere, onSplit, canSplit }: TerminalViewProps) {
   const host = useRef<HTMLDivElement>(null);
   const room = usePaneRoom();
   const hintId = useId();
@@ -251,6 +257,10 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader, pr
       // The swatches are in the body, around the screen's element: found from it, so no ref is read while this renders.
       appearance: (element) => readAppearance(element.closest('[data-shell-part="terminalBody"]') ?? element, preferences?.getSnapshot()),
       preferences,
+      layout: async () => readLayout(navigator as KeyboardHost),
+      onBell: () => {
+        bells?.ring(session.id);
+      },
       platform,
       label: `Terminal input, ${label}`,
       descriptionId: hintId,
@@ -313,6 +323,19 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader, pr
       screen.hide();
     }
   }, [screen, visible]);
+
+  // A bell marked this tab while its terminal was not shown: showing it ends the mark, and so does closing it (the body is gone with the session).
+  useEffect(() => {
+    if (visible) {
+      bells?.clear(session.id);
+    }
+  }, [bells, session.id, visible]);
+  useEffect(
+    () => () => {
+      bells?.clear(session.id);
+    },
+    [bells, session.id],
+  );
 
   // The shell said its name and the tab was renamed: the emulator's input is named again, so that what a screen reader says for it is what the tab says.
   useEffect(() => {

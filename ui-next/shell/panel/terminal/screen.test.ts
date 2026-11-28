@@ -44,6 +44,8 @@ type Rig = {
   readonly reader: ScreenReaderChoice;
   readonly readerListeners: () => number;
   readonly fonts: { readonly release: () => void; readonly asked: () => readonly string[] };
+  /** How many times the screen said that a bell rang in a terminal that is not shown (`ScreenDeps.onBell`). */
+  readonly bells: { readonly count: number };
   /** What the appearance reads from now on (the app's reader gives it from the person's settings and the theme). */
   readonly look: (next: EngineAppearance) => void;
   /** A reattached feed's replay arrives (the attach was still being answered when the screen asked), and the feed tells its listeners. */
@@ -66,6 +68,8 @@ type RigOptions = {
   readonly preferences?: PreferencesSource;
   readonly copy?: (text: string) => Promise<boolean>;
   readonly screenReader?: boolean;
+  /** The keyboard layout the page can read (`ScreenDeps.layout`): true for a US layout, false for another, `undefined` for one nobody can know. Absent: the screen is given no way to read it. */
+  readonly layout?: () => Promise<boolean | undefined>;
   readonly defaultTimer?: boolean;
   /** The find chord's handler and the find steps' (`ScreenDeps.onFind` and `onFindStep`). */
   readonly onFind?: () => void;
@@ -124,11 +128,16 @@ function rig(options: RigOptions = {}): Rig {
   const reader = createScreenReaderChoice(options.screenReader);
   let readerHeard = 0;
   let looking = APPEARANCE;
+  const bells = { count: 0 };
   const screen = createScreen({
     feed,
     load: loader.load,
     appearance: () => looking,
     preferences: options.preferences,
+    layout: options.layout,
+    onBell: () => {
+      bells.count += 1;
+    },
     platform: options.platform ?? 'mac',
     label: 'Terminal input, Terminal',
     descriptionId: 'hint-1',
@@ -231,7 +240,7 @@ function rig(options: RigOptions = {}): Rig {
     reader,
     readerListeners: () => readerHeard,
     settle: async () => {
-      for (let turn = 0; turn < 8; turn += 1) {
+      for (let turn = 0; turn < 16; turn += 1) {
         await Promise.resolve();
       }
     },
@@ -240,6 +249,7 @@ function rig(options: RigOptions = {}): Rig {
         resolve(); 
       }); 
     }, asked: () => fontsAsked },
+    bells,
     look: (next) => {
       looking = next;
     },
@@ -3301,7 +3311,7 @@ describe('the person\'s settings', () => {
     expect(engine().disposed()).toBe(0);
   });
 
-  it('are not applied for a change of what the emulator is not told of (the bell, copy on select, the paste warning, the renderer, Option as Meta, blink, scrollback): this step reads them and applies none', async () => {
+  it('do not touch the look for a change of what is not the look (the bell, copy on select, the paste warning, the renderer, Option as Meta, blink, scrollback): the emulator\'s look is told nothing', async () => {
     const prefs = fakePreferences();
     const { screen, host, engine, settle } = rig({ preferences: prefs.source });
     screen.mount(host);
@@ -3422,5 +3432,216 @@ describe('the person\'s settings', () => {
     expect(prefs.listeners()).toBe(1);
     screen.dispose();
     expect(prefs.listeners()).toBe(0);
+  });
+});
+
+
+// What the person's settings give the emulator besides its look (#697 steps 2 and 3): the cursor's blink, the scrollback and Option as Meta, in `setBehaviour`, and the bell. Against a FAKE engine (the order of the calls and the layout
+// it is asked); the real emulator's side (the blink only with the focus, the trimmed lines, the option) is `xtermEngine.test.ts`, and the real browsers' is the probe's.
+describe('the behaviour the person\'s settings give the emulator', () => {
+  const behaviourOf = (made: FakeEngine) => made.options;
+
+  it('makes the emulator in the scrollback, the blink and the Option of the settings', async () => {
+    const prefs = fakePreferences({ scrollback: 20_000, cursorBlink: true, macOptionIsMeta: 'on' });
+    const { screen, host, loader, settle } = rig({ preferences: prefs.source });
+    screen.mount(host);
+    screen.show();
+    await settle();
+    expect(behaviourOf(loader.engines[0])).toMatchObject({ scrollback: 20_000, cursorBlink: true, optionIsMeta: true });
+  });
+
+  it.each([
+    ['on', true, true],
+    ['on', undefined, true],
+    ['off', true, false],
+    ['auto', true, true],
+    ['auto', false, false],
+    ['auto', undefined, false],
+  ] as const)('gives Option as Meta %s with a layout that is %s: %s', async (setting, layout, wanted) => {
+    const prefs = fakePreferences({ macOptionIsMeta: setting });
+    const { screen, host, loader, settle } = rig({ preferences: prefs.source, layout: async () => Promise.resolve(layout) });
+    screen.mount(host);
+    screen.show();
+    await settle();
+    expect(loader.engines[0]?.options.optionIsMeta).toBe(wanted);
+  });
+
+  it('is Option as Meta off for auto when the screen is given no way to read the layout, and when reading it fails', async () => {
+    for (const layout of [undefined, async (): Promise<boolean | undefined> => Promise.reject(new Error('refused'))]) {
+      const prefs = fakePreferences({ macOptionIsMeta: 'auto' });
+      const { screen, host, loader, settle } = rig({ preferences: prefs.source, ...(layout === undefined ? {} : { layout }) });
+      screen.mount(host);
+      screen.show();
+      await settle();
+      expect(loader.engines[0]?.options.optionIsMeta).toBe(false);
+      screen.dispose();
+    }
+  });
+
+  it('asks for the layout only for auto: a person who said on or off is never asked what their keyboard is', async () => {
+    const asked = vi.fn(async () => Promise.resolve(true as boolean | undefined));
+    for (const setting of ['on', 'off'] as const) {
+      const prefs = fakePreferences({ macOptionIsMeta: setting });
+      const { screen, host, settle } = rig({ preferences: prefs.source, layout: asked });
+      screen.mount(host);
+      screen.show();
+      await settle();
+    }
+
+    expect(asked).not.toHaveBeenCalled();
+  });
+
+  it('tells the emulator that is there when the blink, the scrollback or Option changes: one call, no new emulator, and nothing of the look', async () => {
+    const prefs = fakePreferences();
+    const { screen, host, loader, engine, settle } = rig({ preferences: prefs.source, layout: async () => Promise.resolve(true) });
+    screen.mount(host);
+    screen.show();
+    await settle();
+    expect(engine().behaviours).toEqual([]);
+    prefs.change({ cursorBlink: true });
+    await settle();
+    expect(engine().behaviours).toEqual([{ scrollback: 5000, cursorBlink: true, optionIsMeta: true }]);
+    prefs.change({ scrollback: 100 });
+    await settle();
+    expect(engine().behaviours.at(-1)).toEqual({ scrollback: 100, cursorBlink: true, optionIsMeta: true });
+    prefs.change({ macOptionIsMeta: 'off' });
+    await settle();
+    expect(engine().behaviours.at(-1)).toEqual({ scrollback: 100, cursorBlink: true, optionIsMeta: false });
+    expect(engine().behaviours).toHaveLength(3);
+    expect(loader.engines).toHaveLength(1);
+    expect(engine().appearances).toHaveLength(0);
+    expect(engine().disposed()).toBe(0);
+  });
+
+  it('does not tell it for a change of the look or of the bell', async () => {
+    const prefs = fakePreferences();
+    const { screen, host, engine, look, settle } = rig({ preferences: prefs.source });
+    screen.mount(host);
+    screen.show();
+    await settle();
+    look({ ...APPEARANCE, fontSize: 18 });
+    prefs.change({ fontSize: 18, bell: 'off', copyOnSelect: true });
+    await settle();
+    expect(engine().behaviours).toEqual([]);
+  });
+
+  it('applies the change while the screen is hidden: nothing is measured or drawn for it, and the terminal that is not shown has the person\'s settings when it is', async () => {
+    const prefs = fakePreferences();
+    const { screen, host, engine, settle } = rig({ preferences: prefs.source });
+    screen.mount(host);
+    screen.show();
+    await settle();
+    screen.hide();
+    prefs.change({ cursorBlink: true });
+    await settle();
+    expect(engine().behaviours).toHaveLength(1);
+  });
+
+  it('applies the last of two changes that came while the layout was being read', async () => {
+    const prefs = fakePreferences({ macOptionIsMeta: 'off' });
+    const gate = Promise.withResolvers<boolean | undefined>();
+    const { screen, host, engine, settle } = rig({ preferences: prefs.source, layout: async () => gate.promise });
+    screen.mount(host);
+    screen.show();
+    await settle();
+    prefs.change({ macOptionIsMeta: 'auto' });
+    prefs.change({ macOptionIsMeta: 'off', cursorBlink: true });
+    await settle();
+    gate.resolve(true);
+    await settle();
+    expect(engine().behaviours.at(-1)).toMatchObject({ optionIsMeta: false, cursorBlink: true });
+  });
+});
+
+describe('the bell', () => {
+  it('fades the screen of a terminal that is shown, for each bell, and says nothing to the tab', async () => {
+    const prefs = fakePreferences({ bell: 'visual' });
+    const { screen, host, engine, bells, settle } = rig({ preferences: prefs.source });
+    screen.mount(host);
+    screen.show();
+    await settle();
+    engine().ring();
+    expect(host.getAttribute('data-bell')).toBe('a');
+    expect(bells.count).toBe(0);
+  });
+
+  it('puts a mark on the tab of a terminal that is not shown, and does not fade the screen nobody sees: one word to the tab for each bell', async () => {
+    const prefs = fakePreferences({ bell: 'visual' });
+    const { screen, host, engine, bells, settle } = rig({ preferences: prefs.source });
+    screen.mount(host);
+    screen.show();
+    await settle();
+    screen.hide();
+    engine().ring();
+    engine().ring();
+    expect(bells.count).toBe(2);
+    expect(host.getAttribute('data-bell')).toBeNull();
+  });
+
+  it('does nothing at all when the setting is off, shown or not: no fade and no mark', async () => {
+    const prefs = fakePreferences({ bell: 'off' });
+    const { screen, host, engine, bells, settle } = rig({ preferences: prefs.source });
+    screen.mount(host);
+    screen.show();
+    await settle();
+    engine().ring();
+    screen.hide();
+    engine().ring();
+    expect(host.getAttribute('data-bell')).toBeNull();
+    expect(bells.count).toBe(0);
+  });
+
+  it('follows the setting live: a bell after the change is what the new setting says', async () => {
+    const prefs = fakePreferences({ bell: 'visual' });
+    const { screen, host, engine, bells, settle } = rig({ preferences: prefs.source });
+    screen.mount(host);
+    screen.show();
+    await settle();
+    prefs.change({ bell: 'off' });
+    engine().ring();
+    expect(host.getAttribute('data-bell')).toBeNull();
+    prefs.change({ bell: 'visual' });
+    screen.hide();
+    engine().ring();
+    expect(bells.count).toBe(1);
+  });
+
+  it('puts no mark for a bell the emulator parses while it applies a replay: it is a bell the person saw (or one a program rang long ago, still in the host\'s ring), and a hidden screen takes a late replay as it takes live bytes', async () => {
+    const prefs = fakePreferences({ bell: 'visual' });
+    const r = rig({ preferences: prefs.source, auto: false, reattach: { late: true } });
+    r.screen.mount(r.host);
+    r.feed.push('first\r\n');
+    r.screen.show();
+    await r.settle();
+    r.frame();
+    r.engine().complete();
+    r.screen.hide();
+    r.arrive(replayOf('seen\u0007\r\n'));
+    r.frame();
+    r.engine().ring();
+    expect(r.bells.count).toBe(0);
+    r.engine().complete();
+    await r.settle();
+    r.frame();
+    r.engine().complete();
+    await r.settle();
+    r.engine().ring();
+    expect(r.bells.count).toBe(1);
+  });
+
+  it('takes the setting it read after the font wait: a change that came while the font loaded is applied to the emulator that was made in the older one', async () => {
+    const prefs = fakePreferences({ macOptionIsMeta: 'off' });
+    const { screen, host, loader, fonts, settle } = rig({ preferences: prefs.source, fontsHeld: true });
+    screen.mount(host);
+    screen.show();
+    await settle();
+    // The store is kept live by another terminal, and this screen listens only once its emulator is made.
+    prefs.change({ macOptionIsMeta: 'on', cursorBlink: true });
+    fonts.release();
+    await settle();
+    const made = loader.engines[0];
+    const optionIsMeta = made.behaviours.at(-1)?.optionIsMeta ?? made.options.optionIsMeta;
+    expect(optionIsMeta).toBe(true);
+    expect(made.behaviours.at(-1)?.cursorBlink ?? made.options.cursorBlink).toBe(true);
   });
 });

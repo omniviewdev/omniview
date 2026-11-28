@@ -291,6 +291,17 @@ export const units = [
     seconds: 100,
   },
 
+  // What the person's settings do to a terminal that is open (#697 steps 2 and 3): the blink of the cursor is a timer only with the focus and the setting (counted), a smaller scrollback trims and a larger one keeps, Option as Meta on a
+  // Mac follows the setting and the keyboard's layout, and the bell fades a shown screen, marks the tab of one that is not, and is silent (the sections are in terminal-apply.mjs). WebKit and Chromium at both viewports. 100 s is an
+  // ESTIMATE from the laptop (82 s with a build made before, load 6: a build of the fixture is 52 s more), to be set from the first nightly figure.
+  {
+    id: 'terminal-apply',
+    name: 'Probe that the blink, the scrollback, Option as Meta and the bell follow the settings of a terminal that is open',
+    script: 'ui-next/shell/probes/terminal-apply-probe.mjs',
+    env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/terminal-apply-probe.json' },
+    seconds: 100,
+  },
+
   // T3a: find in the scrollback, the context menu of the terminal and the links in its output (the sections are in terminal-find.mjs, the fixture is terminal-fixture.tsx, the mock's bar is measured by
   // mock-terminal-find-measure.mjs), four probes of their own, WebKit and Chromium at both viewports. The seconds are the laptop's measure times 1.3: the sections wait on what the page shows and on counters, with no clock,
   // so they take 1 to 5 s each at each of the four sizes.
@@ -428,5 +439,16 @@ export const units = [
     plants: 'page',
     // An ESTIMATE from the laptop, to be set from the first nightly figure.
     seconds: 240,
+  },
+
+  {
+    id: 'terminal-controls-apply',
+    name: 'Probe that the apply probe sees a timer left running with no focus or with the blink off, a scrollback and an Option that are never heard, a layout that is wrong, a bell mark that is lost or stuck, a screen that fades with the bell off, and a sound',
+    script: 'ui-next/shell/probes/terminal-probe.mjs',
+    env: { FONT_DELAY_MS: '40' },
+    controls: ['apply-blink-unfocused', 'apply-blink-off', 'apply-scrollback-not-live', 'apply-meta-not-live', 'apply-meta-layout-wrong', 'apply-bell-mark-lost', 'apply-bell-mark-stuck', 'apply-bell-off-fades', 'apply-bell-beeps'],
+    plants: 'page',
+    // An ESTIMATE from the laptop, to be set from the first nightly figure.
+    seconds: 200,
   },
 ];

@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 import type { PaneLayout, PanelState, Session, SessionId, SessionItem, ToolId, ToolItem } from '../core/panel';
 import type { ToolBadge, ToolBadges } from './badge';
 import { usePanel } from './context';
+import type { SessionMark, SessionMarks } from './host';
 
 // What a component of the panel reads of its model. One hook is one slice: the model hands back the same object while its slice is the same (core/panel/README.md), so
 // `useSyncExternalStore` renders the component only when its own slice changed. The toggle reads `open`; a tool tab, its item; a session tab, its item; a body, its own session.
@@ -38,6 +39,15 @@ const NO_BADGES: ToolBadges = { subscribe: () => () => undefined, of: () => unde
 export function useToolBadge(tool: ToolId): ToolBadge | undefined {
   const { badges = NO_BADGES } = usePanel();
   return useSyncExternalStore(badges.subscribe, () => badges.of(tool));
+}
+
+/** A host that gives no marks: no session tab carries one. */
+const NO_MARKS: SessionMarks = { subscribe: () => () => undefined, of: () => undefined };
+
+/** What a session tab carries beside its words: the host's mark for the session, or nothing. The tab renders when its own mark changes. */
+export function useSessionMark(session: SessionId): SessionMark | undefined {
+  const { marks = NO_MARKS } = usePanel();
+  return useSyncExternalStore(marks.subscribe, () => marks.of(session));
 }
 
 export function useToolItem(id: ToolId): ToolItem | undefined {

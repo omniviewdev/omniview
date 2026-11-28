@@ -1566,6 +1566,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
         ) : undefined;
       },
       badges: host.toolBadges,
+      marks: terminals.marks,
       newSessionOf: (toolId) => {
         if (toolId === TERMINAL_TOOL_ID) {
           return terminals.newSession;

@@ -180,6 +180,75 @@ describe('the screen reader choice of the window', () => {
   });
 });
 
+describe('the bell of a terminal that is not shown (#697 step 3)', () => {
+  const setup = async () => {
+    vi.useFakeTimers({ toFake: ['requestAnimationFrame', 'cancelAnimationFrame', 'setTimeout', 'clearTimeout'] });
+    const store = createPanelStore();
+    store.registerTool(TERMINAL_TOOL);
+    const loader = fakeEngineLoader();
+    const terminals = createTerminals(store, { load: loader.load, preferences: DEFAULT_PREFERENCES_SOURCE });
+    const stop = terminals.sessions.attach();
+    const opened = terminals.sessions.open({ plugin: HOST, id: 'one', title: 'one', open: () => fakeTerminalFeed() });
+    const session = store.getSnapshot().sessions[opened?.id ?? ''];
+    const view = render(terminals.bodyOf(session, true));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    return { terminals, loader, session, view, stop };
+  };
+
+  it('puts a mark on its tab, and clears it when the terminal is shown', async () => {
+    const { terminals, loader, session, view, stop } = await setup();
+    expect(terminals.marks.of(session.id)).toBeUndefined();
+    // On screen: the screen fades, and the tab has nothing to say.
+    act(() => {
+      loader.engines[0]?.ring();
+    });
+    expect(terminals.marks.of(session.id)).toBeUndefined();
+
+    view.rerender(terminals.bodyOf(session, false));
+    act(() => {
+      loader.engines[0]?.ring();
+    });
+    expect(terminals.marks.of(session.id)).toEqual({ label: 'bell rang' });
+
+    view.rerender(terminals.bodyOf(session, true));
+    expect(terminals.marks.of(session.id)).toBeUndefined();
+    act(() => {
+      stop();
+    });
+  });
+
+  it('is told to the strip as an external store: one notification for the mark and one for its end', async () => {
+    const { terminals, loader, session, view, stop } = await setup();
+    const heard = vi.fn();
+    terminals.marks.subscribe(heard);
+    view.rerender(terminals.bodyOf(session, false));
+    act(() => {
+      loader.engines[0]?.ring();
+      loader.engines[0]?.ring();
+    });
+    view.rerender(terminals.bodyOf(session, true));
+    expect(heard).toHaveBeenCalledTimes(2);
+    act(() => {
+      stop();
+    });
+  });
+
+  it('holds no mark for a session that closed while it was marked', async () => {
+    const { terminals, loader, session, view, stop } = await setup();
+    view.rerender(terminals.bodyOf(session, false));
+    act(() => {
+      loader.engines[0]?.ring();
+    });
+    view.unmount();
+    expect(terminals.marks.of(session.id)).toBeUndefined();
+    act(() => {
+      stop();
+    });
+  });
+});
+
 describe('the close question follows what runs in the session (IsBusy: the host is asked when the person closes)', () => {
   beforeAll(() => {
     // jsdom has the element and not its modal: the browser's `showModal` makes the dialog open and puts it in the top layer.

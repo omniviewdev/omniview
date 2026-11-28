@@ -8881,6 +8881,27 @@ async function checkTerminalPrograms(page, base, engine) {
   await ask('stty sane; echo KEYS_DONE_$((1+1))', /KEYS_DONE_2\r?\n/, 'the terminal modes to be restored');
   note('keys', `${keys.map(([key, shown]) => `${key} -> ${shown}`).join(', ')} (${mac ? 'macOS: Option as Meta is off, so Option types characters; the IDE sequences are VS Code\'s' : 'Windows and Linux'})`);
 
+  // Option as Meta (#697 step 2), in the real shell: Alt B at a bash prompt moves back one word, so a letter typed after it lands before the last word. A Mac page is told `on` first (Option types characters unless the setting
+  // or a US layout says Meta, and the seam's Chromium has no keyboard map); elsewhere Alt is Meta whatever the setting is, so this is the real readline's answer to the bytes the emulator sends, and the Mac half (Option types a
+  // character with the setting off) is the probe's, with the host's byte log (`apply-meta`, terminal-apply.mjs), where the page can say it is a Mac.
+  if (mac) {
+    await callBound(base, SETTINGS_SERVICE, 'Commit', { kind: 'host' }, { 'terminal.macOptionIsMeta': 'on' });
+    for (let turn = 0; turn < 30; turn += 1) await afterFrames(page);
+  }
+
+  const metaFrom = await mark();
+  await page.keyboard.type('echo one two');
+  await page.keyboard.press('Alt+b');
+  await page.keyboard.type('X');
+  await page.keyboard.press('Enter');
+  await waitUntil('the shell to run the line that Alt B edited', async () => /\none Xtwo\n/.test(plain(await since(metaFrom))), 30_000).catch(async (error) => {
+    throw new Error(`${String(error.message)}; the shell's output since the key ends with ${JSON.stringify(plain(await since(metaFrom)).slice(-300))}`);
+  });
+  note('Option as Meta', 'Alt B at a real bash prompt moved back one word: the line `echo one two` with X typed after Alt B ran as `echo one Xtwo`');
+  if (mac) {
+    await callBound(base, SETTINGS_SERVICE, 'Commit', { kind: 'host' }, { 'terminal.macOptionIsMeta': 'auto' });
+  }
+
   // Bracketed paste: a program that asks for it gets the text wrapped, in one piece; the shell does not run a pasted line before Enter.
   const pasteFrom = await mark();
   await typeLine(page, 'printf \'\\033[?2004h\'; stty -icanon -echo; echo READY_$((1+1)); cat -v');
