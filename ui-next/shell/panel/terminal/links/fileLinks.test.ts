@@ -74,7 +74,7 @@ const FORMATS: readonly Row[] = [
   // Rust
   ['cargo arrow', ' --> src/main.rs:4:5', [{ path: 'src/main.rs', line: 4, col: 5, text: 'src/main.rs:4:5' }]],
   ['cargo secondary span', '  ::: src/other.rs:3:1', [{ path: 'src/other.rs', line: 3, col: 1, text: 'src/other.rs:3:1' }]],
-  ['rust panic with a trailing colon', "thread 'main' panicked at src/main.rs:4:5:", [{ path: 'src/main.rs', line: 4, col: 5, text: 'src/main.rs:4:5' }]],
+  ['rust panic with a trailing colon', 'thread \'main\' panicked at src/main.rs:4:5:', [{ path: 'src/main.rs', line: 4, col: 5, text: 'src/main.rs:4:5' }]],
 
   // Go
   ['go compiler', './main.go:12:5: undefined: x', [{ path: './main.go', line: 12, col: 5, text: './main.go:12:5' }]],
@@ -83,18 +83,18 @@ const FORMATS: readonly Row[] = [
   ['go import path as a directory', 'github.com/acme/tool/pkg/a.go:12', [{ path: 'github.com/acme/tool/pkg/a.go', line: 12, text: 'github.com/acme/tool/pkg/a.go:12' }]],
 
   // Ruby, Elixir, Perl, PHP, shell, make
-  ['ruby in', "\tfrom /app/a.rb:20:in `foo'", [{ path: '/app/a.rb', line: 20, text: '/app/a.rb:20' }]],
+  ['ruby in', '\tfrom /app/a.rb:20:in `foo\'', [{ path: '/app/a.rb', line: 20, text: '/app/a.rb:20' }]],
   ['elixir', '    lib/app.ex:12: App.run/1', [{ path: 'lib/app.ex', line: 12, text: 'lib/app.ex:12' }]],
   ['elixir with the application', '    (app 0.1.0) lib/app.ex:12: App.run/1', [{ path: 'lib/app.ex', line: 12, text: 'lib/app.ex:12' }]],
   ['php', 'PHP Fatal error:  Uncaught Error in /var/www/a.php on line 12', [{ path: '/var/www/a.php', line: 12, text: '/var/www/a.php on line 12' }]],
   ['bash', './script.sh: line 12: foo: command not found', [{ path: './script.sh', line: 12, text: './script.sh: line 12' }]],
-  ['make', "Makefile:12: recipe for target 'all' failed", [{ path: 'Makefile', line: 12, text: 'Makefile:12' }]],
+  ['make', 'Makefile:12: recipe for target \'all\' failed', [{ path: 'Makefile', line: 12, text: 'Makefile:12' }]],
   ['grep with line 0', 'src/a.c:0:int main(void)', [{ path: 'src/a.c', line: 0, text: 'src/a.c:0' }]],
   ['grep -n', 'src/a.c:12:    return 0;', [{ path: 'src/a.c', line: 12, text: 'src/a.c:12' }]],
 
   // C, C++, C#, Java, Kotlin, Dart, Swift
   ['gcc', 'a.c:12:3: error: expected ; before }', [{ path: 'a.c', line: 12, col: 3, text: 'a.c:12:3' }]],
-  ['msvc with a drive letter', "C:\\proj\\a.cpp(12): error C2065: 'x': undeclared", [{ path: 'C:\\proj\\a.cpp', line: 12, text: 'C:\\proj\\a.cpp(12)' }]],
+  ['msvc with a drive letter', 'C:\\proj\\a.cpp(12): error C2065: \'x\': undeclared', [{ path: 'C:\\proj\\a.cpp', line: 12, text: 'C:\\proj\\a.cpp(12)' }]],
   ['java stack trace', '\tat com.foo.Bar.main(Bar.java:12)', [{ path: 'Bar.java', line: 12, text: 'Bar.java:12' }]],
   ['maven', '[ERROR] /home/u/A.java:[12,5] cannot find symbol', [{ path: '/home/u/A.java', line: 12, col: 5, text: '/home/u/A.java:[12,5]' }]],
   ['kotlin with a file url', 'e: file:///home/u/A.kt:12:5 Unresolved reference: x', [{ path: '/home/u/A.kt', line: 12, col: 5, text: '/home/u/A.kt:12:5' }]],
@@ -104,7 +104,7 @@ const FORMATS: readonly Row[] = [
   ['node stack trace', '    at Object.<anonymous> (/home/u/app.js:10:15)', [{ path: '/home/u/app.js', line: 10, col: 15, text: '/home/u/app.js:10:15' }]],
   ['node stack trace without parentheses', '    at /home/u/app.js:10:15', [{ path: '/home/u/app.js', line: 10, col: 15, text: '/home/u/app.js:10:15' }]],
   ['node esm file url', '    at file:///home/u/app.mjs:3:9', [{ path: '/home/u/app.mjs', line: 3, col: 9, text: '/home/u/app.mjs:3:9' }]],
-  ['typescript', "src/a.ts(12,3): error TS2322: Type 'x' is not assignable", [{ path: 'src/a.ts', line: 12, col: 3, text: 'src/a.ts(12,3)' }]],
+  ['typescript', 'src/a.ts(12,3): error TS2322: Type \'x\' is not assignable', [{ path: 'src/a.ts', line: 12, col: 3, text: 'src/a.ts(12,3)' }]],
   ['typescript pretty', 'src/a.ts:12:3 - error TS2322: x', [{ path: 'src/a.ts', line: 12, col: 3, text: 'src/a.ts:12:3' }]],
   ['eslint stylish: the file name line', '/home/u/proj/src/a.js', [{ path: '/home/u/proj/src/a.js', text: '/home/u/proj/src/a.js' }]],
   ['eslint stylish: the problem line is no link', '  12:5  error  Unexpected console statement  no-console', []],
@@ -116,7 +116,7 @@ const FORMATS: readonly Row[] = [
   ['box-drawing glued to the path', '│src/a.go:7', [{ path: 'src/a.go', line: 7, text: 'src/a.go:7' }]],
   ['tree listing', '├── src/lib/util.ts', [{ path: 'src/lib/util.ts', text: 'src/lib/util.ts' }]],
   ['quoted name with spaces', 'error in "my dir/my file.txt", line 3', [{ path: 'my dir/my file.txt', line: 3, text: 'my dir/my file.txt", line 3' }]],
-  ['single-quoted name with spaces and a colon suffix', "see 'my file.txt':12 now", [{ path: 'my file.txt', line: 12, text: "my file.txt':12" }]],
+  ['single-quoted name with spaces and a colon suffix', 'see \'my file.txt\':12 now', [{ path: 'my file.txt', line: 12, text: 'my file.txt\':12' }]],
   ['a trailing period after the line', 'see src/a.go:12.', [{ path: 'src/a.go', line: 12, text: 'src/a.go:12' }]],
   ['a trailing period after a bare path', 'open ./notes/todo.txt.', [{ path: './notes/todo.txt', text: './notes/todo.txt' }]],
   ['a trailing comma after a bare path', 'see ./a/b.txt, then', [{ path: './a/b.txt', text: './a/b.txt' }]],
@@ -336,9 +336,10 @@ describe('lines a hostile program can print', () => {
   });
 
   it('survives an empty line, spaces and lone suffix characters', () => {
-    for (const line of ['', ' ', ':', '::', ':1', '#', '#L1', '(1)', '[1,2]', ', 1', '"', '""', "''", '"",1', ' line 1', 'a:', 'a#', 'a(', 'a(1', 'a(1,', 'a[1,2', '/', '//', '.']) {
+    for (const line of ['', ' ', ':', '::', ':1', '#', '#L1', '(1)', '[1,2]', ', 1', '"', '""', '\'\'', '"",1', ' line 1', 'a:', 'a#', 'a(', 'a(1', 'a(1,', 'a[1,2', '/', '//', '.']) {
       expect(() => findFileLinks(line)).not.toThrow();
     }
+
     expect(found('')).toEqual([]);
     expect(found(':1')).toEqual([]);
     expect(found('(1)')).toEqual([]);
@@ -399,7 +400,7 @@ describe('the range of a candidate, in the emulator\'s cells', () => {
 // does not wait for the machine.
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-/** Steps allowed for each character of the line. The matcher takes about 4 to 8 (`status/T7-matcher.md` has the measured figures); the bound leaves room and still fails a scan that grows with the square. */
+/** Steps allowed for each character of the line. The matcher takes 2 to 5 on the shapes measured (`status/T7-matcher.md` has the figures); the bound leaves room and still fails a scan that grows with the square. */
 const STEPS_PER_CHAR = 24;
 
 function counter(budget: number) {
@@ -433,6 +434,7 @@ function text(seed: number, alphabet: readonly string[], length: number): string
   while (out.length < length) {
     out += alphabet[Math.floor(next() * alphabet.length)];
   }
+
   return out.slice(0, length);
 }
 
@@ -490,11 +492,11 @@ describe('no backtracking: steps in proportion to the length', () => {
 
   it.each([
     ['dots, colons, slashes, spaces and digits', ['.', ':', '/', ' ', '1', '2', 'a']],
-    ['brackets, quotes and commas', ['(', ')', '[', ']', '"', "'", ',', ' ', 'a', '1', ':']],
+    ['brackets, quotes and commas', ['(', ')', '[', ']', '"', '\'', ',', ' ', 'a', '1', ':']],
     ['suffix words', ['line ', 'col ', ' on ', ' line ', 'column ', 'characters ', 'lines ', '1', '-', '#L', ':']],
     ['schemes and paths', ['file://', 'http://', '://', 'a/', 'b.c', ':', ' ', '"', '1']],
     ['controls and widths', ['\u001b', '\n', '\t', '\u00a0', '日', '🎉', '\u0301', 'a', '.', ':', '1', '/']],
-    ['every special character', ['.', ':', ';', '/', '\\', ' ', '"', "'", '`', '(', ')', '[', ']', '{', '}', '<', '>', '|', ',', '#', '-', '=', '?', '!', '&', '*', '0', 'a', 'L']],
+    ['every special character', ['.', ':', ';', '/', '\\', ' ', '"', '\'', '`', '(', ')', '[', ']', '{', '}', '<', '>', '|', ',', '#', '-', '=', '?', '!', '&', '*', '0', 'a', 'L']],
   ])('takes steps in proportion to the length on random text of %s', (_label, alphabet) => {
     for (const seed of [1, 2, 3]) {
       const line = text(seed, alphabet, 300_000);
