@@ -731,6 +731,7 @@ describe('a way to a sash and to equal panes without a pointer or a chord (the p
     expect(h.store.getSnapshot().panes.terminal?.ratios[1]).toBeGreaterThan(before[1]);
     act(() => {
       h.store.focusPane('terminal', 'p3');
+      (document.activeElement as HTMLElement).blur();
     });
     act(() => {
       focusSashOfActivePane(h.store, 'terminal');
@@ -738,6 +739,7 @@ describe('a way to a sash and to equal panes without a pointer or a chord (the p
     expect(sashAt(1)).toHaveFocus();
     act(() => {
       h.store.focusPane('terminal', 'p1');
+      (document.activeElement as HTMLElement).blur();
     });
     act(() => {
       focusSashOfActivePane(h.store, 'terminal');

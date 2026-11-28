@@ -479,10 +479,18 @@ function commandsOf({ tabs, panel, platform, onCloseWindow, openSettings, termin
 
     if (several) {
       commands.push(
-        { id: 'host.terminal.focusNextPane', title: 'Terminal: Focus Next Pane', context: 'Panel', icon: TERMINAL_TOOL.icon, run: () => later(() => void moveToPane(panel, 'next', TERMINAL_TOOL_ID)) },
-        { id: 'host.terminal.focusPreviousPane', title: 'Terminal: Focus Previous Pane', context: 'Panel', icon: TERMINAL_TOOL.icon, run: () => later(() => void moveToPane(panel, 'previous', TERMINAL_TOOL_ID)) },
-        { id: 'host.terminal.resizePane', title: 'Terminal: Resize Pane…', context: 'Panel', icon: TERMINAL_TOOL.icon, run: () => later(() => void focusSashOfActivePane(panel, TERMINAL_TOOL_ID)) },
-        { id: 'host.terminal.equalisePanes', title: 'Terminal: Equalise Panes', context: 'Panel', icon: TERMINAL_TOOL.icon, run: () => later(() => void equaliseTool(panel, TERMINAL_TOOL_ID)) },
+        { id: 'host.terminal.focusNextPane', title: 'Terminal: Focus Next Pane', context: 'Panel', icon: TERMINAL_TOOL.icon, run: () => later(() => {
+          moveToPane(panel, 'next', TERMINAL_TOOL_ID);
+        }) },
+        { id: 'host.terminal.focusPreviousPane', title: 'Terminal: Focus Previous Pane', context: 'Panel', icon: TERMINAL_TOOL.icon, run: () => later(() => {
+          moveToPane(panel, 'previous', TERMINAL_TOOL_ID);
+        }) },
+        { id: 'host.terminal.resizePane', title: 'Terminal: Resize Pane…', context: 'Panel', icon: TERMINAL_TOOL.icon, run: () => later(() => {
+          focusSashOfActivePane(panel, TERMINAL_TOOL_ID);
+        }) },
+        { id: 'host.terminal.equalisePanes', title: 'Terminal: Equalise Panes', context: 'Panel', icon: TERMINAL_TOOL.icon, run: () => later(() => {
+          equaliseTool(panel, TERMINAL_TOOL_ID);
+        }) },
       );
     }
   }
