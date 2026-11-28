@@ -1,0 +1,230 @@
+#!/bin/bash
+# Negative controls for the file-link matcher (#696 step 2, ui-next/shell/panel/terminal/links/fileLinks.ts). Each fault is put into a SCRATCH copy of the module, next to a copy of its test, in a directory that is removed
+# at the end; the worktree's own files are never edited. A control has two halves (AGENTS 28, HOW-WE-WORK 5):
+#   1. with every test, the tests that go red are exactly the ones named for it (a fault that goes red in a test it is not named for, or in none, is reported);
+#   2. with the named tests skipped (the assertion removed), the same fault passes: nothing else sees it.
+# Run from anywhere in the worktree:  bash docs/ui-next/status/T7-matcher/mutations.sh.txt [control-name]
+# Needs `pnpm install` done. Exit code 0 only when every control holds in both halves.
+WT=$(git rev-parse --show-toplevel) || exit 2
+LINKS=ui-next/shell/panel/terminal/links
+M="$WT/$LINKS/zz-mut-$$"
+OUT=$(mktemp -d "${TMPDIR:-/tmp}/t7-matcher-mut.XXXXXX") || { echo "no scratch directory" >&2; exit 2; }
+trap 'rm -rf -- "$M" "$OUT"' EXIT
+cd "$WT" || exit 2
+only="${1:-}"
+bad=0
+
+# vitest's JSON report -> the full names of the failed tests, one per line (JSON-quoted: a name can hold a control character). A suite that did not load is reported as such, never as a detection.
+failed_names() {
+  node -e '
+    const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+    for (const f of r.testResults) {
+      if (f.status === "failed" && f.assertionResults.length === 0) console.log("__THE_SUITE_DID_NOT_RUN__");
+      for (const a of f.assertionResults) if (a.status === "failed") console.log(JSON.stringify(a.fullName));
+    }
+  ' "$1"
+}
+
+# name | perl expression applied to a copy of fileLinks.ts | named tests: regular expressions on the full test name, separated by newlines
+run() {
+  name="$1"; expr="$2"; named="$3"
+  [ -n "$only" ] && [ "$only" != "$name" ] && return
+  rm -rf "$M"; mkdir -p "$M"
+  cp "$WT/$LINKS/fileLinks.ts" "$M/fileLinks.ts"
+  cp "$WT/$LINKS/fileLinks.test.ts" "$M/fileLinks.test.ts"
+  perl -0pi -e "$expr" "$M/fileLinks.ts"
+  if cmp -s "$WT/$LINKS/fileLinks.ts" "$M/fileLinks.ts"; then echo "CONTROL $name: FAULT NOT APPLIED"; bad=1; return; fi
+
+  rm -f "$OUT/r1.json" "$OUT/r2.json"
+  pnpm exec vitest run "$LINKS/zz-mut-$$" --reporter=json --outputFile="$OUT/r1.json" >/dev/null 2>&1
+  if [ ! -s "$OUT/r1.json" ]; then echo "CONTROL $name: NOT A DETECTION (no report: the run failed to start)"; bad=1; return; fi
+  failed=$(failed_names "$OUT/r1.json")
+  if [ -z "$failed" ]; then half1="UNDETECTED (every test passed)"; bad=1
+  else
+    strays=""; unmatched=""
+    while IFS= read -r f; do
+      hit=0
+      while IFS= read -r pat; do [ -n "$pat" ] && printf '%s' "$f" | grep -Eq -- "$pat" && hit=1; done <<< "$named"
+      [ $hit -eq 0 ] && strays="$strays [$f]"
+    done <<< "$failed"
+    while IFS= read -r pat; do
+      [ -z "$pat" ] && continue
+      printf '%s\n' "$failed" | grep -Eq -- "$pat" || unmatched="$unmatched [$pat]"
+    done <<< "$named"
+    if [ -n "$strays" ] || [ -n "$unmatched" ]; then half1="RED, BUT NOT EXACTLY: not named:$strays | named and green:$unmatched"; bad=1
+    else half1="RED in exactly the named tests ($(printf '%s\n' "$failed" | wc -l) of them)"; fi
+  fi
+
+  alt=$(printf '%s\n' "$named" | grep -v '^$' | paste -sd'|' -)
+  pnpm exec vitest run "$LINKS/zz-mut-$$" -t "^(?!.*(?:$alt))" --reporter=json --outputFile="$OUT/r2.json" >/dev/null 2>&1
+  if [ ! -s "$OUT/r2.json" ]; then half2="NOT A RESULT (no report)"; bad=1
+  else
+    left=$(failed_names "$OUT/r2.json")
+    if [ -z "$left" ]; then half2="without them: PASS (undetected)"; else half2="without them: STILL RED [$(printf '%s' "$left" | tr '\n' ' ')]"; bad=1; fi
+  fi
+  echo "CONTROL $name: $half1 | $half2"
+}
+
+run backtracking-rescan-from-the-word-start \
+  's/(this\.piece\(ps2, i\);\n\s*ps2 = i \+ 1;)/$1\n        for (let k = s; k < i; k += 1) { this.step(); }/' \
+  'no backtracking: steps in proportion to the length'
+
+run line-cap-removed \
+  's/if \(n > limits\.maxLineLength\) \{/if (false) {/' \
+  'gives no file link on a line over 2,000 characters
+takes no steps on a 1 MB line of dots and colons under the default cap'
+
+run link-count-cap-removed \
+  's/maxLinks: 10,/maxLinks: 1000000,/' \
+  'gives at most 10 links on a line
+gives at most 10 links when
+keeps the caps in one table'
+
+run path-cap-removed \
+  's/ \|\| path\.length > limits\.maxPathLength//' \
+  'never gives a path over 1,024 characters
+gives nothing for a 100 KB path'
+
+run link-length-cap-removed \
+  's/ \|\| suffix\.end - start > limits\.maxLinkLength//' \
+  'ignores a link over 500 characters'
+
+run url-path-taken \
+  's/(this\.pending = \[\];\s*)return e;(\s*\}\s*\})/$1$2/' \
+  'never takes a candidate inside a url
+takes a link that comes before a url
+refuses a file url with a host
+a url with a line-looking tail'
+
+run file-url-treated-as-a-url \
+  's/if \(i - scheme === 4 && /if (false && i - scheme === 4 && /' \
+  'kotlin with a file url
+node esm file url
+file url with an escaped space
+file url with an escape that does not decode'
+
+run esc-and-newline-allowed-in-a-path \
+  's/if \(c <= 0x20\) \{/if (c <= 0x20 \&\& c !== 0x1b \&\& c !== 0x0a) {/' \
+  'never puts an ESC in a path
+never joins the two halves of a path that a newline cut
+never has the control or format character'
+
+run format-and-bidi-characters-allowed-in-a-path \
+  's/\(c >= 0x2000 && c <= 0x200f\) \|\|\s*\(c >= 0x2028 && c <= 0x202f\) \|\|/false ||/' \
+  'never has the control or format character
+never takes a path that a bidirectional override reorders'
+
+run diff-prefix-kept \
+  's#GIT_DIFF_PREFIX = /\^\[abciow12\]\\/\/#GIT_DIFF_PREFIX = /^\\0\\//#' \
+  'strips a/ and b/ from the file lines
+strips both names of a diff --git line
+keeps a/ and b/ anywhere else'
+
+run diff-prefix-stripped-on-every-line \
+  's/this\.diff = text\.startsWith\([^;]*;/this.diff = 2;/' \
+  'keeps a/ and b/ anywhere else
+does not strip a prefix that the line has no diff header for'
+
+run trailing-period-and-comma-kept-on-a-bare-path \
+  's/if \(c === 46 \|\| c === 44 \|\|/if (c === 99999 ||/' \
+  'a trailing period after a bare path
+a trailing comma after a bare path'
+
+run quote-inside-a-word-starts-no-path \
+  's/if \(isQuote\(c\) && i > ps\) \{/if (false) {/' \
+  'zap json line
+logfmt line'
+
+run version-taken \
+  's/VERSION\.test\(path\) \|\| //' \
+  'a version and a number
+a go version and a number'
+
+run iso-time-taken \
+  's/ISO_TIME\.test\(path\) \|\| //' \
+  'an iso time stamp
+an iso time stamp after a word
+zap json line
+logfmt line'
+
+run ipv6-taken \
+  's/ \|\| \(IPV6\.test\(path\) && path\.includes\(\x27:\x27\)\)//' \
+  'an ipv6 address'
+
+run image-tag-taken \
+  's/return suffix\.dotCol === true && /return false \&\& /' \
+  'an image tag
+a column after a dot is dropped on a name with no extension'
+
+run rate-taken \
+  's/const rate = slashes === 1 && /const rate = false \&\& /' \
+  'a progress rate
+a progress bar
+a rate in bytes'
+
+run file-url-not-decoded \
+  's/decoded = decodeURIComponent\(path\);/decoded = path;/' \
+  'file url with an escaped space
+file url with an escaped newline
+file url with an escaped ESC
+file url with an escaped bidirectional override'
+
+run file-url-control-kept \
+  's/return CONTROL\.test\(decoded\) \? null : decoded;/return decoded;/' \
+  'file url with an escaped newline
+file url with an escaped ESC
+file url with an escaped bidirectional override'
+
+run curly-quotes-not-paired \
+  's/c === 0x201c \|\| c === 0x201d \? 3 :/false ? 3 :/' \
+  'curly quotes round a name with spaces'
+
+run single-curly-quotes-not-paired \
+  's/c === 0x2018 \|\| c === 0x2019 \? 4 :/false ? 4 :/' \
+  'single curly quotes round a name with spaces'
+
+run nbsp-not-a-space \
+  's/const isSpace = \(c: number\): boolean => c === 32 \|\| c === 0xa0;/const isSpace = (c: number): boolean => c === 32;/' \
+  'a no-break space inside a quoted name
+a no-break space after the colon before a bracket suffix'
+
+run quoted-name-may-hold-a-url \
+  's/\} else if \(c === 58 && t\.charCodeAt\(i \+ 1\) === 47 && t\.charCodeAt\(i \+ 2\) === 47\) \{\n\s*return false;/} else if (false) {\n        return false;/' \
+  'is no path: a quoted name with spaces that holds a scheme'
+
+run leading-bracket-kept \
+  's/\} else if \(i === ps2 && \(c === 91 \|\| c === 93 \|\| c === 123 \|\| c === 125\)\) \{/} else if (false) {/' \
+  'a bare path in square brackets
+a bare path in braces'
+
+run numbers-only-path-taken \
+  's/if \(!plain \|\| !\(suffix\.strong/if (!(suffix.strong/' \
+  'a clock time
+a fraction
+eslint stylish: the problem line is no link
+an ipv6 address with a port
+an ipv6 address with a port after a word
+a progress bar'
+
+run weak-suffix-needs-no-dot-or-slash \
+  's/!\(suffix\.strong \|\| fileLike\)/false/' \
+  'a word and a number
+plain prose
+go test
+python <string> has no file
+grep -n
+a fraction
+never takes a candidate inside a url
+an iso time stamp after a word
+a rate in bytes'
+
+run long-number-is-a-line \
+  's/const MAX_DIGITS = 9;/const MAX_DIGITS = 999999999;/' \
+  'gives no path with a number too long to be a line'
+
+run no-arity-check-on-a-bare-path \
+  's/const arity = slashes === 1 &&/const arity = false \&\&/' \
+  'elixir'
+
+[ $bad -eq 0 ] && echo "ALL CONTROLS HOLD in both halves" || echo "SOME CONTROL DOES NOT HOLD"
+exit $bad
