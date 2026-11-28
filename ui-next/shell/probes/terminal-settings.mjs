@@ -87,7 +87,6 @@ export const SETTINGS_CONTROLS = {
   'settings-not-live': {
     assertion: 'settings.live',
     section: 'settings-live',
-    engines: ['chromium'],
     stage: 'ready',
     after: (page) =>
       page.evaluate(() => {
@@ -102,7 +101,6 @@ export const SETTINGS_CONTROLS = {
   'settings-recreate': {
     assertion: 'settings.live',
     section: 'settings-live',
-    engines: ['chromium'],
     stage: 'changed',
     after: (page) =>
       page.evaluate(() => {
@@ -115,7 +113,6 @@ export const SETTINGS_CONTROLS = {
   'settings-scrollback-lost': {
     assertion: 'settings.live',
     section: 'settings-live',
-    engines: ['chromium'],
     stage: 'changed',
     after: async (page) => {
       await page.locator('[data-terminal-tool="clear"]').click();
@@ -125,7 +122,6 @@ export const SETTINGS_CONTROLS = {
   'settings-font-unloaded-open': {
     assertion: 'settings.font-open',
     section: 'settings-font-open',
-    engines: ['chromium'],
     init: () => {
       FontFaceSet.prototype.load = async () => [];
     },
@@ -134,7 +130,6 @@ export const SETTINGS_CONTROLS = {
   'settings-cell-unmeasured': {
     assertion: 'settings.font-open',
     section: 'settings-font-open',
-    engines: ['chromium'],
     init: () => {
       setInterval(() => {
         const screen = document.querySelector('.xterm-screen');
@@ -145,7 +140,6 @@ export const SETTINGS_CONTROLS = {
   'settings-font-unloaded-live': {
     assertion: 'settings.font-live',
     section: 'settings-font-live',
-    engines: ['chromium'],
     init: () => {
       FontFaceSet.prototype.load = async () => [];
     },

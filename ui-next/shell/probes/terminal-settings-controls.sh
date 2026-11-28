@@ -106,7 +106,8 @@ control "page font names not quoted" $terminal/preferences.ts 's/: `"${bare}"`);
 control "page keywords accepted" $terminal/preferences.ts "s/ || RESERVED_WORDS.includes(bare.toLowerCase())//" vt $terminal/preferences.test.ts
 control "go keyword accepted" internal/settings/terminal.go 's/slices.Contains(reservedFontWords, strings.ToLower/slices.Contains(reservedFontWords[:0], strings.ToLower/' go test ./internal/settings/ -run TestTheTerminal
 control "page settled releases early" $terminal/preferences.ts 's/while (inflight !== undefined) {/if (inflight !== undefined) {/' vt $terminal/preferences.test.ts
-control "page canonical form re-limited" $terminal/preferences.ts 's/const names = canonicalFontFamily/const names = canonicalFontFamily/;s/return typeof value === .string. \&\& value.length <= BOUNDS.fontFamily ? canonicalFontFamily(value) : .*;/return typeof value === "string" ? canonicalFontFamily(value.slice(0, 300)) : "";/' vt $terminal/preferences.test.ts
+control "page canonical form re-limited" $terminal/appearance.ts 's/canonicalFontFamily, type/sanitiseFontFamily, type/;s/canonicalFontFamily(preferences/sanitiseFontFamily(preferences/' vt $terminal/appearance.test.ts
+control "page listen failure unhandled" $terminal/preferences.ts 's/}, failed);/});/' vt $terminal/preferences.test.ts
 control "page font reread not waited" $terminal/screen.ts 's/round < 3; round += 1/round < 1; round += 1/' vt $terminal/screen.test.ts -t "the person's settings"
 control "go bound not enforced" internal/settings/terminal.go 's/number > float64(maximum)/false/' go test ./internal/settings/ -run TestTheTerminal
 control "go font family takes a semicolon" internal/settings/terminal.go "s/r != '_' {/r != '_' \&\& r != ';' {/" go test ./internal/settings/ -run TestTheTerminal

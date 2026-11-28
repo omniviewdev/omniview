@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PALETTE_ROLES, SWATCH_ROLES, normaliseColour, readAppearance, type PixelContext } from './appearance';
-import { DEFAULT_PREFERENCES } from './preferences';
+import { DEFAULT_PREFERENCES, sanitiseFontFamily } from './preferences';
 
 // The look of the screen, from the theme. An emulator that draws on a canvas cannot read a stylesheet, so the body renders a hidden swatch for each colour the screen needs, painted by the stylesheet with
 // the theme's own tokens, and this reads what the engine resolved for each (`getComputedStyle`): the colours follow the nine themes and the text size with no colour written in code. Here the swatches
@@ -94,6 +94,16 @@ describe('the font and the cursor with the person\'s settings (#697)', () => {
   it('is the person\'s cursor', () => {
     expect(readAppearance(paint({}, THEME), { ...DEFAULT_PREFERENCES, cursorStyle: 'bar' }).cursorStyle).toBe('bar');
     expect(readAppearance(paint({}, THEME), { ...DEFAULT_PREFERENCES, cursorStyle: 'underline' }).cursorStyle).toBe('underline');
+  });
+
+  it('keeps the person\'s first face for a list the host accepted at 255 characters, whose quoted form is longer than the limit', () => {
+    const raw = `Menlo, ${'A'.repeat(237)}, monospace`;
+    const names = sanitiseFontFamily(raw);
+    expect(raw).toHaveLength(255);
+    expect(names.length).toBeGreaterThan(256);
+    const made = readAppearance(paint({}, THEME), { ...DEFAULT_PREFERENCES, fontFamily: names });
+    expect(made.fontFamily.startsWith('"Menlo", ')).toBe(true);
+    expect(made.fontFamily.endsWith(', "Int UI Mono", monospace')).toBe(true);
   });
 
   it('is never a family from the person that carries more than names, even if one got here', () => {

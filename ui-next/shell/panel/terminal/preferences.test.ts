@@ -341,3 +341,32 @@ describe('the store the screens read', () => {
     expect(snapshot).toHaveBeenCalledTimes(2);
   });
 });
+
+// The app's store loads the settings client as a lazy chunk when the first question comes. A chunk that cannot load is a warning of the page, and never an unhandled rejection that leaves the host's events unregistered.
+describe('the app\'s store when the settings chunk cannot load', () => {
+  it('warns for each registration it could not make (the change event and the reconnect) and raises nothing unhandled', async () => {
+    vi.resetModules();
+    let loads = 0;
+    vi.doMock('../../settings/runtime', () => {
+      loads += 1;
+      throw new Error('chunk lost');
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const { appTerminalPreferences } = await import('./preferences');
+      const store = appTerminalPreferences();
+      const stop = store.subscribe(vi.fn());
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 0);
+      });
+      const listening = warn.mock.calls.filter(([message]) => String(message).includes('could not be listened to'));
+      expect(listening.length).toBeGreaterThanOrEqual(2);
+      expect(loads).toBeGreaterThanOrEqual(1);
+      stop();
+    } finally {
+      warn.mockRestore();
+      vi.doUnmock('../../settings/runtime');
+      vi.resetModules();
+    }
+  });
+});
