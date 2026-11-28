@@ -19,9 +19,12 @@ export type FileLinkLimits = {
 export const FILE_LINK_LIMITS: FileLinkLimits = Object.freeze({ maxLineLength: 2000, maxLinks: 10, maxPathLength: 1024, maxLinkLength: 500 });
 
 /**
- * One candidate. `start` and `end` are UTF-16 offsets into the text (`end` is excluded) and cover the path and its suffix, not an opening quote or bracket. `startCell` and `endCell` are the same range in the emulator's
+ * One candidate. The text is one buffer row, or the rows of a wrapped line joined: the link provider joins them (as VS Code does) and cuts the join at `maxLineLength`. When a wide character did not fit at the end of a
+ * row, xterm leaves a blank padding cell there; the provider leaves that cell out of the text, so the cells counted here are short by one for each such row. A provider that joins rows therefore maps `start` and `end`
+ * to buffer cells with its own table (one entry for each UTF-16 offset) and reads `startCell` and `endCell` only for a single row.
+ * `start` and `end` are UTF-16 offsets into the text (`end` is excluded) and cover the path and its suffix, not an opening quote or bracket. `startCell` and `endCell` are the same range in the emulator's
  * cells, counted from 0 with the end excluded: a wide character is two cells, a combining mark none (`cellWidth`); the emulator's own `translateToString` skips the second cell of a wide character, so an offset into that
- * string and this cell column agree. A caller whose emulator disagrees on a character gives its own `cellWidth`.
+ * string and this cell column agree (checked against a real xterm with the Unicode 11 addon: `fileLinksXterm.test.ts`). A caller whose emulator disagrees on a character gives its own `cellWidth`.
  *
  * `path` is the text as printed: no normalisation, no expansion of `~`, not resolved against any directory. `line` and `col` are as printed (a first line is 1; a printed 0 is 0). `diffPrefix` is the `a/`, `b/` (or
  * another git mnemonic) that was cut off the path of a diff header, so that a resolver can try the path with it as well.

@@ -30,6 +30,12 @@ Candidates come in order of position and never overlap. `limits` and `onStep` ar
 - **Caps** (one table, `FILE_LINK_LIMITS`): a line over 2,000 characters gives nothing (the check is the first thing, so a 1 MB line costs no step); at most 10 candidates; a path over 1,024 characters is never a candidate; a link (path start to suffix end, no opening quote) over 500 characters is ignored. The 500 cap makes the 1,024 cap unreachable with the default table; both are kept and tested apart (the link cap lifted for the path test).
 - **Paths as printed.** No normalisation (NFC and NFD stay as they are), no `~` expansion, no resolution against a directory. Unquoted spaces (`/Users/me/My Project/a.c:12:3`, MSVC and Clang) are not matched: the candidates are `/Users/me/My` (no line) and `Project/a.c` (line 12). Not handled here; step 3 could try wider starts. Windows: `C:\x\a.cpp(12)` and `C:\x\a.cpp:12` are candidates; a bare backslash path with no suffix is not.
 
+## Cells against a real xterm (Main's request)
+
+`fileLinksXterm.test.ts`, 14 tests. **Emulator: real `@xterm/xterm` 6.0.0 with `@xterm/addon-unicode11`, activeVersion 11 (as `xtermEngine.ts` loads it), no fake.** Lines with CJK, fullwidth, emoji (and a ZWJ pair, a flag), a presentation selector (VS15 and VS16), combining marks and a tab are written into a 60-column terminal; the buffer row is read with the cell API (`getCell(x).getChars()/getWidth()`, skipping width-0 cells) and the matcher's `startCell` and `endCell` equal the real cell of the first and the one past the last character of every candidate. xterm and `cellWidth` agree on all of them: no change to the widths was needed.
+- **Found, by the first version of the wrap test (red: `expected '日本/x.go' to be 'abcdefghi日本/x.go'`):** when a wide character does not fit at the end of a row, xterm moves it to the next row and leaves a blank padding cell (empty chars, width 1) that reads as a space and splits the path. The matcher cannot know about it.
+- **Wrapped lines, decided:** the provider joins a chain of `isWrapped` rows into one string (VS Code does the same), cut at `maxLineLength` (2,000), leaves the padding cell out of the text, and maps each match to buffer cells with its own offset-to-cell table (one entry per UTF-16 offset), not with `startCell`/`endCell`: those are short by one for each padded row (tested: exactly 1) and are the final answer only for a single row or a join with no padding. A row read alone (not joined) does not give a path that wraps (tested).
+
 ## Log
 
 - 2026-11-28 `db18d787eac0b44b302519ec5a27c9d3473b6db3` (red): the tests against a stub of the final API that returns nothing. 129 of 171 fail by their own assertions (for example `expected [] to deeply equal [ { path: 'src/main.go', line: 42, ... } ]` and `expected 0 to be greater than 500000`); the 42 that pass on a stub are tests that expect no link (a clock time, a URL) and the step-budget tests, which carry a check that a stub that looks at nothing cannot satisfy (`steps >= length / 2`, seen failing).
@@ -74,7 +80,7 @@ Measured steps per character (`onStep` count / length, every cap lifted): dots a
 
 From the worktree, after `pnpm install --frozen-lockfile` and `task packages` (the shim and `dist/.gitkeep` restored with `git checkout --`, not committed):
 
-- `pnpm exec vitest run ui-next/shell/panel/terminal/links`: 3 files, 250 tests passed (this file 171).
+- `pnpm exec vitest run ui-next/shell/panel/terminal/links`: 4 files, 264 tests passed (this file 171, the xterm file 14).
 - `pnpm exec tsc -p tsconfig.app.json --noEmit`: exit 0. `pnpm exec tsc -p tsconfig.test.json --noEmit`: exit 0.
 - `pnpm exec eslint ui-next/shell/panel/terminal/links --report-unused-disable-directives`: exit 0 (after `--fix` on the two new files for the repository's blank-line rule).
 - `bash docs/ui-next/status/T7-matcher/mutations.sh.txt`: exit 0, 17 controls, both halves.
