@@ -9,6 +9,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/opener"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/ownservers"
+	sdkprofiling "github.com/omniviewdev/plugin-sdk/pkg/profiling"
 )
 
 // The bound call refuses the host's own server, as the opener does: the service passes the servers it was told of, and nothing is started for a refusal.
@@ -87,9 +88,47 @@ func TestTheWiringOfTheSourcesNamesTheViteServersTheDiagnosticsAndTheProfiler(t 
 	assert.Equal(t, []string{"127.0.0.1:45001", "127.0.0.1:45002", "127.0.0.1:45003"}, sources())
 }
 
-// The profiler is listed while it runs, from its status, and a failed or disabled one is not.
-func TestTheProfilerIsListedOnlyWhileItRuns(t *testing.T) {
-	assert.Equal(t, "127.0.0.1:6060", profilerAddress(true, "127.0.0.1:6060"))
-	assert.Empty(t, profilerAddress(false, "127.0.0.1:6060"), "a stopped profiler keeps no address")
+// The profiler is listed while it runs, from the status it really has: a real profiler on a free port, whose status URL is `http://127.0.0.1:<port>/debug/pprof/`.
+func TestTheRealProfilersAddressIsAnOwnServerWhileItRunsAndNotAfter(t *testing.T) {
+	profiler := sdkprofiling.New(sdkprofiling.Config{Enabled: true, Port: 0}, "test")
+	require.NoError(t, profiler.Start())
+	t.Cleanup(func() { _ = profiler.Close() })
+	status := profiler.GetStatus()
+	require.True(t, status.Running, status.Error)
+	source := func() string {
+		current := profiler.GetStatus()
+		return profilerAddress(current.Running, current.URL)
+	}
+	service := NewAppService(devcontract.InstanceDescriptor{})
+	service.setOwnServers(func() []string {
+		return hostServers(ownServerSources(func() string { return "" }, source, func() []string { return nil }))
+	})
+	got, err := service.OpenExternalURL(status.URL + "cmdline")
+	require.NoError(t, err)
+	assert.Equal(t, opener.Result{Opened: false, Reason: opener.ReasonOwnServer}, got)
+	require.NoError(t, profiler.Close())
+	assert.Empty(t, source(), "a closed profiler keeps no address")
 	assert.Empty(t, profilerAddress(true, ""))
+	assert.Empty(t, profilerAddress(false, status.URL))
+}
+
+// Wails' own MCP server, compiled in with -tags mcp, listens where WAILS_MCP_HOST and WAILS_MCP_PORT say (9099 by default).
+func TestWailsMCPServerIsAnOwnServerInTheBuildsThatHaveIt(t *testing.T) {
+	t.Setenv("WAILS_MCP_HOST", "")
+	t.Setenv("WAILS_MCP_PORT", "")
+	address, ok := wailsMCPAddress()
+	assert.True(t, ok)
+	assert.Equal(t, "127.0.0.1:9099", address)
+	t.Setenv("WAILS_MCP_PORT", "9100")
+	address, _ = wailsMCPAddress()
+	assert.Equal(t, "127.0.0.1:9100", address)
+	t.Setenv("WAILS_MCP_PORT", "0")
+	_, ok = wailsMCPAddress()
+	assert.False(t, ok, "a free port is not known")
+	t.Setenv("WAILS_MCP_PORT", "")
+	if mcpBuild {
+		assert.Contains(t, hostServers(), "127.0.0.1:9099")
+		return
+	}
+	assert.NotContains(t, hostServers(), "127.0.0.1:9099", "the native build has no such server")
 }
