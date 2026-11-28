@@ -3,8 +3,10 @@ package invocation
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"reflect"
+	"runtime/debug"
 	"slices"
 	"sync"
 	"time"
@@ -87,6 +89,8 @@ const (
 	refusalLogEvery    = time.Minute
 	refusedWindowsKept = 1024
 	refusalMessage     = "window realm refused a window: no free slot"
+	// retirementPanicMessage names a panic of a retirement in the log, with the stack of the goroutine that raised it.
+	retirementPanicMessage = "a window retirement panicked"
 )
 
 // ErrWindowLimit is what a window is refused with when the realm holds no free slot for it. It is the cause of the RESOURCE_LIMIT
@@ -264,13 +268,14 @@ func (r *WindowRealm) announce(key WindowIdentity, scope *Scope) {
 	r.mu.Lock()
 	subscribers := slices.Clone(r.subscribers)
 	r.mu.Unlock()
-	concurrently(len(subscribers), func(i int) { subscribers[i](key) })
+	r.concurrently(len(subscribers), func(i int) { subscribers[i](key) })
 }
 
 // concurrently runs fn(0) to fn(n-1) each in its own goroutine, and returns when all have returned, so that none outlives the call. The number
 // is bounded by the realm: at most maxRealmWindows windows are live to retire, and a service subscribes once. One call runs in the caller's own
-// goroutine. A panic in a call is kept, the other calls run to their end, and the first panic is raised again in the caller.
-func concurrently(n int, fn func(int)) {
+// goroutine. A panic in a call does not stop the others: every panic is logged with the stack of the goroutine that raised it, and once all
+// calls are done the first is raised again in the caller (the stack the caller's recovery then sees is the caller's, the log has the real one).
+func (r *WindowRealm) concurrently(n int, fn func(int)) {
 	if n == 1 {
 		fn(0)
 		return
@@ -279,25 +284,32 @@ func concurrently(n int, fn func(int)) {
 		group   sync.WaitGroup
 		mu      sync.Mutex
 		failure any
+		failed  bool
 	)
 	for i := range n {
 		group.Add(1)
 		go func() {
 			defer group.Done()
 			defer func() {
-				if recovered := recover(); recovered != nil {
-					mu.Lock()
-					if failure == nil {
-						failure = recovered
-					}
-					mu.Unlock()
+				recovered := recover()
+				if recovered == nil {
+					return
 				}
+				stack := string(debug.Stack())
+				if r.log != nil {
+					r.log.Errorw(context.Background(), retirementPanicMessage, "panic", fmt.Sprint(recovered), "stack", stack)
+				}
+				mu.Lock()
+				if !failed {
+					failure, failed = recovered, true
+				}
+				mu.Unlock()
 			}()
 			fn(i)
 		}()
 	}
 	group.Wait()
-	if failure != nil {
+	if failed {
 		panic(failure)
 	}
 }
@@ -336,7 +348,7 @@ func (r *WindowRealm) sweep() {
 	}
 	r.mu.Unlock()
 	// Every window of the sweep is retired at once: N windows whose shells ignore SIGHUP are gone in one close ladder, not N.
-	concurrently(len(gone), func(i int) { r.announce(gone[i].key, gone[i].scope) })
+	r.concurrently(len(gone), func(i int) { r.announce(gone[i].key, gone[i].scope) })
 }
 
 // refusalKey carries, in the context of a window refused for lack of a slot, the error the boundary answers with.

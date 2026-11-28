@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
 // B-108 (#698 item 1): 6 pages whose shells ignore SIGHUP were gone at 4.8, 6.4, 8.0, 9.1, 10.7 and 12.3 s, because the realm retired one window
@@ -247,5 +249,68 @@ func TestRetiringWindowsLeavesNoGoroutineBehind(t *testing.T) {
 			t.Fatalf("goroutines left behind by the retirements: %d, were %d", runtime.NumGoroutine(), before)
 		}
 		time.Sleep(time.Millisecond)
+	}
+}
+
+// Every panic is logged with the stack of the goroutine that raised it, not only the one that is raised again.
+func TestEveryPanickingRetirementIsLoggedWithItsOwnStack(t *testing.T) {
+	log, sink := recordingLogger()
+	realm := NewWindowRealm(nil, WithLogger(log))
+	for _, name := range []string{"first", "second"} {
+		realm.OnRetire(func(WindowIdentity) { panicInRetirement(name) })
+	}
+	window := &realmWindow{Window: nil, id: 1, onClose: nil}
+	require.NotNil(t, realm.ScopeForWindow(window))
+	require.Panics(t, func() { window.onClose(nil) }, "the first panic is raised again")
+	var logged []logging.Record
+	for _, record := range sink.Records() {
+		if record.Message == retirementPanicMessage {
+			logged = append(logged, record)
+		}
+	}
+	require.Len(t, logged, 2, "both panics are logged")
+	seen := map[string]bool{}
+	for _, record := range logged {
+		stack, _ := fieldValue(record, "stack").(string)
+		require.Contains(t, stack, "panicInRetirement", "the stack is the one of the goroutine that panicked")
+		message, _ := fieldValue(record, "panic").(string)
+		seen[message] = true
+	}
+	require.Equal(t, map[string]bool{"first": true, "second": true}, seen)
+}
+
+func panicInRetirement(name string) { panic(name) }
+
+// concurrently does not return until the last call has: one call that blocks on a gate holds it, whichever call it is.
+func TestConcurrentlyWaitsForEveryCallNotJustAllButOne(t *testing.T) {
+	const calls = 6
+	for blocked := range calls {
+		gate := make(chan struct{})
+		started := make(chan struct{}, calls)
+		returned := make(chan struct{})
+		realm := NewWindowRealm(nil)
+		go func() {
+			defer close(returned)
+			realm.concurrently(calls, func(i int) {
+				started <- struct{}{}
+				if i == blocked {
+					<-gate
+				}
+			})
+		}()
+		for range calls {
+			select {
+			case <-started:
+			case <-time.After(retireEventWait):
+				t.Fatal("a call never started")
+			}
+		}
+		select {
+		case <-returned:
+			t.Fatalf("concurrently returned while call %d still held its gate", blocked)
+		default:
+		}
+		close(gate)
+		awaitClosed(t, returned, "concurrently")
 	}
 }

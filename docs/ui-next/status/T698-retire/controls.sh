@@ -56,7 +56,7 @@ PY
 
 realm=$root/backend/pkg/invocation/window_realm.go
 test=$root/backend/pkg/invocation/window_realm_retire_test.go
-ALL='TestSixPagesAreRetiredInTheTimeOfOneLadder|TestEverySubscriberHearsOfAClosingWindowWhileTheOthersStillWork|TestTheSourceOwnerOfEveryWindowIsRetiredBeforeItsSubscribersHear|TestAFailingRetirementDoesNotHideTheResultOfAnother|TestRetiringWindowsLeavesNoGoroutineBehind'
+ALL='TestSixPagesAreRetiredInTheTimeOfOneLadder|TestEverySubscriberHearsOfAClosingWindowWhileTheOthersStillWork|TestTheSourceOwnerOfEveryWindowIsRetiredBeforeItsSubscribersHear|TestAFailingRetirementDoesNotHideTheResultOfAnother|TestRetiringWindowsLeavesNoGoroutineBehind|TestEveryPanickingRetirementIsLoggedWithItsOwnStack|TestConcurrentlyWaitsForEveryCallNotJustAllButOne'
 
 echo "== baseline"
 expect_pass "baseline: the five retirement tests pass on the tree" - "$ALL"
@@ -65,7 +65,7 @@ expect_pass "baseline: the five retirement tests pass on the tree" - "$ALL"
 drop_began='import re; s = s.replace("t.Fatalf(\"%s: %d of %d began to retire while the first still held its grace; the rest wait for it\", what, len(seen), n)", "return seen"); s = re.sub(r"\n\t+require\.Len\(t, seen, (pages|subscribers)[^\n]*", "", s).replace("seen := gate.awaitEntered", "_ = gate.awaitEntered")'
 
 echo "== the sweep retires the windows in line (the loop put back)"
-mutate "$realm" "$scratch/m1.go" 's = s.replace("concurrently(len(gone), func(i int) { r.announce(gone[i].key, gone[i].scope) })", "for _, window := range gone {\n\t\tr.announce(window.key, window.scope)\n\t}")'
+mutate "$realm" "$scratch/m1.go" 's = s.replace("r.concurrently(len(gone), func(i int) { r.announce(gone[i].key, gone[i].scope) })", "for _, window := range gone {\n\t\tr.announce(window.key, window.scope)\n\t}")'
 overlay c1 "$realm" "$scratch/m1.go"
 expect_trip "serial sweep is detected by: all windows began before any grace passed" "$scratch/c1.json" 'TestSixPagesAreRetiredInTheTimeOfOneLadder' "began to retire while the first still held its grace"
 mutate "$test" "$scratch/t1.go" "$drop_began"
@@ -73,7 +73,7 @@ overlay c1b "$realm" "$scratch/m1.go" "$test" "$scratch/t1.go"
 expect_pass "serial sweep passes undetected when that assertion is removed" "$scratch/c1b.json" 'TestSixPagesAreRetiredInTheTimeOfOneLadder'
 
 echo "== the announce tells the subscribers in line (the loop put back)"
-mutate "$realm" "$scratch/m2.go" 's = s.replace("concurrently(len(subscribers), func(i int) { subscribers[i](key) })", "for _, fn := range subscribers {\n\t\tfn(key)\n\t}")'
+mutate "$realm" "$scratch/m2.go" 's = s.replace("r.concurrently(len(subscribers), func(i int) { subscribers[i](key) })", "for _, fn := range subscribers {\n\t\tfn(key)\n\t}")'
 overlay c2 "$realm" "$scratch/m2.go"
 expect_trip "serial announce is detected by: all subscribers began before any grace passed" "$scratch/c2.json" 'TestEverySubscriberHearsOfAClosingWindowWhileTheOthersStillWork' "began to retire while the first still held its grace"
 mutate "$test" "$scratch/t2.go" "$drop_began"
@@ -81,7 +81,7 @@ overlay c2b "$realm" "$scratch/m2.go" "$test" "$scratch/t2.go"
 expect_pass "serial announce passes undetected when that assertion is removed" "$scratch/c2b.json" 'TestEverySubscriberHearsOfAClosingWindowWhileTheOthersStillWork'
 
 echo "== the subscribers hear before the source owner is retired"
-mutate "$realm" "$scratch/m3.go" 'a = s.index("\tif r.onRetire != nil {\n\t\tr.onRetire(scope.Principal().Owner())\n\t}\n"); blk = s[a:a + len("\tif r.onRetire != nil {\n\t\tr.onRetire(scope.Principal().Owner())\n\t}\n")]; s = s.replace(blk, ""); s = s.replace("\tconcurrently(len(subscribers), func(i int) { subscribers[i](key) })\n}", "\tconcurrently(len(subscribers), func(i int) { subscribers[i](key) })\n" + blk + "}")'
+mutate "$realm" "$scratch/m3.go" 'a = s.index("\tif r.onRetire != nil {\n\t\tr.onRetire(scope.Principal().Owner())\n\t}\n"); blk = s[a:a + len("\tif r.onRetire != nil {\n\t\tr.onRetire(scope.Principal().Owner())\n\t}\n")]; s = s.replace(blk, ""); s = s.replace("\tr.concurrently(len(subscribers), func(i int) { subscribers[i](key) })\n}", "\tr.concurrently(len(subscribers), func(i int) { subscribers[i](key) })\n" + blk + "}")'
 overlay c3 "$realm" "$scratch/m3.go"
 expect_trip "subscribers before the owner are detected by the order assertion" "$scratch/c3.json" 'TestTheSourceOwnerOfEveryWindowIsRetiredBeforeItsSubscribersHear' "a subscriber heard of a window before the source owners were retired"
 mutate "$test" "$scratch/t3.go" 'import re; s = re.sub(r"\trequire\.Zero\(t, early[^\n]*\n", "\t_ = early\n", s)'
@@ -89,7 +89,7 @@ overlay c3b "$realm" "$scratch/m3.go" "$test" "$scratch/t3.go"
 expect_pass "subscribers before the owner pass undetected when the order assertion is removed" "$scratch/c3b.json" 'TestTheSourceOwnerOfEveryWindowIsRetiredBeforeItsSubscribersHear'
 
 echo "== a failed retirement is swallowed"
-mutate "$realm" "$scratch/m4.go" 's = s.replace("\tif failure != nil {\n\t\tpanic(failure)\n\t}\n", "")'
+mutate "$realm" "$scratch/m4.go" 's = s.replace("\tif failed {\n\t\tpanic(failure)\n\t}\n", "\tif failed {\n\t\t_ = failure\n\t}\n")'
 overlay c4 "$realm" "$scratch/m4.go"
 expect_trip "a swallowed failure is detected by: the failure reaches the sweep's caller" "$scratch/c4.json" 'TestAFailingRetirementDoesNotHideTheResultOfAnother' "the failure reaches the sweep's caller"
 mutate "$test" "$scratch/t4.go" 'import re; s = re.sub(r"\trequire\.Equal\(t, \"window 3 failed to retire\", <-recovered[^\n]*\n", "\t<-recovered\n", s)'
@@ -103,6 +103,22 @@ expect_trip "a sweep that does not wait is detected by: it returned while retire
 mutate "$test" "$scratch/t5.go" 'import re; s = re.sub(r"\t\t\tselect \{\n\t\t\tcase <-done:\n\t\t\t\tt\.Fatal\(\"the sweep returned while[^\n]*\n\t\t\tdefault:\n\t\t\t\}\n", "", s)'
 overlay c5b "$realm" "$scratch/m5.go" "$test" "$scratch/t5.go"
 expect_pass "a sweep that does not wait passes undetected when that assertion is removed" "$scratch/c5b.json" 'TestSixPagesAreRetiredInTheTimeOfOneLadder'
+
+echo "== concurrently waits for all but the last call"
+mutate "$realm" "$scratch/m7.go" 's = s.replace("\t\tgroup.Add(1)\n\t\tgo func() {\n\t\t\tdefer group.Done()", "\t\tif i != n-1 {\n\t\t\tgroup.Add(1)\n\t\t}\n\t\tgo func() {\n\t\t\tif i != n-1 {\n\t\t\t\tdefer group.Done()\n\t\t\t}")'
+overlay c7 "$realm" "$scratch/m7.go"
+expect_trip "a wait that skips the last call is detected by the gate assertion" "$scratch/c7.json" 'TestConcurrentlyWaitsForEveryCallNotJustAllButOne' "still held its gate"
+mutate "$test" "$scratch/t7.go" 'import re; s = re.sub(r"\t\tselect \{\n\t\tcase <-returned:\n\t\t\tt\.Fatalf\(\"concurrently returned while[^\n]*\n\t\tdefault:\n\t\t\}\n", "", s)'
+overlay c7b "$realm" "$scratch/m7.go" "$test" "$scratch/t7.go"
+expect_pass "that fault passes undetected when the gate assertion is removed" "$scratch/c7b.json" 'TestConcurrentlyWaitsForEveryCallNotJustAllButOne'
+
+echo "== a panic is logged without its own stack (only the first is raised)"
+mutate "$realm" "$scratch/m8.go" 's = s.replace("r.log.Errorw(context.Background(), retirementPanicMessage, \"panic\", fmt.Sprint(recovered), \"stack\", stack)", "_, _ = stack, fmt.Sprint(recovered)")'
+overlay c8 "$realm" "$scratch/m8.go"
+expect_trip "unlogged panics are detected by the both-logged assertion" "$scratch/c8.json" 'TestEveryPanickingRetirementIsLoggedWithItsOwnStack' "both panics are logged"
+mutate "$test" "$scratch/t8.go" 'import re; s = re.sub(r"\trequire\.Len\(t, logged, 2[^\n]*\n", "", s); s = re.sub(r"\trequire\.Equal\(t, map\[string\]bool[^\n]*\n", "", s).replace("seen := map[string]bool{}", "seen := map[string]bool{}\n\t_ = seen")'
+overlay c8b "$realm" "$scratch/m8.go" "$test" "$scratch/t8.go"
+expect_pass "that fault passes undetected when the both-logged assertion is removed" "$scratch/c8b.json" 'TestEveryPanickingRetirementIsLoggedWithItsOwnStack'
 
 echo "== a goroutine of the retirement is left behind"
 mutate "$realm" "$scratch/m6.go" 's = s.replace("\tvar (\n\t\tgroup   sync.WaitGroup", "\tgo func() { <-make(chan struct{}) }()\n\tvar (\n\t\tgroup   sync.WaitGroup")'

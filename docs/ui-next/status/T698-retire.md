@@ -15,7 +15,7 @@ The fifth test (no goroutine left behind) is an end-state guard and passes on th
 
 ## Design
 
-- `sweep` runs `announce` of every retired window in its own goroutine; `announce` runs the source owner first (`onRetire`), then every subscriber, each in its own goroutine. Both go through `concurrently(n, fn)`: it returns when all calls have returned (no goroutine outlives it), runs a single call in the caller's goroutine, and keeps a panic: the others run to their end, then the first panic is raised again in the caller.
+- `sweep` runs `announce` of every retired window in its own goroutine; `announce` runs the source owner first (`onRetire`), then every subscriber, each in its own goroutine. Both go through `concurrently(n, fn)`: it returns when all calls have returned (no goroutine outlives it), runs a single call in the caller's goroutine, and every panic is logged (`a window retirement panicked`) with `debug.Stack()` of its own goroutine; the others run to their end, then the first is raised again in the caller.
 - Orders kept, each with a test: the source owner of a window is retired before any subscriber of that window hears (`TestTheSourceOwnerOfEveryWindowIsRetiredBeforeItsSubscribersHear`); the window is already refused when the subscribers hear; the signal runs outside the realm's lock (existing tests); `sweep` and the close event return only after the retirements are over (`...TimeOfOneLadder`, `...LeavesNoGoroutineBehind`). The order among subscribers, and among windows, was never documented and is gone (`OnRetire` says so).
 - Bound: none added. At most `maxRealmWindows` (64) windows are live to retire and three services subscribe, so at most about 200 goroutines for the time of one ladder; each window's sessions already close concurrently inside `ReleaseOwned`.
 - Errors: a subscriber returns nothing (`CloseOwned` logs a `CLOSE_TIMEOUT` itself, `awaitGone` of #808), so the only failure channel is a panic. It is not swallowed and does not stop another window.
@@ -36,4 +36,9 @@ The fifth test (no goroutine left behind) is an end-state guard and passes on th
 
 - Not run with real shells: a seam run with 6 pages and SIGHUP-ignoring shells (the issue's 4.8 to 12.3 s figure) was not repeated; the claim is the realm's ordering, shown with gates. The exec wrapper's subscriber and `ReleaseOwned` were not changed.
 - `GOOS=darwin go vet` without the `purego` tag; macOS behaviour.
-- The panic is re-raised with the stack of the caller, not of the goroutine that panicked.
+- The re-raised panic carries the caller's stack; the log has each real one.
+
+## Review follow-up (ReviewRetirement: MERGE, real shells 6 pages gone at 1.51 s vs up to 9.0 s on main)
+
+- Docs: B-108 closed in `T1-go.md` and `backend-catalog-terminal.md`.
+- Every panic logged with its own stack, test with two panicking subscribers; deterministic wait-for-all test (a gated call, each position in turn) with its control. `controls.sh` whole: ALL CONTROLS BEHAVED. `go test -race -count=5 ./backend/pkg/invocation/...` ok; `-count=1` terminal and exec ok; lint 0 issues; vet linux and darwin (`-tags purego`) clean.
