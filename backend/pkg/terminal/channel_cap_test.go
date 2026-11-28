@@ -5,6 +5,7 @@ package terminal
 import (
 	"encoding/base64"
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -252,7 +253,9 @@ func TestEveryCallThatNamesAChannelTerminalByItsCapabilityAnswersTheOneNotFoundF
 	}, settle, 5*time.Millisecond, "the shell runs cat in the foreground")
 	cwd, err := m.ChannelCwd(a.Cap)
 	require.NoError(t, err)
-	assert.True(t, strings.HasSuffix(cwd.Path, a.Cwd), "where the shell is: its physical path ends with the one it started in (%q, %q)", cwd.Path, a.Cwd)
+	physical, err := filepath.EvalSymlinks(a.Cwd)
+	require.NoError(t, err)
+	assert.Equal(t, physical, cwd.Path, "where the shell is: its physical path, the one the directory it started in resolves to (%q)", a.Cwd)
 	got, err := m.ListChannels([]string{b.Cap, "no-such-capability", a.Cap, b.Cap})
 	require.NoError(t, err)
 	require.Len(t, got, 3, "only for the capabilities that open a terminal, in the order given")
