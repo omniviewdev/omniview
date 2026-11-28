@@ -311,19 +311,18 @@ func (r *Relay) startListenerLocked() {
 				r.mu.Unlock()
 				return
 			}
+			if r.unlisten != nil { // the loop stopped: nothing answers on the address any more, and no one who sees the relay stopped sees it listed
+				r.unlisten()
+				r.unlisten = nil
+			}
 			r.listener = nil
 			r.httpServer = nil
 			r.listenErr = serveErr.Error()
 			listenerCancel()
 			r.listenerCancel = nil
-			unlisten := r.unlisten // the loop stopped: nothing answers on the address any more
-			r.unlisten = nil
 			r.authority.Retire()
 			status := r.statusLocked()
 			r.mu.Unlock()
-			if unlisten != nil {
-				unlisten()
-			}
 			r.emit(EventStatus, status)
 		}
 	}()
