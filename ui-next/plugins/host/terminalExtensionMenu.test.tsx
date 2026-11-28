@@ -7,13 +7,13 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { useSyncExternalStore } from 'react';
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest';
 import { CollectionRootSource } from '../../../packages/omniviewdev-runtime/src/resource/v2/extensionRoot';
-import { createPanelStore } from '../../shell/core/panel';
+import { createPanelStore, HOST } from '../../shell/core/panel';
 import { installPopover, teardown } from '../../shell/notices/testing';
 import { staticPanel } from '../../shell/panel/testing';
-import { createTerminalSessions } from '../../shell/panel/terminal/TerminalSessions';
+import { createTerminals } from '../../shell/panel/terminal/terminals';
 import { TERMINAL_TOOL } from '../../shell/panel/terminal/tool';
-import { fakeTerminalFeed } from '../../shell/panel/terminal/testing';
-import { useTerminalMenu, type TerminalMenuScreen } from '../../shell/panel/terminal/menu/useTerminalMenu';
+import { fakeEngineLoader, fakeTerminalFeed } from '../../shell/panel/terminal/testing';
+import { DEFAULT_PREFERENCES_SOURCE } from '../../shell/panel/terminal/preferences';
 import type { ResourceShellFrame, ResourceShellTransport } from '../../shell/panel/terminal/resourceShellFeed';
 import { StaticShell, staticTabs } from '../../shell/testing';
 import type { DetailPageV1, ResourceShellRequestV1, TerminalMenuOriginV1 } from '../contract/v1';
@@ -50,13 +50,6 @@ const page: DetailPageV1 = { kind: 'detail', definition: { kind: 'Item', tile: {
   usePage: () => {
     throw new Error('Terminal menu must not mount the foreground page');
   } };
-const emulated: TerminalMenuScreen = { clear: vi.fn(), selectAll: vi.fn(), paste: vi.fn(), mouseReporting: () => false, decorateInput: vi.fn(),
-  ...source({ ready: true, selected: false, error: undefined }) };
-function Body({ id }: { readonly id: string }) {
-  const { host } = useTerminalMenu({ sessionId: id, screen: emulated, status: { state: 'running' }, openFind: vi.fn(), copy: vi.fn() });
-  return <div {...host} tabIndex={0} data-testid={`screen:${id}`} aria-label="Test terminal screen" />;
-}
-
 function source<T>(initial: T) {
   let state = initial;
   const listeners = new Set<() => void>();
@@ -94,7 +87,11 @@ afterAll(() => {
 
 async function workspace(surface: TerminalMenuOriginV1['surface'] = 'session-tab', realFeature = false, navigation = false) {
   const panel = createPanelStore(); panel.registerTool(TERMINAL_TOOL); panel.syncPlugins([{ id: owner, tools: [] }]);
-  const sessions = createTerminalSessions(panel); detach.push(sessions.attach());
+  const terminals = createTerminals(panel, {
+    load: fakeEngineLoader().load, preferences: DEFAULT_PREFERENCES_SOURCE,
+    here: () => ({ plugin: HOST, id: 'local', title: 'Local terminal', open: () => fakeTerminalFeed() }),
+  });
+  const { sessions } = terminals; detach.push(sessions.attach());
   const authority = new ExtensionAuthority();
   await authority.replaceSources([ownerRow, peerRow]);
   const pair = (target: string, offer: string, fields: string[]) => ({ point: target, offer: `${peer}/${offer}`, ownerPin: ownerRow.pin,
@@ -150,10 +147,14 @@ async function workspace(surface: TerminalMenuOriginV1['surface'] = 'session-tab
   const menu = createTerminalExtensionMenu({ authority, sessions, shells, panel, tabs, ...(realFeature ? {} : { evaluate }) });
   const openDetail = vi.fn<ExtensionMenuNavigation['openDetail']>((_row, _origin, allowed) => allowed());
   const dispatch: ExtensionMenuNavigation = { canOpenDetail: () => navigation, openDetail, canOpenSidebar: () => false, openSidebar: () => false, onDetailReady: vi.fn() };
-  const bindings = { ...staticPanel({ store: panel, renderBody: session => <Body id={session.id} /> }), terminalMenu: menu.open, terminalMenuContent: <TerminalMenuContent menu={menu} /> };
+  const bindings = {
+    ...staticPanel({ store: panel, renderBody: (session, visible) => surface === 'terminal-body' ? terminals.bodyOf(session, visible) : null }),
+    terminalMenu: menu.open, terminalMenuContent: <TerminalMenuContent menu={menu} />,
+  };
   render(<ExtensionMenuNavigationContext.Provider value={dispatch}><MenuHost><StaticShell tabs={tabs} registration={{ plugin: { name: 'Terminal test' } }} panel={bindings} /></MenuHost></ExtensionMenuNavigationContext.Provider>);
   const tab = (id: string) => document.querySelector<HTMLElement>(`[data-tab-id="${id}"] [role="tab"]`)!;
-  return { panel, sessions, authority, policy, evaluate, pending, frames, transport, rootSource, factSource, handle, request, activated, shells, a, b, first, second, facts, seen, tab, menu, plugins, entry, connections, tabs, openDetail };
+  const body = (id: string) => document.querySelector<HTMLElement>(`[data-session-id="${id}"] [data-shell-part="terminalScreen"]`)!;
+  return { panel, terminals, sessions, authority, policy, evaluate, pending, frames, transport, rootSource, factSource, handle, request, activated, shells, a, b, first, second, facts, seen, tab, body, menu, plugins, entry, connections, tabs, openDetail };
 }
 
 const row = async () => screen.findByRole('menuitem', { name: 'Describe item' });
@@ -243,13 +244,49 @@ it('keeps a body-only point off session tabs and verifies the visible xterm befo
   await act(async () => {
     w.panel.activateSession(w.second);
   });
-  open(screen.getByTestId(`screen:${w.second}`));
+  open(w.body(w.second));
   expect(await row()).toBeVisible(); expect(screen.getByRole('menuitem', { name: /^Find/ })).toBeVisible();
   const reply = await w.transport.create.mock.results[1].value;
   await act(async () => {
     w.frames.get(reply.id)!({ state: 'detached', data: '' });
   });
   expect(screen.queryByRole('menu')).toBeNull(); expect(w.evaluate).not.toHaveBeenCalled();
+});
+
+it('keeps a body result bound to its visible split pane, not its active sibling', async () => {
+  const w = await workspace('terminal-body');
+  await act(async () => {
+    w.sessions.open({ plugin: HOST, id: 'local', sessionId: 'local', title: 'Local terminal',
+      open: () => fakeTerminalFeed({ directory: async () => ({ state: 'known', path: '/home/user', source: 'shell' }) }) });
+    await w.terminals.splitHere('local', 400);
+    w.panel.activateSession(w.second); // Put the resource shell in the new pane.
+    w.panel.activateSession('local');
+  });
+  const target = w.body(w.second);
+  expect(target).toBeVisible(); expect(w.body('local')).toBeVisible();
+  await openAndSettle(target);
+  const info = await row();
+  expect(w.panel.getSnapshot().active.terminal).toBe('local');
+  expect(w.seen).toHaveBeenLastCalledWith(expect.objectContaining({ surface: 'terminal-body', extensionScopeKey: 'b' }));
+  fireEvent.click(info);
+  await waitFor(() => {
+    expect(w.evaluate).toHaveBeenCalledTimes(1);
+  });
+  const signal = w.evaluate.mock.calls[0][1].signal;
+  await act(async () => {
+    w.panel.activateSession('local');
+  });
+  expect(signal.aborted).toBe(false);
+  await act(async () => {
+    w.panel.activateSession(w.second);
+    w.panel.activateSession(w.first);
+  });
+  expect(target).not.toBeVisible(); expect(w.body('local')).toBeVisible();
+  expect(signal.aborted).toBe(true);
+  await act(async () => {
+    w.pending.resolve({ text: 'Late result from the hidden terminal' });
+  });
+  expect(screen.queryByText('Late result from the hidden terminal')).toBeNull();
 });
 
 it('screens before mounting owner hooks; restored labels or forged target metadata do not bind a feed', async () => {

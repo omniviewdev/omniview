@@ -342,6 +342,8 @@ that opts in. Never mirror a tab item into the emulator, or register a global `c
    session's owner adapter, behind its own boundary and after static point/consent screening.
    The owner revalidates the authorized resource and returns `{extensionScopeKey, extensionRoot, outlet}` or
    nothing. Match the current row's full resource identity and connection to launch. No witness or usable projection: no contributed rows.
+   In a split terminal, each visible pane can offer its own body menu. Moving focus to a sibling
+   does not retire the result; replacing or hiding the target pane does, even if its session tab remains.
 3. **Fence a menu opening.** Keep a host-only token for window, trigger, session ID and
    generation, surface, producer, subject/connection, resource incarnation, both source
    lifetimes, binding revision and opening sequence. Evaluate the granted predicates on

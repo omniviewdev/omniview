@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -133,17 +134,74 @@ func TestExtensionReadCoverageAndRowBudget(t *testing.T) {
 	require.True(t, result.Page.Truncated)
 }
 
+func newTestReadLane(t *testing.T) (*ExtensionReadService, *graphPageWindow, *invocation.Scope) {
+	t.Helper()
+	realm := invocation.NewWindowRealm(nil)
+	s, _ := NewExtensionReadService(nil, realm, nil, nil)
+	window := &graphPageWindow{id: 1}
+	scope, err := realm.AdmitWindow(window)
+	require.NoError(t, err)
+	return s, window, scope
+}
+
+func TestExtensionReadReusedWindowDoesNotInheritRetirementOrSupersession(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		retiring, resume := make(chan struct{}, 1), make(chan struct{}, 1)
+		defer close(resume)
+		var connected atomic.Bool
+		connected.Store(true)
+		realm := invocation.NewWindowRealm(func(string) { retiring <- struct{}{}; <-resume },
+			invocation.WithPageSweep(func(client string) bool { return client == "new" && connected.Load() }, time.Second))
+		s, _ := NewExtensionReadService(nil, realm, nil, nil)
+		old := &graphPageWindow{id: 1, client: "old"}
+		oldScope, err := realm.AdmitWindow(old)
+		require.NoError(t, err)
+		<-retiring
+		time.Sleep(time.Minute) // Let the ID be reused while retirement still waits for the old owner.
+		window := &graphPageWindow{id: 1, client: "new"}
+		scope, err := realm.AdmitWindow(window)
+		require.NoError(t, err)
+		require.NotSame(t, oldScope, scope)
+
+		binding := extensionread.Binding{Point: "owner/tabs", Offer: "peer/detail"}
+		active, finish := make(chan context.Context, 1), make(chan struct{})
+		defer close(finish)
+		result := make(chan ExtensionReadResult, 1)
+		go func() {
+			result <- s.inLane(t.Context(), window, scope, binding, func(ctx context.Context) ExtensionReadResult {
+				active <- ctx
+				<-finish
+				return ExtensionReadResult{State: "ready"}
+			})
+		}()
+		ctx := <-active
+		resume <- struct{}{}
+		synctest.Wait()
+		require.NoError(t, ctx.Err(), "the retired scope must not cancel its replacement")
+		late := s.inLane(t.Context(), old, oldScope, binding, func(context.Context) ExtensionReadResult {
+			t.Error("the old caller reached the provider")
+			return ExtensionReadResult{}
+		})
+		require.Equal(t, "unavailable", late.State)
+		require.NoError(t, ctx.Err(), "the old caller must not supersede the new reservation")
+		connected.Store(false)
+		<-retiring
+		resume <- struct{}{}
+		require.Equal(t, "unavailable", (<-result).State, "retiring the current scope must cancel its own read")
+		require.ErrorIs(t, ctx.Err(), context.Canceled)
+	})
+}
+
 func TestExtensionReadLaneAbortsLateSuccessAndFailure(t *testing.T) {
 	for _, stale := range []ExtensionReadResult{{State: "ready", Page: &ExtensionReadPage{Rows: []map[string]any{{"label": "old"}}}}, {State: "failed"}} {
 		synctest.Test(t, func(t *testing.T) {
-			s := &ExtensionReadService{}
-			key := invocation.WindowIdentity{}
+			s, window, scope := newTestReadLane(t)
 			binding := extensionread.Binding{Point: "owner/tabs", Offer: "peer/detail"}
 			entered := make(chan context.Context, 1)
 			release := make(chan struct{})
 			first := make(chan ExtensionReadResult, 1)
 			go func() {
-				first <- s.inLane(context.Background(), key, binding, func(ctx context.Context) ExtensionReadResult {
+				first <- s.inLane(context.Background(), window, scope, binding, func(ctx context.Context) ExtensionReadResult {
 					entered <- ctx
 					<-release // Even a provider ignoring cancellation cannot publish.
 					return stale
@@ -152,7 +210,7 @@ func TestExtensionReadLaneAbortsLateSuccessAndFailure(t *testing.T) {
 			ctx := <-entered
 			second := make(chan ExtensionReadResult, 1)
 			go func() {
-				second <- s.inLane(context.Background(), key, binding, func(context.Context) ExtensionReadResult { return ExtensionReadResult{State: "failed"} })
+				second <- s.inLane(context.Background(), window, scope, binding, func(context.Context) ExtensionReadResult { return ExtensionReadResult{State: "failed"} })
 			}()
 			synctest.Wait()
 			require.ErrorIs(t, ctx.Err(), context.Canceled)
@@ -168,13 +226,12 @@ func TestExtensionReadLaneAbortsLateSuccessAndFailure(t *testing.T) {
 
 func TestExtensionReadDeadlineDoesNotReleaseHungProviderToNewCalls(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		s := &ExtensionReadService{}
-		key := invocation.WindowIdentity{}
+		s, window, scope := newTestReadLane(t)
 		binding := extensionread.Binding{Point: "owner/tabs", Offer: "peer/detail"}
 		release := make(chan struct{})
 		result := make(chan ExtensionReadResult, 1)
 		go func() {
-			result <- s.inLane(context.Background(), key, binding, func(ctx context.Context) ExtensionReadResult {
+			result <- s.inLane(context.Background(), window, scope, binding, func(ctx context.Context) ExtensionReadResult {
 				<-release
 				if !errors.Is(ctx.Err(), context.DeadlineExceeded) {
 					t.Error("provider did not receive the deadline")
@@ -186,7 +243,7 @@ func TestExtensionReadDeadlineDoesNotReleaseHungProviderToNewCalls(t *testing.T)
 		time.Sleep(5 * time.Second) // virtual clock
 		require.Equal(t, "failed", (<-result).State)
 		called := false
-		res := s.inLane(context.Background(), key, binding, func(context.Context) ExtensionReadResult { called = true; return ExtensionReadResult{} })
+		res := s.inLane(context.Background(), window, scope, binding, func(context.Context) ExtensionReadResult { called = true; return ExtensionReadResult{} })
 		require.False(t, called)
 		require.NotEqual(t, "ready", res.State)
 		close(release)

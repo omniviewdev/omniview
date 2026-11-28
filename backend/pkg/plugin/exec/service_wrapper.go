@@ -171,11 +171,13 @@ func (s *ServiceWrapper) admitTerminalWindow(window application.Window) (*invoca
 	if s.Realm == nil || window == nil {
 		return nil, apperror.Forbidden("Access denied", "A terminal belongs to the window that opens it.")
 	}
-	// Subscribe before admitting the first window. A delayed callback names the retired scope,
-	// not the current occupant of a reused window ID.
+	// Subscribe both lanes before admission. A provider that blocks while closing its shell
+	// must not delay local terminal retirement, and only the retired scope owns the resource shell.
 	s.retire.Do(func() {
 		s.Realm.OnScopeRetire(func(key invocation.WindowIdentity, scope *invocation.Scope) {
 			s.Ctrl.releaseResourceShells(shellOwner{window: key, scope: scope})
+		})
+		s.Realm.OnScopeRetire(func(key invocation.WindowIdentity, _ *invocation.Scope) {
 			s.Ctrl.ReleaseOwnedTerminals(key, terminal.ClosedByWindow)
 		})
 	})

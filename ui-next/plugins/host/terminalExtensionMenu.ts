@@ -85,8 +85,10 @@ export function createTerminalExtensionMenu({ shells, panel, sessions, authority
       let stopDetail: (() => void) | undefined, stopVisit: (() => void) | undefined;
       const session = () => panel.selectors.session(panel.getSnapshot(), id);
       const current = () => {
-        const state = panel.getSnapshot(), shown = panel.selectors.shown(state), clicked = panel.selectors.session(state, id);
-        return phase !== 'closed' && !document.hidden && shown?.tool === 'terminal' && (surface === 'session-tab' || shown.session === id) &&
+        const state = panel.getSnapshot(), clicked = panel.selectors.session(state, id);
+        // All session tabs of the shown tool are targets; a body must be on screen, even when its sibling pane is active.
+        const visible = surface === 'session-tab' ? panel.selectors.shown(state)?.tool === 'terminal' : panel.selectors.isShown(state, id);
+        return phase !== 'closed' && !document.hidden && visible &&
           clicked?.tool === 'terminal' && clicked.plugin === entry.id && clicked.state === 'running' && sessions.feedOf(id) === feed &&
           shells.originOf(feed) === bound && bound.current() && (!witness || witness.current()) && authority.hasMenuBindings(entry.id, artifact.generation);
       };

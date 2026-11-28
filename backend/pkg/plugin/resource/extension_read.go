@@ -73,15 +73,21 @@ func NewExtensionReadService(ctrl Controller, realm *invocation.WindowRealm, bou
 		mu: sync.Mutex{}, windows: nil,
 	}
 	if realm != nil {
-		realm.OnRetire(func(key invocation.WindowIdentity) {
-			s.mu.Lock()
-			defer s.mu.Unlock()
-			if lane := s.windows[key]; lane != nil {
-				lane.invalidate(nil)
-			}
-		})
+		realm.OnScopeRetire(s.retireWindow)
 	}
 	return s, s.invalidatePolicy
+}
+
+func (s *ExtensionReadService) retireWindow(key invocation.WindowIdentity, scope *invocation.Scope) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if lane := s.windows[key]; lane != nil {
+		for _, task := range [2]*extensionReadTask{lane.active, lane.waiting} {
+			if task != nil && task.scope == scope {
+				task.cancel()
+			}
+		}
+	}
 }
 
 // ReadRelatedV1 accepts only two private selectors. The operation, row shape,
@@ -101,18 +107,18 @@ func (s *ExtensionReadService) ReadRelatedV1(ctx context.Context, encoded string
 		return unavailable
 	}
 	window, _ := ctx.Value(application.WindowKey).(application.Window)
-	if window == nil {
+	scope := s.realm.ScopeForWindow(window)
+	if scope == nil {
 		return unavailable
 	}
-	ctx = s.realm.Context(ctx)
-	ctx, err := s.boundary.Admit(ctx, "resource.ReadRelatedV1", referenceTarget(owner, resourcev2.AccessRoute{Connection: req.Root.Connection}, req.Root.Reference))
+	ctx, err := s.boundary.Admit(scope.Context(ctx), "resource.ReadRelatedV1", referenceTarget(owner, resourcev2.AccessRoute{Connection: req.Root.Connection}, req.Root.Reference))
 	actor, admitted := invocation.FromContext(ctx)
 	if err != nil || !admitted || actor.Principal().Origin() != invocation.TrustedUI || !actor.OwnedBy(ctx) {
 		return unavailable
 	}
-	return s.inLane(ctx, invocation.IdentityOf(window), req.Binding, func(ctx context.Context) ExtensionReadResult {
-		// Close the gap between admitting the realm and reserving its work slot.
-		if !actor.OwnedBy(s.realm.Context(ctx)) {
+	return s.inLane(ctx, window, scope, req.Binding, func(ctx context.Context) ExtensionReadResult {
+		// A queued reservation must still belong to this caller before provider work starts.
+		if s.realm.ScopeForWindow(window) != scope {
 			return unavailable
 		}
 		return s.read(ctx, owner, req)
@@ -120,6 +126,7 @@ func (s *ExtensionReadService) ReadRelatedV1(ctx context.Context, encoded string
 }
 
 type extensionReadTask struct {
+	scope   *invocation.Scope
 	binding extensionread.Binding
 	ctx     context.Context
 	cancel  context.CancelFunc
@@ -166,16 +173,19 @@ func readStopped(ctx context.Context) ExtensionReadResult {
 
 // Reserve the window under the service lock. A nil lane refuses a hung owner
 // generation. A non-nil predecessor must settle before the reservation can run.
-func (s *ExtensionReadService) reserveLane(window invocation.WindowIdentity, task *extensionReadTask) (*extensionReadLane, <-chan struct{}) {
+func (s *ExtensionReadService) reserveLane(window application.Window, key invocation.WindowIdentity, task *extensionReadTask) (*extensionReadLane, <-chan struct{}) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.windows == nil {
 		s.windows = make(map[invocation.WindowIdentity]*extensionReadLane)
 	}
-	lane := s.windows[window]
+	lane := s.windows[key]
 	if lane == nil {
 		lane = new(extensionReadLane)
-		s.windows[window] = lane
+		s.windows[key] = lane
+	} else if s.realm.ScopeForWindow(window) != task.scope {
+		// A delayed caller must not supersede a read from a newer occupant of the same ID.
+		return nil, nil
 	}
 	if lane.waiting != nil {
 		lane.waiting.cancel()
@@ -217,15 +227,16 @@ func (s *ExtensionReadService) awaitLane(window invocation.WindowIdentity, lane 
 // One physical demand and at most one superseding selection per window. A
 // noncooperative handler holds its slot until settlement, not just until abort.
 // No queued request starts after deselection, policy loss or its own deadline.
-func (s *ExtensionReadService) inLane(parent context.Context, window invocation.WindowIdentity, binding extensionread.Binding, work func(context.Context) ExtensionReadResult) ExtensionReadResult {
+func (s *ExtensionReadService) inLane(parent context.Context, window application.Window, scope *invocation.Scope, binding extensionread.Binding, work func(context.Context) ExtensionReadResult) ExtensionReadResult {
 	ctx, cancel := context.WithTimeout(parent, extensionReadTimeout)
 	defer cancel()
-	t := &extensionReadTask{ctx: ctx, cancel: cancel, binding: binding, done: make(chan struct{})}
-	lane, predecessor := s.reserveLane(window, t)
+	key := invocation.IdentityOf(window)
+	t := &extensionReadTask{ctx: ctx, cancel: cancel, scope: scope, binding: binding, done: make(chan struct{})}
+	lane, predecessor := s.reserveLane(window, key, t)
 	if lane == nil {
 		return unavailableRead()
 	}
-	if predecessor != nil && !s.awaitLane(window, lane, t, predecessor) {
+	if predecessor != nil && !s.awaitLane(key, lane, t, predecessor) {
 		return readStopped(ctx)
 	}
 	answer := make(chan ExtensionReadResult, 1)
@@ -246,7 +257,7 @@ func (s *ExtensionReadService) inLane(parent context.Context, window invocation.
 		s.mu.Lock()
 		lane.active = nil
 		if lane.waiting == nil {
-			delete(s.windows, window)
+			delete(s.windows, key)
 		}
 		close(t.done)
 		s.mu.Unlock()
