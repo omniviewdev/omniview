@@ -435,7 +435,7 @@ export const units = [
     name: 'Probe that the panes probe sees panes that are unequal, a split that is not where the host said, a keyboard that stays, a pane under 80 px, a sash that does not reset or hear its keys, one that is not a Tab stop, panes never fitted, a split with no room, a context for each showing and a violation',
     script: 'ui-next/shell/probes/terminal-probe.mjs',
     env: { FONT_DELAY_MS: '40' },
-    controls: ['panes-unequal', 'panes-wrong-directory', 'panes-focus-stays', 'panes-min-lost', 'panes-reset-lost', 'panes-keys-lost', 'panes-sash-not-a-stop', 'panes-fit-lost', 'panes-full-enabled', 'panes-gl-every-show', 'panes-axe', 'panes-order-lost', 'panes-remounted'],
+    controls: ['panes-unequal', 'panes-wrong-directory', 'panes-focus-stays', 'panes-min-lost', 'panes-reset-lost', 'panes-keys-lost', 'panes-sash-not-a-stop', 'panes-fit-lost', 'panes-full-enabled', 'panes-gl-every-show', 'panes-axe', 'panes-order-lost', 'panes-remounted', 'panes-chords-lost', 'panes-chords-sent-to-shell', 'panes-reload-forgets-layout', 'panes-gone-kept', 'panes-ended-closed'],
     plants: 'page',
     // An ESTIMATE from the laptop, to be set from the first nightly figure.
     seconds: 240,

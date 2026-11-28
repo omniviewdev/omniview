@@ -646,7 +646,12 @@
       "apply-bell-mark-lost",
       "apply-bell-mark-stuck",
       "apply-bell-off-fades",
-      "apply-bell-beeps"
+      "apply-bell-beeps",
+      "panes-chords-lost",
+      "panes-chords-sent-to-shell",
+      "panes-reload-forgets-layout",
+      "panes-gone-kept",
+      "panes-ended-closed"
     ]
   },
   "ui-next/shell/probes/terminal-reattach-b-probe.mjs": {

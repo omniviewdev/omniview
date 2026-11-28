@@ -9655,6 +9655,8 @@ async function checkTerminalReattach(page, base, engine) {
     return held?.open === true && held?.active?.[held?.tool] === second && typeof held?.height === 'number' && held.height !== heightHeldBefore;
   }, 30_000);
   const heightHeld = (await savedPanel()).height;
+  // Two terminals that are tabs of one body are no group of panes: the window's saved panel has no layout, the document it always had (#697 step 6: a group writes one, and only a group does).
+  assert.equal((await savedPanel()).layout, undefined, `${engine}: a window whose terminals are tabs saves no layout of panes`);
   const restoredOpen = await reloadToTerminals([first, second], 'a reload with the second terminal selected and the panel dragged shorter');
   const panelRestored = await panelStateOf(page);
   assert.deepEqual({ open: panelRestored.open, tool: panelRestored.tool, session: panelRestored.session }, { open: panelLeft.open, tool: panelLeft.tool, session: panelLeft.session }, `${engine}: after the reload the panel has the tool and the active session it was left with, open (nothing was pressed): ${JSON.stringify(panelRestored)}`);

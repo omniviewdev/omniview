@@ -11,6 +11,11 @@
 //                 gives three equal panes (panes.three)
 //   panes-order   a split in the middle inserts the new body and moves none that is there: the emulators that were there are the same nodes, still connected, and no node of the deck was removed (panes.keep); the document's order is the screen's,
 //                 body, sash, body, sash, ... from the left, which is the order Tab walks (panes.order)
+//   panes-keys    the pane chords (Control Shift Left and Right and the brackets, Linux and Windows): the keyboard goes to the neighbouring pane, into its emulator, the pane's input says "pane 2 of 3", the tab of its session is the selected one, the ends
+//                 stop for left and right and wrap for the next and the previous, and the shells are sent nothing (panes.keys-focus, panes.chords-quiet)
+//   panes-reload  three panes with uneven shares and the keyboard in the middle one, the page reloads: the same sessions in the same order, the same widths within 2 px, the same active pane, each pane's terminal attached again and no new terminal
+//                 made (panes.reload)
+//   panes-gone    one terminal gone while the page was away: its pane is closed, its share is the others' in proportion, its tab stays, ended (panes.gone); one ended while the page was away: its pane stays and its lane offers Restart (panes.ended)
 //   panes-sash    a drag of the sash moves the line by what the pointer moved, and each emulator's columns follow the share (panes.drag); a drag past either end stops at 80 px (panes.min); a double click shares the room equally (panes.reset);
 //                 the arrow keys move the line by 16 px, Shift by 64, Home to the minimum and Enter equalises (panes.keys); the sash is a Tab stop with a hit area wider than its line (panes.sash)
 //   panes-resize  a window made narrower brings every pane to at least 80 px with nothing overflowing (panes.fit), also when the window changes while the sash is dragged (panes.drag-resize)
@@ -80,7 +85,7 @@ const HELPERS = () => {
 };
 
 export const PANES_PARTS = {
-  panes: ['panes-layout', 'panes-order', 'panes-sash', 'panes-resize', 'panes-full', 'panes-gl', 'panes-axe'],
+  panes: ['panes-layout', 'panes-order', 'panes-keys', 'panes-reload', 'panes-gone', 'panes-sash', 'panes-resize', 'panes-full', 'panes-gl', 'panes-axe'],
 };
 
 const near = (a, b, tolerance = 1) => typeof a === 'number' && Math.abs(a - b) <= tolerance;
@@ -131,6 +136,49 @@ export const PANES_CONTROLS = {
     section: 'panes-order',
     stage: 'split',
     after: (page) => page.evaluate(() => document.querySelector('[data-shell-part="panelDeck"] .xterm').remove()),
+  },
+  // The pane chords are taken before the page hears them.
+  'panes-chords-lost': {
+    assertion: 'panes.keys-focus',
+    section: 'panes-keys',
+    init: () => {
+      window.addEventListener('keydown', (event) => { if (event.ctrlKey && event.shiftKey && (event.code.startsWith('Arrow') || event.code.startsWith('Bracket'))) event.stopImmediatePropagation(); }, true);
+    },
+  },
+  // A key of the chords reaches the shell.
+  'panes-chords-sent-to-shell': {
+    assertion: 'panes.chords-quiet',
+    section: 'panes-keys',
+    stage: 'chords',
+    after: (page) => page.keyboard.type('x'),
+  },
+  // The saved session never holds the layout.
+  'panes-reload-forgets-layout': {
+    assertion: 'panes.reload',
+    section: 'panes-reload',
+    init: () => {
+      const call = window.__host;
+      window.__host = async (id, method, args) => call(id, method, method === 'SaveState' ? JSON.parse(JSON.stringify(args).replaceAll('\\"layout\\"', '\\"layoutx\\"')) : args);
+    },
+  },
+  // The host cannot say which terminals are left: the page keeps every pane of the saved group, the gone one included.
+  'panes-gone-kept': {
+    assertion: 'panes.gone',
+    section: 'panes-gone',
+    init: () => {
+      const call = window.__host;
+      window.__host = async (id, method, args) => {
+        if (method === 'ListChannelTerminals') throw new Error('the host could not list');
+        return call(id, method, args);
+      };
+    },
+  },
+  // The lane of the ended terminal's pane has no Restart.
+  'panes-ended-closed': {
+    assertion: 'panes.ended',
+    section: 'panes-gone',
+    stage: 'ended',
+    after: (page) => page.evaluate(() => document.querySelectorAll('[data-shell-part="terminalRestart"]').forEach((button) => button.remove())),
   },
   // A pane is given a share that makes it 30 px wide, as a page that did not keep the minimum would.
   'panes-min-lost': {
@@ -423,6 +471,174 @@ export function createPanesSections({ check, note, report, runAxe }) {
       check('panes.order', orderProblems.length === 0, `${tag}: four panes after a split in the middle: ${orderProblems.length === 0 ? `the document holds body, sash, body, sash, body, sash, body at x ${walk.map((one) => String(Math.round(one.x))).join(', ')}: Tab walks the screen's order` : orderProblems.join('; ')}`);
     } finally {
       await session.close();
+    }
+  };
+
+  // ------------------------------------------------------------------------------------------------ panes-keys
+  sections['panes-keys'] = async (ctx) => {
+    const { engine, vp } = ctx;
+    const tag = `${engine} ${vp}`;
+    const session = await open(ctx);
+    const { page, host } = session;
+    try {
+      await split(page, host, 0);
+      await split(page, host, 1);
+      await settled(page, host, session);
+      const where = () => page.evaluate(() => ({ ...window.__panes.focus(), label: document.activeElement?.getAttribute('aria-label') ?? '', selected: [...document.querySelectorAll('[data-shell-part="sessionTabs"] [role="tab"]')].findIndex((tab) => tab.getAttribute('aria-selected') === 'true') }));
+      const at = async (index) => until(async () => (await where()).index === index);
+      await page.locator('[data-shell-part="panelDeck"] > [data-shell-part="panelBody"]:not([hidden])').nth(2).locator('.xterm-helper-textarea').focus();
+      const writes = host.log.writes.length;
+      const problems = [];
+      const step = async (chord, index, words) => {
+        await page.keyboard.press(chord);
+        if (!(await at(index))) {
+          const now = await where();
+          problems.push(`${chord} ${words}: the keyboard is in pane ${String(now.index)}, not ${String(index)}`);
+        }
+      };
+
+      await step('Control+Shift+ArrowLeft', 1, 'from the last pane');
+      const middle = await where();
+      if (!/^Terminal input, pane 2 of 3, /.test(middle.label)) problems.push(`the input in the middle pane is called ${JSON.stringify(middle.label)}, not "Terminal input, pane 2 of 3, ..."`);
+      if (middle.selected !== 1) problems.push(`the selected tab is ${String(middle.selected)} while the keyboard is in pane 2`);
+      await step('Control+Shift+ArrowLeft', 0, 'from the middle pane');
+      await page.keyboard.press('Control+Shift+ArrowLeft');
+      if (!(await at(0))) problems.push('Control+Shift+ArrowLeft in the first pane moved the keyboard (a row stops at its end)');
+      await step('Control+Shift+BracketLeft', 2, 'the previous pane wraps from the first');
+      await step('Control+Shift+BracketRight', 0, 'the next pane wraps from the last');
+      await step('Control+Shift+ArrowRight', 1, 'to the right');
+      check('panes.keys-focus', problems.length === 0, `${tag}: the pane chords: ${problems.length === 0 ? 'the keyboard goes left and right (stopping at the ends), to the next and the previous pane (wrapping), into the emulator whose input says "pane 2 of 3", and the selected tab follows' : problems.join('; ')}`);
+      await perturb(ctx, page, 'chords');
+      const sent = host.log.writes.length - writes;
+      check('panes.chords-quiet', sent === 0, `${tag}: ${sent === 0 ? 'the shells were sent nothing by the chords' : `${String(sent)} writes reached the shells while the chords were pressed`}`);
+    } finally {
+      await session.close();
+    }
+  };
+
+  /** Three panes with uneven shares (the first made narrower by the keys, the third wider) and the keyboard in the middle one, saved; what is on screen. */
+  async function threeUneven(session) {
+    const { page, host } = session;
+    await split(page, host, 0);
+    await split(page, host, 1);
+    await settled(page, host, session);
+    await page.locator('[data-shell-part="paneSash"]').first().focus();
+    await page.keyboard.press('Shift+ArrowLeft');
+    await page.keyboard.press('Shift+ArrowLeft');
+    await page.locator('[data-shell-part="paneSash"]').nth(1).focus();
+    await page.keyboard.press('Shift+ArrowRight');
+    await page.locator('[data-shell-part="panelDeck"] > [data-shell-part="panelBody"]:not([hidden])').nth(1).locator('.xterm-helper-textarea').focus();
+    const shape = () => page.evaluate(() => ({ sessions: window.__panes.bodies().map((one) => one.session), widths: window.__panes.bodies().map((one) => one.box.width), active: document.querySelector('[data-shell-part="panelBody"][data-pane-active]')?.getAttribute('data-session-id') ?? null }));
+    // Saved: the window writes its session in a burst after the last change; the layout it holds is the shares on screen.
+    const saved = await until(async () => {
+      const text = (await host.call('GetState', ['main'])).session;
+      if (typeof text !== 'string') return false;
+      try {
+        const layout = JSON.parse(text).panel?.layout?.tools?.terminal;
+        const now = await shape();
+        const total = now.widths.reduce((sum, width) => sum + width, 0);
+        return layout !== undefined && layout.ratios.length === 3 && layout.ratios.every((ratio, index) => Math.abs(ratio - now.widths[index] / total) < 0.005) && layout.sessions.join() === now.sessions.join();
+      } catch {
+        return false;
+      }
+    });
+    return { shape, saved };
+  }
+
+  /** The page loads again and finds its terminals: `attaches` of them attach, and the panes are drawn with their emulators. */
+  async function back(page, host, url, attaches, bodies3) {
+    const before = host.log.attaches.length;
+    await page.goto(url, { waitUntil: 'load' });
+    await page.waitForSelector('[data-shell-part="window"]');
+    await until(() => host.log.attaches.length >= before + attaches);
+    const shown = await page.evaluate(() => (document.querySelector('[data-shell-part="panel"]')?.getBoundingClientRect().height ?? 0) > 0);
+    if (!shown) await page.click('[data-shell-part="panelToggle"]');
+    return until(async () => (await bodies(page)).length === bodies3 && (await bodies(page)).every((one) => one.textarea));
+  }
+
+  // ------------------------------------------------------------------------------------------------ panes-reload
+  sections['panes-reload'] = async (ctx) => {
+    const { engine, vp } = ctx;
+    const tag = `${engine} ${vp}`;
+    const session = await open(ctx);
+    const { page, host } = session;
+    try {
+      const { shape, saved } = await threeUneven(session);
+      const before = await shape();
+      const url = page.url();
+      const made = host.log.created.length;
+      const drawn = await (async () => {
+        await page.goto('about:blank');
+        return back(page, host, url, 3, 3);
+      })();
+      const after = await shape();
+      const problems = [];
+      if (!saved) problems.push('the window never saved the layout it showed');
+      if (!drawn) problems.push(`${String((await bodies(page)).length)} panes after the reload, not 3 with their emulators`);
+      if (after.sessions.join() !== before.sessions.join()) problems.push(`the panes are ${after.sessions.join()} after the reload, not ${before.sessions.join()}`);
+      if (after.widths.some((width, index) => !near(width, before.widths[index], 2))) problems.push(`the widths are ${after.widths.map(rounded).join(', ')} after the reload, not ${before.widths.map(rounded).join(', ')}`);
+      if (after.active !== before.active) problems.push(`the active pane is ${String(after.active)} after the reload, not ${String(before.active)}`);
+      if (host.log.created.length !== made) problems.push(`${String(host.log.created.length - made)} new terminals were made by the reload: the panes did not reattach theirs`);
+      check('panes.reload', problems.length === 0, `${tag}: three panes of ${before.widths.map(rounded).join(', ')} px, the middle one active, then a reload: ${problems.length === 0 ? `the same three sessions in the same order at ${after.widths.map(rounded).join(', ')} px, the same active pane, three terminals attached again and none made` : problems.join('; ')}`);
+    } finally {
+      await session.close();
+    }
+  };
+
+  // ------------------------------------------------------------------------------------------------ panes-gone
+  sections['panes-gone'] = async (ctx) => {
+    const { engine, vp } = ctx;
+    const tag = `${engine} ${vp}`;
+    // One terminal gone while the page was away.
+    const gone = await open(ctx);
+    try {
+      const { page, host } = gone;
+      const { shape, saved } = await threeUneven(gone);
+      const before = await shape();
+      const url = page.url();
+      const ids = host.log.created.map((made) => made.id);
+      await page.goto('about:blank');
+      host.vanish(ids[1]);
+      const drawn = await back(page, host, url, 2, 2);
+      const after = await shape();
+      const tabs = await page.evaluate(() => [...document.querySelectorAll('[data-shell-part="sessionTabs"] [role="tab"]')].map((tab) => tab.getAttribute('aria-label') ?? ''));
+      const share = (widths, index) => widths[index] / widths.reduce((sum, width) => sum + width, 0);
+      const problems = [];
+      if (!saved) problems.push('the window never saved the layout it showed');
+      if (!drawn || after.sessions.length !== 2) problems.push(`${String(after.sessions.length)} panes after the reload, not 2 (the terminal that is gone closes its pane)`);
+      else {
+        if (after.sessions.join() !== [before.sessions[0], before.sessions[2]].join()) problems.push(`the panes are ${after.sessions.join()}, not ${[before.sessions[0], before.sessions[2]].join()}`);
+        // Its share goes to the others in proportion: the first of the two has what it had of what the two had together.
+        const wanted = before.widths[0] / (before.widths[0] + before.widths[2]);
+        if (Math.abs(share(after.widths, 0) - wanted) > 0.01) problems.push(`the first pane has ${String(Math.round(share(after.widths, 0) * 1000) / 10)} percent of the room, not ${String(Math.round(wanted * 1000) / 10)} (its share of what the two kept)`);
+      }
+
+      if (tabs.length !== 3 || !/ended/.test(tabs[1] ?? '')) problems.push(`the tabs are ${JSON.stringify(tabs)}: the tab of the gone terminal stays, ended`);
+      check('panes.gone', problems.length === 0, `${tag}: one terminal gone while the page was away: ${problems.length === 0 ? `its pane is closed, the other two have ${after.widths.map(rounded).join(' and ')} px in the proportion they had, and its tab stays, ended` : problems.join('; ')}`);
+    } finally {
+      await gone.close();
+    }
+
+    // One terminal ended while the page was away: its pane stays, and its lane offers Restart.
+    const ended = await open(ctx);
+    try {
+      const { page, host } = ended;
+      const { shape } = await threeUneven(ended);
+      const before = await shape();
+      const url = page.url();
+      const ids = host.log.created.map((made) => made.id);
+      await page.goto('about:blank');
+      host.end(ids[1]);
+      const drawn = await back(page, host, url, 3, 3);
+      await perturb(ctx, page, 'ended');
+      const after = await shape();
+      const restart = await page.evaluate(() => [...document.querySelectorAll('[data-shell-part="panelDeck"] > [data-shell-part="panelBody"]:not([hidden])')].map((body) => body.querySelector('[data-shell-part="terminalRestart"]') !== null));
+      const problems = [];
+      if (!drawn || after.sessions.join() !== before.sessions.join()) problems.push(`${String(after.sessions.length)} panes after the reload (${after.sessions.join()}), not the 3 it had`);
+      if (restart.join() !== 'false,true,false') problems.push(`the panes that offer Restart are ${JSON.stringify(restart)}, not only the middle one`);
+      check('panes.ended', problems.length === 0, `${tag}: one terminal ended while the page was away: ${problems.length === 0 ? 'its pane stays and its lane offers Restart, the others run' : problems.join('; ')}`);
+    } finally {
+      await ended.close();
     }
   };
 
