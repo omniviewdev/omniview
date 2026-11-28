@@ -404,7 +404,7 @@ export const units = [
     name: 'Probe that the settings probe sees a setting the terminal never hears, an emulator made for a change, a scrollback lost by it, and a font measured before it loaded (when the terminal is made and while it is open)',
     script: 'ui-next/shell/probes/terminal-probe.mjs',
     env: { FONT_DELAY_MS: '40' },
-    controls: ['settings-not-live', 'settings-recreate', 'settings-scrollback-lost', 'settings-font-unloaded-open', 'settings-font-unloaded-live'],
+    controls: ['settings-not-live', 'settings-recreate', 'settings-scrollback-lost', 'settings-font-unloaded-open', 'settings-font-unloaded-live', 'settings-cell-unmeasured'],
     plants: 'page',
     // An ESTIMATE from the laptop, to be set from the first nightly figure.
     seconds: 100,

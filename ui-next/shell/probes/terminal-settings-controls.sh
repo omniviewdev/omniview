@@ -49,6 +49,7 @@ probe settings-recreate settings.live
 probe settings-scrollback-lost settings.live
 probe settings-font-unloaded-open settings.font-open
 probe settings-font-unloaded-live settings.font-live
+probe settings-cell-unmeasured settings.font-open
 
 # ------------------------------------------------------------------------------------------------ source and go
 # plant FILE SED-EXPRESSION: puts the fault in, and fails the control when the expression changed nothing.
@@ -78,8 +79,12 @@ control() {
     unplant
     return
   fi
-  if "$@" >/dev/null 2>&1; then
+  local out
+  if out="$("$@" 2>&1)"; then
     say "$name" "WRONG: not detected"
+    wrong=$((wrong + 1))
+  elif grep -qE '\[build failed\]|\[setup failed\]|Transform failed|Failed to parse|^SyntaxError|Unexpected token|declared and not used|imported and not used' <<<"$out"; then
+    say "$name" "WRONG: the planted fault does not compile, so no test ran against it"
     wrong=$((wrong + 1))
   else
     say "$name" "ok: clean passes, planted fails"
@@ -96,10 +101,13 @@ control "page cursor not applied" $terminal/xtermEngine.ts '/terminal.options.cu
 control "page reads the legacy blink" $terminal/preferences.ts "s/read('blinkingCursor')/read('cursorBlink')/" vt $terminal/preferences.test.ts
 control "page bound not held" $terminal/preferences.ts 's/fontSize: { min: 6, max: 72 }/fontSize: { min: 6, max: 7200 }/' vt $terminal/preferences.test.ts
 control "page font names not cleaned" $terminal/preferences.ts 's/ || !\/.*\.test(bare)//' vt $terminal/preferences.test.ts
-control "page next terminal reads stale settings" $terminal/preferences.ts 's/const answer = listeners.size === 0 ? ask()/const answer = false ? ask()/' vt $terminal/preferences.test.ts
+control "page next terminal reads stale settings" $terminal/preferences.ts 's/^      if (listeners.size === 0) {$/      if (false) {/' vt $terminal/preferences.test.ts
 control "page font names not quoted" $terminal/preferences.ts 's/: `"${bare}"`);/: bare);/' vt $terminal/preferences.test.ts
 control "page keywords accepted" $terminal/preferences.ts "s/ || RESERVED_WORDS.includes(bare.toLowerCase())//" vt $terminal/preferences.test.ts
-control "go keyword accepted" internal/settings/terminal.go 's/ || slices.Contains(reservedFontWords, strings.ToLower(strings.TrimSpace(name)))//' go test ./internal/settings/ -run TestTheTerminal
+control "go keyword accepted" internal/settings/terminal.go 's/slices.Contains(reservedFontWords, strings.ToLower/slices.Contains(reservedFontWords[:0], strings.ToLower/' go test ./internal/settings/ -run TestTheTerminal
+control "page settled releases early" $terminal/preferences.ts 's/while (inflight !== undefined) {/if (inflight !== undefined) {/' vt $terminal/preferences.test.ts
+control "page canonical form re-limited" $terminal/preferences.ts 's/const names = canonicalFontFamily/const names = canonicalFontFamily/;s/return typeof value === .string. \&\& value.length <= BOUNDS.fontFamily ? canonicalFontFamily(value) : .*;/return typeof value === "string" ? canonicalFontFamily(value.slice(0, 300)) : "";/' vt $terminal/preferences.test.ts
+control "page font reread not waited" $terminal/screen.ts 's/round < 3; round += 1/round < 1; round += 1/' vt $terminal/screen.test.ts -t "the person's settings"
 control "go bound not enforced" internal/settings/terminal.go 's/number > float64(maximum)/false/' go test ./internal/settings/ -run TestTheTerminal
 control "go font family takes a semicolon" internal/settings/terminal.go "s/r != '_' {/r != '_' \&\& r != ';' {/" go test ./internal/settings/ -run TestTheTerminal
 control "go setting missing from the UI copy" ui-next/shell/settings/model/testing.ts "/setting('scrollback'/d" go test ./internal/settings/ -run TestTheUIsCopy

@@ -130,6 +130,18 @@ export const SETTINGS_CONTROLS = {
       FontFaceSet.prototype.load = async () => [];
     },
   },
+  // The emulator's screen has no inline width: the cell cannot be measured, and a comparison with NaN is false.
+  'settings-cell-unmeasured': {
+    assertion: 'settings.font-open',
+    section: 'settings-font-open',
+    engines: ['chromium'],
+    init: () => {
+      setInterval(() => {
+        const screen = document.querySelector('.xterm-screen');
+        if (screen instanceof HTMLElement) screen.style.removeProperty('width');
+      }, 5);
+    },
+  },
   'settings-font-unloaded-live': {
     assertion: 'settings.font-live',
     section: 'settings-font-live',
@@ -153,35 +165,44 @@ export function createSettingsSections({ check, note, report }) {
     const host = createHost({ ...control?.host?.options, faults: { ...control?.host?.faults } });
     const context = await browser.newContext({ viewport, locale: 'en-US', timezoneId: 'UTC' });
     const served = await serveContext(context, host);
-    const face = readFileSync(FACE_FILE);
-    await context.route('**/probe-face.woff2', async (route) => {
-      await sleep(FONT_DELAY_MS);
-      await route.fulfill({ status: 200, contentType: 'font/woff2', body: face });
-    });
-    await context.addInitScript(HELPERS);
-    await context.addInitScript((values) => {
-      window.__prefsInitial = values;
-    }, initial);
-    if (ctx.engine === 'chromium') await context.addInitScript(LINUX);
-    if (control?.init !== undefined) await context.addInitScript(control.init);
-    const page = await context.newPage();
-    await page.goto(`${origin}/shell/probes/terminal-fixture.html?host=shared&renderer=dom&prefs=1`, { waitUntil: 'load' });
-    await page.addStyleTag({ content: FACE_CSS });
-    await page.waitForSelector('[data-shell-part="window"]');
-    await page.click('[data-shell-part="panelToggle"]');
-    await page.waitForSelector('[data-shell-part="panelEmpty"]');
-    await page.click('[data-shell-part="panelEmpty"] button');
-    await page.waitForSelector('.xterm-helper-textarea', { timeout: 30_000 });
-    await page.waitForFunction(() => /user@synthetic/.test(document.querySelector('.xterm-rows')?.textContent ?? ''), null, { timeout: 30_000 });
-    await page.locator('.xterm-helper-textarea').focus();
     const close = async () => {
       host.stop();
       await served.close();
       await context.close();
     };
 
-    return { page, host, close };
+    try {
+      const face = readFileSync(FACE_FILE);
+      await context.route('**/probe-face.woff2', async (route) => {
+        await sleep(FONT_DELAY_MS);
+        await route.fulfill({ status: 200, contentType: 'font/woff2', body: face });
+      });
+      await context.addInitScript(HELPERS);
+      await context.addInitScript((values) => {
+        window.__prefsInitial = values;
+      }, initial);
+      if (ctx.engine === 'chromium') await context.addInitScript(LINUX);
+      if (control?.init !== undefined) await context.addInitScript(control.init);
+      const page = await context.newPage();
+      await page.goto(`${origin}/shell/probes/terminal-fixture.html?host=shared&renderer=dom&prefs=1`, { waitUntil: 'load' });
+      await page.addStyleTag({ content: FACE_CSS });
+      await page.waitForSelector('[data-shell-part="window"]');
+      await page.click('[data-shell-part="panelToggle"]');
+      await page.waitForSelector('[data-shell-part="panelEmpty"]');
+      await page.click('[data-shell-part="panelEmpty"] button');
+      await page.waitForSelector('.xterm-helper-textarea', { timeout: 30_000 });
+      await page.waitForFunction(() => /user@synthetic/.test(document.querySelector('.xterm-rows')?.textContent ?? ''), null, { timeout: 30_000 });
+      await page.locator('.xterm-helper-textarea').focus();
+      return { page, host, close };
+    } catch (error) {
+      // Nothing returns the handle that closes the bridge, the host and the context: close them here, in the order the handle does, and let the failure through.
+      await close().catch(() => undefined);
+      throw error;
+    }
   }
+
+  /** Whether every width of a measure is a number above zero: a missing screen width is NaN, and every comparison with it is false. */
+  const measured = (read) => [read.implied, read.loaded, read.fallback].every((width) => Number.isFinite(width) && width > 0);
 
   /** The columns the host was last told: the emulator's grid. */
   const columns = (host) => host.log.resizes.at(-1)?.cols ?? 0;
@@ -282,6 +303,7 @@ export function createSettingsSections({ check, note, report }) {
       const read = await measure(page, host, 12);
       const problems = [];
       if (read.cols === 0) problems.push('the host was told no size');
+      if (!measured(read)) problems.push(`the cell could not be measured (${JSON.stringify(read)})`);
       // The grid is rounded to the pixel by the emulator: a few hundredths of a pixel of a cell, over a hundred columns.
       if (Math.abs(read.implied - read.loaded) > 0.04 * read.loaded) problems.push(`the emulator's cell is ${read.implied.toFixed(2)} px wide, the loaded font's is ${read.loaded.toFixed(2)} px`);
       if (Math.abs(read.implied - read.fallback) < 0.15 * read.fallback) problems.push(`the cell is the fallback's (${read.fallback.toFixed(2)} px): the font was measured before it loaded`);
@@ -309,6 +331,7 @@ export function createSettingsSections({ check, note, report }) {
       const read = await measure(page, host, 12);
       const problems = [];
       if (!applied) problems.push('the emulator was never given the family');
+      if (!measured(read)) problems.push(`the cell could not be measured (${JSON.stringify(read)})`);
       if (!resized) problems.push('the host was never told another size for the new font');
       if (Math.abs(read.implied - read.loaded) > 0.04 * read.loaded) problems.push(`the emulator's cell is ${read.implied.toFixed(2)} px wide, the loaded font's is ${read.loaded.toFixed(2)} px`);
       if (Math.abs(read.implied - read.fallback) < 0.15 * read.fallback) problems.push(`the cell is the fallback's (${read.fallback.toFixed(2)} px): the font was measured before it loaded`);

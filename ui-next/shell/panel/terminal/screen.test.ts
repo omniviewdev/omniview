@@ -3333,6 +3333,33 @@ describe('the person\'s settings', () => {
     expect(engine().appearances).toEqual([FIRA]);
   });
 
+  it('load the font of the look a new terminal is made in: a family chosen while the first font was loading is awaited too, and the emulator is made only after it', async () => {
+    const prefs = fakePreferences();
+    const { screen, host, loader, look, fonts, settle } = rig({ preferences: prefs.source, fontsHeld: true });
+    screen.mount(host);
+    screen.show();
+    await settle();
+    expect(fonts.asked()).toEqual(['12px monospace']);
+    look(FIRA);
+    fonts.release();
+    await settle();
+    expect(fonts.asked()).toEqual(['12px monospace', '12px "Fira Code", monospace']);
+    expect(loader.engines).toHaveLength(0);
+    fonts.release();
+    await settle();
+    expect(loader.engines).toHaveLength(1);
+    expect(loader.engines[0]?.options.appearance.fontFamily).toBe(FIRA.fontFamily);
+  });
+
+  it('wait once when the family did not change while the font loaded', async () => {
+    const prefs = fakePreferences();
+    const { screen, host, fonts, settle } = rig({ preferences: prefs.source });
+    screen.mount(host);
+    screen.show();
+    await settle();
+    expect(fonts.asked()).toEqual(['12px monospace']);
+  });
+
   it('do not wait for a font when the family did not change: a new size is applied at once', async () => {
     const prefs = fakePreferences();
     const { screen, host, engine, look, fonts, settle } = rig({ preferences: prefs.source, fontsHeld: true });

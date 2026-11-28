@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { HostSnapshot } from '../../settings/model/types';
-import { DEFAULT_PREFERENCES, createTerminalPreferences, preferencesOf, sanitiseFontFamily, type PreferencesSourceOptions } from './preferences';
+import { DEFAULT_PREFERENCES, canonicalFontFamily, createTerminalPreferences, preferencesOf, sanitiseFontFamily, type PreferencesSourceOptions } from './preferences';
 
 // The terminal's settings as the page reads them (#697 step 1). The host declares and validates them (`internal/settings/terminal.go`); the page reads what the host's snapshot says as a value inside the
 // producer's bounds, whatever it was sent, and keeps it for as long as something listens: a change is one event and one question of the host, and the same object comes back when nothing the terminal reads moved.
@@ -81,6 +81,16 @@ describe('what the page reads of the snapshot', () => {
     for (const word of ['inherit', 'initial', 'unset', 'revert', 'revert-layer', 'default', 'Inherit', '"initial"', 'Menlo, inherit']) {
       expect(sanitiseFontFamily(word), word).toBe('');
     }
+  });
+
+  it('keeps a list the host accepted at 255 characters after quoting makes it longer: the length limit is the raw input\'s, and the canonical form is not held to it again', () => {
+    const raw = `Menlo, ${'A'.repeat(237)}, monospace`;
+    expect(raw).toHaveLength(255);
+    const canonical = sanitiseFontFamily(raw);
+    expect(canonical.length).toBeGreaterThan(256);
+    expect(canonicalFontFamily(canonical)).toBe(canonical);
+    expect(canonicalFontFamily('a; color: red')).toBe('');
+    expect(sanitiseFontFamily('A'.repeat(257))).toBe('');
   });
 
   it('never lets a font family carry anything but names: a semicolon, a url(), a brace or a line break is the theme\'s face', () => {
@@ -283,6 +293,35 @@ describe('the store the screens read', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('waits for the newest question when several terminals ask before anyone listens: an older answer that is dropped does not release them', async () => {
+    const gates: Array<(value: HostSnapshot) => void> = [];
+    const { preferences } = rig({}, {
+      snapshot: async () =>
+        new Promise<HostSnapshot>((resolve) => {
+          gates.push(resolve);
+        }),
+    });
+    const first = preferences.settled();
+    const second = preferences.settled();
+    expect(gates).toHaveLength(2);
+    let released = 0;
+    void first.then(() => {
+      released += 1;
+    });
+    void second.then(() => {
+      released += 1;
+    });
+    gates[0]?.(snapshotOf({ scrollback: 20_000 }));
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+    expect(released).toBe(0);
+    gates[1]?.(snapshotOf({ scrollback: 20_000 }));
+    await Promise.all([first, second]);
+    preferences.subscribe(vi.fn());
+    expect(preferences.getSnapshot().scrollback).toBe(20_000);
   });
 
   it('asks again when the events connection comes back, while someone listens', async () => {

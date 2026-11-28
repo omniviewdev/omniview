@@ -60,7 +60,15 @@ const RESERVED_WORDS = ['inherit', 'initial', 'unset', 'revert', 'revert-layer',
  * font load throws), a space around a comma gone.
  */
 export function sanitiseFontFamily(value: unknown): string {
-  if (typeof value !== 'string' || value.length > BOUNDS.fontFamily || value.trim() === '') {
+  return typeof value === 'string' && value.length <= BOUNDS.fontFamily ? canonicalFontFamily(value) : '';
+}
+
+/**
+ * The same rule without the length limit, which is the RAW input's (the host holds it): the canonical form that `sanitiseFontFamily` answers is longer than what was typed (every name gets quotes), and is a value
+ * the host accepted, so a second pass over it must keep it. A value that is not names is still nothing.
+ */
+export function canonicalFontFamily(value: unknown): string {
+  if (typeof value !== 'string' || value.trim() === '') {
     return '';
   }
 
@@ -221,7 +229,16 @@ export function createTerminalPreferences(client: PreferencesSourceOptions): Pre
     settled: async () => {
       // With someone listening the snapshot is kept current by the host's events and the question of the first listener has been answered or is on its way. With nobody listening (the last terminal was closed) what is held may be stale,
       // because the host replays nothing: the next terminal asks again and waits for the answer.
-      const answer = listeners.size === 0 ? ask() : (inflight ?? Promise.resolve());
+      if (listeners.size === 0) {
+        void ask();
+      }
+
+      // Until no question is on its way: a newer question replaces the one this waited for, and the older answer is dropped without being published.
+      const answer = (async () => {
+        while (inflight !== undefined) {
+          await inflight;
+        }
+      })();
       // A host that does not answer does not hold the terminal: the settings are the defaults until it does (an answer that comes later is taken as any other).
       let timer: ReturnType<typeof setTimeout> | undefined;
       const late = new Promise<void>((resolve) => {
@@ -242,7 +259,17 @@ export function appTerminalPreferences(): PreferencesSource {
   let held: Promise<SettingsClient> | undefined;
   const client = async (): Promise<SettingsClient> => {
     held ??= import('../../settings/runtime').then(({ runtimeClient }) => runtimeClient());
-    return held;
+    try {
+      return await held;
+    } catch (error) {
+      // A chunk that failed to load is tried again by the next question, and not kept as the answer for the rest of the session.
+      held = undefined;
+      throw error;
+    }
+  };
+
+  const failed = (error: unknown): void => {
+    warnOnConsole('[terminal] the terminal settings could not be listened to', error);
   };
 
   return createTerminalPreferences({
@@ -260,7 +287,7 @@ export function appTerminalPreferences(): PreferencesSource {
           // The host does not replay a change made before this listener was registered: ask again now that it is.
           listener();
         }
-      });
+      }, failed);
       return () => {
         left = true;
         stop?.();
@@ -273,7 +300,7 @@ export function appTerminalPreferences(): PreferencesSource {
         if (!left) {
           stop = settings.onReconnect?.(listener);
         }
-      });
+      }, failed);
       return () => {
         left = true;
         stop?.();

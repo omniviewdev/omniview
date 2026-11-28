@@ -615,7 +615,8 @@
       "settings-recreate",
       "settings-scrollback-lost",
       "settings-font-unloaded-open",
-      "settings-font-unloaded-live"
+      "settings-font-unloaded-live",
+      "settings-cell-unmeasured"
     ]
   },
   "ui-next/shell/probes/terminal-reattach-b-probe.mjs": {

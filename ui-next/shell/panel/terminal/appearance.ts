@@ -1,5 +1,5 @@
 import type { EngineAppearance } from './engine';
-import { sanitiseFontFamily, type TerminalPreferences } from './preferences';
+import { canonicalFontFamily, type TerminalPreferences } from './preferences';
 
 // The look of the screen, from the theme (docs/ui-next/status/T1.md, "The look"). An emulator that draws on a canvas cannot read a stylesheet, and the host writes no colour in code: the body renders a hidden
 // swatch for each colour the screen needs (`TerminalBody.tsx`), the stylesheet paints each with the theme's own token, and this reads what the engine resolved for it. A theme change, or a change of
@@ -94,7 +94,7 @@ export function readAppearance(root: ParentNode, preferences?: TerminalPreferenc
   const themeSize = pixelsOf(style?.fontSize ?? '') ?? FALLBACK.fontSize;
   const line = pixelsOf(style?.lineHeight ?? '');
   const themeFace = style?.fontFamily ?? 'monospace';
-  const names = sanitiseFontFamily(preferences?.fontFamily);
+  const names = canonicalFontFamily(preferences?.fontFamily);
   const fontSize = preferences === undefined ? themeSize : Math.round(((preferences.fontSize * themeSize) / SCALE_BASE) * 100) / 100;
   return {
     theme: {

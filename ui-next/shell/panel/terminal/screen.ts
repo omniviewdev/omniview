@@ -1062,8 +1062,18 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
         await deps.preferences.settled();
       }
 
-      const { fontSize, fontFamily } = deps.appearance(element);
-      await deps.fontsReady(`${String(fontSize)}px ${fontFamily}`);
+      // The look is read again after each wait: a setting changed while the font loaded (the store is kept live by another terminal, and this screen listens only once its emulator is made) may name another family, which is loaded
+      // too, before the emulator measures its cell. With nothing changed this waits once. Three rounds at most: a person who changes the family faster than a font loads is not waited for.
+      let loaded: string | undefined;
+      for (let round = 0; round < 3; round += 1) {
+        const { fontSize, fontFamily } = deps.appearance(element);
+        if (fontFamily === loaded) {
+          break;
+        }
+
+        loaded = fontFamily;
+        await deps.fontsReady(`${String(fontSize)}px ${fontFamily}`);
+      }
     } catch (error) {
       loading = false;
       if (!disposed) {
