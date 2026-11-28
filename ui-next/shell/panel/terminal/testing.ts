@@ -1,4 +1,4 @@
-import type { Engine, EngineAppearance, EngineDecoration, EngineLoader, EngineMarker, EngineOptions, EngineRenderer, EngineViewport, FindOptions, FindState, Finder, LinkHandler, LinkHover } from './engine';
+import type { Engine, EngineAppearance, EngineBehaviour, EngineDecoration, EngineLoader, EngineMarker, EngineOptions, EngineRenderer, EngineViewport, FindOptions, FindState, Finder, LinkHandler, LinkHover } from './engine';
 import type { ChannelEvents, ChannelLink, TerminalChannels } from './channel';
 import type { PlacedMark, TerminalBusy, TerminalDirectory, TerminalFeedHandle, TerminalFeedSnapshot, TerminalOutput, TerminalReplay, TerminalRestart, TerminalShellAttempt } from './feed';
 
@@ -259,6 +259,8 @@ export type FakeEngine = Engine & {
   /** Every call of `setScreenReaderMode`, in order: the changes made after the emulator was made (what it was made with is `options.screenReaderMode`). */
   readonly screenReaderModes: readonly boolean[];
   readonly appearances: readonly EngineAppearance[];
+  /** Every call of `setBehaviour`, in order. */
+  readonly behaviours: readonly EngineBehaviour[];
   readonly labels: ReadonlyArray<readonly [string, string]>;
   readonly options: EngineOptions;
   readonly host: () => HTMLElement | undefined;
@@ -351,6 +353,7 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
   const inputs: boolean[] = [];
   const screenReaderModes: boolean[] = [];
   const appearances: EngineAppearance[] = [];
+  const behaviours: EngineBehaviour[] = [];
   const labels: Array<readonly [string, string]> = [];
   const writeSizes: Array<readonly [number, number]> = [];
   const emitted: string[] = [];
@@ -487,6 +490,7 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
     renderers,
     inputs,
     appearances,
+    behaviours,
     labels,
     host: () => host,
     disposed: () => disposed,
@@ -552,6 +556,10 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
     setInput: (on) => {
       inputs.push(on);
     },
+    setBehaviour: (behaviour) => {
+      behaviours.push(behaviour);
+    },
+
     setScreenReaderMode: (on) => {
       screenReaderModes.push(on);
     },

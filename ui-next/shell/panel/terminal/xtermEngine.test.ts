@@ -2520,7 +2520,7 @@ describe('the behaviour of a real emulator', () => {
       throw new Error('no emulator');
     }
 
-    return { engine, terminal, host, textarea: terminal.textarea as HTMLTextAreaElement, close: () => {
+    return { engine, terminal, host, textarea: terminal.textarea!, close: () => {
       engine.dispose();
       host.remove();
     } };
@@ -2551,39 +2551,23 @@ describe('the behaviour of a real emulator', () => {
     close();
   });
 
-  it('does not blink, ask for a timer or hold one while it has not the focus, however the setting is: the blink is a timer only with the focus and the setting both', async () => {
-    vi.useFakeTimers();
-    try {
-      const { engine, terminal, textarea, close } = made_({ cursorBlink: true });
-      await vi.advanceTimersByTimeAsync(50);
-      const unfocusedOn = vi.getTimerCount();
-      expect(terminal.options.cursorBlink).toBe(false);
+  it('blinks only with the focus and the setting both: the emulator is told to blink when it has the focus and told to stop when it has not, whatever the setting is (jsdom draws nothing, so the timer itself is counted by the probe in real browsers)', () => {
+    const { engine, terminal, textarea, close } = made_({ cursorBlink: true });
+    expect(terminal.options.cursorBlink).toBe(false);
 
-      focus(textarea, true);
-      await vi.advanceTimersByTimeAsync(50);
-      expect(terminal.options.cursorBlink).toBe(true);
-      const focusedOn = vi.getTimerCount();
-      expect(focusedOn).toBeGreaterThan(unfocusedOn);
+    focus(textarea, true);
+    expect(terminal.options.cursorBlink).toBe(true);
+    focus(textarea, false);
+    expect(terminal.options.cursorBlink).toBe(false);
 
-      focus(textarea, false);
-      await vi.advanceTimersByTimeAsync(50);
-      expect(terminal.options.cursorBlink).toBe(false);
-      expect(vi.getTimerCount()).toBe(unfocusedOn);
-
-      focus(textarea, true);
-      engine.setBehaviour({ scrollback: 50, cursorBlink: false, optionIsMeta: false });
-      await vi.advanceTimersByTimeAsync(50);
-      expect(terminal.options.cursorBlink).toBe(false);
-      expect(vi.getTimerCount()).toBe(unfocusedOn);
-
-      engine.setBehaviour({ scrollback: 50, cursorBlink: true, optionIsMeta: false });
-      await vi.advanceTimersByTimeAsync(50);
-      expect(terminal.options.cursorBlink).toBe(true);
-      expect(vi.getTimerCount()).toBe(focusedOn);
-      close();
-    } finally {
-      vi.useRealTimers();
-    }
+    focus(textarea, true);
+    engine.setBehaviour({ scrollback: 50, cursorBlink: false, optionIsMeta: false });
+    expect(terminal.options.cursorBlink).toBe(false);
+    engine.setBehaviour({ scrollback: 50, cursorBlink: true, optionIsMeta: false });
+    expect(terminal.options.cursorBlink).toBe(true);
+    focus(textarea, false);
+    expect(terminal.options.cursorBlink).toBe(false);
+    close();
   });
 
   it('blinks when it is told to while it has the focus, and not before it is told', () => {

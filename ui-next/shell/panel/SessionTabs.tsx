@@ -7,7 +7,7 @@ import { useTablist } from '../tablist';
 import { usePanel } from './context';
 import type { PanelNewSessionMenu } from './host';
 import { focusTab } from './focus';
-import { useActiveSession, useSessionIds, useSessionItem, useToolItem } from './hooks';
+import { useActiveSession, useSessionIds, useSessionItem, useSessionMark, useToolItem } from './hooks';
 import styles from './Header.module.css';
 import { useRenaming } from './renaming';
 import { SessionRename } from './SessionRename';
@@ -46,6 +46,7 @@ function SessionTab({ id, stop, selected, controls, prefix, menu, renaming, onRe
   const { store } = usePanel();
   const item = useSessionItem(id);
   const tool = useToolItem(item?.tool ?? '');
+  const mark = useSessionMark(id);
   if (item === undefined) {
     return null;
   }
@@ -75,7 +76,7 @@ function SessionTab({ id, stop, selected, controls, prefix, menu, renaming, onRe
         aria-selected={selected}
         aria-controls={controls}
         aria-keyshortcuts="F2 Delete"
-        aria-label={sessionName(item)}
+        aria-label={mark === undefined ? sessionName(item) : `${sessionName(item)}, ${mark.label}`}
         tabIndex={stop ? 0 : -1}
         data-tab-id={id}
         {...hoverCard(id, { arrow: 'down' })}
@@ -129,6 +130,7 @@ function SessionTab({ id, stop, selected, controls, prefix, menu, renaming, onRe
             </>
           )}
         </span>
+        {mark === undefined ? null : <span className={styles.sessionMark} data-shell-part="sessionMark" />}
       </button>
       <button
         type="button"

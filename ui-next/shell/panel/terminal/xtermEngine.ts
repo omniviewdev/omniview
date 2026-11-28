@@ -93,11 +93,11 @@ export function createXtermEngine(options: EngineOptions): Engine {
     lineHeight: 1,
     cursorStyle: appearance.cursorStyle,
     theme: themeOf(appearance),
-    // Idle is zero timers: a blinking cursor is a timer for as long as the terminal has focus.
+    // Idle is zero timers: a blinking cursor is a timer for as long as the terminal has focus, so the emulator is made with the blink off and `blinkWhenFocused` turns it on with the focus and off without it.
     cursorBlink: false,
     cursorInactiveStyle: 'outline',
-    // Option stays the key that types characters on a Mac (VS Code's and JetBrains's default): a person who wants it as Meta sets it, and that is a later slice.
-    macOptionIsMeta: false,
+    // Option is the key that types characters on a Mac unless the person's setting makes it Meta (`macOptionIsMeta`, resolved by the screen: `auto` is a US layout).
+    macOptionIsMeta: options.optionIsMeta === true,
     scrollOnUserInput: true,
     smoothScrollDuration: 0,
     // The printed lines are in the accessibility tree only in this mode: the emulator's rows (and the GPU's canvas) are hidden from it. Off unless the person chose it, and changed at run time by `setScreenReaderMode`.
@@ -109,6 +109,16 @@ export function createXtermEngine(options: EngineOptions): Engine {
   // idea of the cursor column and the screen's part after the first emoji.
   terminal.loadAddon(new Unicode11Addon());
   terminal.unicode.activeVersion = '11';
+  /** The blink the person asked for, and whether the emulator has the focus: the emulator blinks (a timer) only when both are true. */
+  let wantsBlink = options.cursorBlink === true;
+  let hasFocus = false;
+  const blinkWhenFocused = (): void => {
+    const blink = wantsBlink && hasFocus;
+    if (terminal.options.cursorBlink !== blink) {
+      terminal.options.cursorBlink = blink;
+    }
+  };
+
   let renderer: EngineRenderer = 'dom';
   let gpu: WebglAddon | undefined;
   /** The contexts lost and the addons that could not be made so far: at `GPU_FAILURES` the terminal stays on the DOM's renderer for its life. */
@@ -459,6 +469,21 @@ export function createXtermEngine(options: EngineOptions): Engine {
         },
         true,
       );
+      // The blink follows the focus: these come after the emulator's own listeners for the same events, so the emulator knows its focus when the option is set.
+      const input = terminal.textarea;
+      if (input !== undefined) {
+        hasFocus = document.activeElement === input;
+        input.addEventListener('focus', () => {
+          hasFocus = true;
+          blinkWhenFocused();
+        });
+        input.addEventListener('blur', () => {
+          hasFocus = false;
+          blinkWhenFocused();
+        });
+        blinkWhenFocused();
+      }
+
       // This listener comes after the emulator's own for the same event, so the timer it sets comes after the emulator's, and the commit is sent while `committing` is set.
       terminal.textarea?.addEventListener('compositionend', () => {
         committing = true;
@@ -538,6 +563,16 @@ export function createXtermEngine(options: EngineOptions): Engine {
 
     setInput: (on) => {
       terminal.options.disableStdin = !on;
+    },
+
+    setBehaviour: (behaviour) => {
+      wantsBlink = behaviour.cursorBlink;
+      blinkWhenFocused();
+      terminal.options.macOptionIsMeta = behaviour.optionIsMeta;
+      // The emulator trims the oldest lines when the number is smaller and keeps what it has when it is larger.
+      if (terminal.options.scrollback !== behaviour.scrollback) {
+        terminal.options.scrollback = behaviour.scrollback;
+      }
     },
 
     setScreenReaderMode: (on) => {

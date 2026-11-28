@@ -2,6 +2,7 @@ import type { Platform } from '../../core/chords';
 import { CURSOR_INIT, FULL_RESET, modesPrologue, type Engine, type EngineAppearance, type EngineLoader, type EngineOptions, type Finder, type LinkHandler } from './engine';
 import type { PlacedMark, TerminalFeedHandle, TerminalFeedSnapshot, TerminalReplay, TerminalSize } from './feed';
 import { keyOf, sequenceOf } from './keys';
+import { optionIsMeta } from './layout';
 import { DEFAULT_PREFERENCES_SOURCE, type PreferencesSource, type TerminalPreferences } from './preferences';
 import type { ScreenReaderSource } from './screenReader';
 import { createCommandGutter, type CommandGutter, type GutterEvent } from './gutter/commandGutter';
@@ -99,6 +100,13 @@ export type ScreenDeps = {
    * (the font loaded first, when its family changed), at once when the screen is shown and when it is shown again if it was not; the rest of what it holds is read by later steps. Default: the host's own defaults, forever.
    */
   readonly preferences?: PreferencesSource | undefined;
+  /**
+   * Whether the keyboard is a US layout (`layout.ts`): asked only when Option as Meta is `auto`, when the emulator is made and when the setting changes. `undefined` is a layout nobody can know, and the answer is then that Option
+   * types characters. Absent: no way to know.
+   */
+  readonly layout?: (() => Promise<boolean | undefined>) | undefined;
+  /** A bell rang in a terminal that is NOT shown and the setting says `visual`: the owner of the tab puts a mark on it (a bell in a terminal that is shown fades its screen instead). Absent: nothing is said. */
+  readonly onBell?: (() => void) | undefined;
   /** Puts text on the clipboard; says whether it could. */
   readonly copy: (text: string) => Promise<boolean>;
   readonly warn?: ((message: string, error?: unknown) => void) | undefined;
@@ -191,6 +199,9 @@ const muted = (text: string): string => `\u001b[0m\r\n\u001b[90m${text}\u001b[0m
 /** What of the person's settings changes how the emulator looks: the font names, the size, the line height and the cursor. */
 const lookOf = (preferences: TerminalPreferences): string => JSON.stringify([preferences.fontFamily, preferences.fontSize, preferences.lineHeight, preferences.cursorStyle]);
 
+/** What of the person's settings changes how the emulator behaves: the blink, the scrollback and Option as Meta. */
+const behaviourOf = (preferences: TerminalPreferences): string => JSON.stringify([preferences.cursorBlink, preferences.scrollback, preferences.macOptionIsMeta]);
+
 /** What the transcript gets between an ended process and its restart, before the muted line: the soft terminal reset (`DECSTR`) after the modes a program may have left on are switched off by name (mouse tracking and its encodings, focus events, bracketed paste, application cursor keys: DECSTR resets none of the mouse), and the way out of the alternate screen that keeps the normal screen's cursor (`?47l`: `?1049l` would restore a saved cursor that DECSTR has reset, to the top). */
 const SEPARATOR = '\u001b[?47l\u001b[?1000l\u001b[?1002l\u001b[?1003l\u001b[?1004l\u001b[?1005l\u001b[?1006l\u001b[?1015l\u001b[?2004l\u001b[?1l\u001b[!p';
 
@@ -232,6 +243,11 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
   /** What of the person's settings the emulator was last given (`lookOf`), and the family of its font: a change of the family is a font to load. */
   let appliedLook = lookOf(preferences.getSnapshot());
   let appliedFamily: string | undefined;
+  /** What of the person's settings the emulator was last given as behaviour (`behaviourOf`), and the behaviours asked so far (an answer that comes after a later ask is not applied). */
+  let appliedBehaviour = behaviourOf(preferences.getSnapshot());
+  let behaviours = 0;
+  /** Option as Meta as it was resolved for the emulator that is being made. */
+  let metaAtStart = false;
   /** The changes of look so far: a font that comes after a later change is not applied. */
   let looks = 0;
   /** A change of look came while the screen was not shown: it is applied when the screen is. */
@@ -932,9 +948,45 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
     });
   }
 
+  /**
+   * Option as Meta for a setting: the person's word for `on` and `off` (the layout is not asked, and the answer is at hand), the keyboard's for `auto` (a promise: off where it cannot be known or the question fails). An answer
+   * that is at hand is not made to wait a turn: the emulator is made in the turn the settings are in.
+   */
+  function resolveMeta(setting: TerminalPreferences['macOptionIsMeta']): boolean | Promise<boolean> {
+    if (setting !== 'auto' || deps.layout === undefined) {
+      return optionIsMeta(setting, undefined);
+    }
+
+    return deps.layout().then(
+      (layout) => optionIsMeta(setting, layout),
+      () => optionIsMeta(setting, undefined),
+    );
+  }
+
+  /** Tells the emulator that is there the blink, the scrollback and Option as Meta the person's settings say now. Hidden or not: nothing is measured or drawn for it. The last of two asks is the one that is applied. */
+  async function behave(): Promise<void> {
+    behaviours += 1;
+    const mine = behaviours;
+    const person = preferences.getSnapshot();
+    const asked = resolveMeta(person.macOptionIsMeta);
+    const meta = typeof asked === 'boolean' ? asked : await asked;
+    if (mine === behaviours && !disposed && engine !== undefined) {
+      engine.setBehaviour({ scrollback: person.scrollback, cursorBlink: person.cursorBlink, optionIsMeta: meta });
+    }
+  }
+
   /** The host's settings changed (or its first answer came after the emulator was made): a change of what the emulator looks like is applied, and nothing else is told to it. */
   function preferencesChanged(): void {
-    const now = lookOf(preferences.getSnapshot());
+    const person = preferences.getSnapshot();
+    const behaviour = behaviourOf(person);
+    if (behaviour !== appliedBehaviour) {
+      appliedBehaviour = behaviour;
+      behave().catch((error: unknown) => {
+        warn('[terminal] the behaviour of the terminal could not be applied', error);
+      });
+    }
+
+    const now = lookOf(person);
     if (now === appliedLook) {
       return;
     }
@@ -988,11 +1040,14 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
     readerMode = deps.screenReader.getSnapshot();
     const person = preferences.getSnapshot();
     const look = deps.appearance(host);
-    const made = factory({ cols: INITIAL.cols, rows: INITIAL.rows, scrollback: deps.preferences === undefined ? SCROLLBACK : person.scrollback, appearance: look, screenReaderMode: readerMode });
+    const made = factory({ cols: INITIAL.cols, rows: INITIAL.rows, scrollback: deps.preferences === undefined ? SCROLLBACK : person.scrollback, appearance: look, screenReaderMode: readerMode, cursorBlink: person.cursorBlink, optionIsMeta: metaAtStart });
     engine = made;
     appliedLook = lookOf(person);
+    appliedBehaviour = behaviourOf(person);
     appliedFamily = look.fontFamily;
     stops.push(preferences.subscribe(preferencesChanged));
+    // What changed while the font loaded and the layout was read: nobody listened then.
+    preferencesChanged();
     gutter = createCommandGutter(made);
     stops.push(
       gutter.onEvent((event) => {
@@ -1033,8 +1088,15 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
         }
       }),
       // The emulator is silent: the host shows the bell, on the screen, and never makes a sound. Two names for the one animation restart it for each bell without a timer.
+      // The setting is read at the bell: `off` does nothing at all. A terminal that is shown fades its screen; one that is not shown fades nothing nobody sees, and its tab is marked instead (`onBell`).
       made.onBell(() => {
-        if (host !== undefined) {
+        if (preferences.getSnapshot().bell === 'off') {
+          return;
+        }
+
+        if (!visible) {
+          deps.onBell?.();
+        } else if (host !== undefined) {
           host.setAttribute('data-bell', host.getAttribute('data-bell') === 'a' ? 'b' : 'a');
         }
       }),
@@ -1061,6 +1123,9 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
       if (deps.preferences !== undefined) {
         await deps.preferences.settled();
       }
+
+      const asked = resolveMeta(preferences.getSnapshot().macOptionIsMeta);
+      metaAtStart = typeof asked === 'boolean' ? asked : await asked;
 
       // The look is read again after each wait: a setting changed while the font loaded (the store is kept live by another terminal, and this screen listens only once its emulator is made) may name another family, which is loaded
       // too, before the emulator measures its cell. With nothing changed this waits once. Three rounds at most: a person who changes the family faster than a font loads is not waited for.

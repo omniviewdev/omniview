@@ -397,9 +397,11 @@ describe('the `+` of the real header', () => {
 });
 
 describe('the mark a tool puts on a session tab (a bell rang in a terminal that is not shown, #697 step 3)', () => {
+  // The same object while the mark stands: the strip reads it as an external store.
+  const MARK = { label: 'bell rang' };
   const source = (marked_: ReadonlySet<string>): SessionMarks => ({
     subscribe: () => () => undefined,
-    of: (id) => (marked_.has(id) ? { label: 'bell rang' } : undefined),
+    of: (id) => (marked_.has(id) ? MARK : undefined),
   });
 
   it('draws a mark in the tab that has one and in no other, and says it in the tab\'s name: nobody hears a bell, so the name is how a person who cannot see the mark knows', () => {
@@ -412,7 +414,7 @@ describe('the mark a tool puts on a session tab (a bell rang in a terminal that 
     const panel = staticPanel({ store, marks: source(new Set([ids[1] ?? ''])) });
     render(<StaticShell registration={registration} panel={panel} />);
     const tabs = screen.getAllByRole('tab', { name: /zsh|bash/ });
-    const [zsh, bash] = [tabs.find((tab) => /zsh/.test(tab.getAttribute('aria-label') ?? '')), tabs.find((tab) => /bash/.test(tab.getAttribute('aria-label') ?? ''))];
+    const [zsh, bash] = [tabs.find((tab) => (tab.getAttribute('aria-label') ?? '').includes('zsh')), tabs.find((tab) => (tab.getAttribute('aria-label') ?? '').includes('bash'))];
     expect(zsh?.getAttribute('aria-label')).toBe('zsh');
     expect(bash?.getAttribute('aria-label')).toBe('bash, bell rang');
     expect(zsh?.querySelector('[data-shell-part="sessionMark"]')).toBeNull();
@@ -421,7 +423,7 @@ describe('the mark a tool puts on a session tab (a bell rang in a terminal that 
 
   it('is drawn without a sound or a motion of its own: a plain dot in the stylesheet that animates nothing', () => {
     const dot = rule('.sessionMark');
-    expect(dot.position).toBe('absolute');
+    expect(dot['border-radius']).toBe('50%');
     expect(dot['background-color']).toBe('var(--ov-warning-fg)');
     expect(Object.keys(dot).filter((property) => /animation|transition/.test(property))).toEqual([]);
   });

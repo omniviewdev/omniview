@@ -44,7 +44,9 @@ describe('what the page reads of the keyboard', () => {
     expect(await readLayout({})).toBeUndefined();
     expect(await readLayout({ keyboard: {} })).toBeUndefined();
     expect(await readLayout({ keyboard: { getLayoutMap: async () => Promise.reject(new Error('NotAllowedError')) } })).toBeUndefined();
-    expect(await readLayout({ keyboard: { getLayoutMap: () => { throw new Error('SecurityError'); } } })).toBeUndefined();
+    expect(await readLayout({ keyboard: { getLayoutMap: () => {
+      throw new Error('SecurityError'); 
+    } } })).toBeUndefined();
     expect(await readLayout({ keyboard: { getLayoutMap: async () => Promise.resolve(null) } })).toBeUndefined();
   });
 });

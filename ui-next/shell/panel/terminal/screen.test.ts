@@ -240,7 +240,7 @@ function rig(options: RigOptions = {}): Rig {
     reader,
     readerListeners: () => readerHeard,
     settle: async () => {
-      for (let turn = 0; turn < 8; turn += 1) {
+      for (let turn = 0; turn < 16; turn += 1) {
         await Promise.resolve();
       }
     },
@@ -3447,7 +3447,7 @@ describe('the behaviour the person\'s settings give the emulator', () => {
     screen.mount(host);
     screen.show();
     await settle();
-    expect(behaviourOf(loader.engines[0] as FakeEngine)).toMatchObject({ scrollback: 20_000, cursorBlink: true, optionIsMeta: true });
+    expect(behaviourOf(loader.engines[0])).toMatchObject({ scrollback: 20_000, cursorBlink: true, optionIsMeta: true });
   });
 
   it.each([

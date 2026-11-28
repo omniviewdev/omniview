@@ -156,6 +156,16 @@
     outline-offset: -2px;
   }
 
+  /* What a tool puts on a session's tab beyond its name (a bell rang in a terminal that is not shown): a 6 px dot in the state role, after the name, one 4 px gap away like every part of the tab. Still: nothing animates, and the
+     words the dot stands for are in the tab's accessible name. */
+  .sessionMark {
+    flex: 0 0 auto;
+    inline-size: 6px;
+    block-size: 6px;
+    border-radius: 50%;
+    background-color: var(--ov-warning-fg);
+  }
+
   /* ONE 16 px lead slot: the tool's glyph, or the state while the session is not steady. */
   .lead {
     display: grid;

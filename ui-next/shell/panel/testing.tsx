@@ -53,6 +53,7 @@ export type StaticPanelOptions = {
   readonly emptyOf?: PanelBindings['emptyOf'] | undefined;
   readonly renderTool?: PanelBindings['renderTool'] | undefined;
   readonly badges?: PanelBindings['badges'] | undefined;
+  readonly marks?: PanelBindings['marks'] | undefined;
 };
 
 /** What the shell asks of its host to draw a panel, answered with invented tools and sessions over the real model. The model is `bindings.store`. */
@@ -77,6 +78,7 @@ export function staticPanel(options: StaticPanelOptions = {}): PanelBindings {
     emptyOf: options.emptyOf,
     renderTool: options.renderTool,
     badges: options.badges,
+    marks: options.marks,
     newSessionOf: (tool) => {
       const add = options.start?.[tool];
       return add === undefined

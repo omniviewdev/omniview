@@ -971,6 +971,14 @@ export function createHost(options = {}) {
       case 'hello':
         out(pty, 'hello from the synthetic shell\r\n');
         break;
+      case 'bell':
+        // A program rings the bell (BEL) and writes nothing else.
+        out(pty, '\u0007');
+        break;
+      case 'bell-later':
+        // The bell comes after `args[0]` ms, from a program the person has left: it rings in a terminal that is not shown by then.
+        setTimeout(() => out(pty, '\u0007'), Number(args[0] ?? 500)).unref?.();
+        break;
       case 'size':
         log.sizeReports.push({ rows: pty.rows, cols: pty.ptyCols });
         out(pty, `${String(pty.rows)} ${String(pty.ptyCols)}\r\n`);

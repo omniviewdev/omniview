@@ -12,6 +12,7 @@ import type { TerminalBusy, TerminalDirectory, TerminalFeedHandle, TerminalResta
 import { createFinishedNotices } from './finishedNotice';
 import { keyOf } from './keys';
 import { localHereTarget, localProfileTarget, localShellTarget } from './localShell';
+import { createBellMarks, type BellMarks } from './bells';
 import { appTerminalPreferences, type PreferencesSource } from './preferences';
 import { appShellList, shellMenu, type ShellChoice, type ShellList, type TerminalProfile } from './profiles';
 import { clearScreenIn } from './screen';
@@ -149,6 +150,8 @@ export type Terminals = {
   readonly canSplit: (session: SessionId) => boolean;
   /** The window's one screen reader choice: every terminal follows it (a terminal that is made later is made in it), and the session saves it. Off until the person turns it on. */
   readonly screenReader: ScreenReaderChoice;
+  /** The marks of the session tabs: a bell rang in a terminal that is not shown (`bells.ts`). The panel's host reads them (`PanelBindings.marks`). */
+  readonly marks: BellMarks;
   readonly empty: PanelEmpty;
   readonly bodyOf: (session: Session, visible: boolean) => ReactElement;
   readonly cardOf: (session: Session) => PanelCard;
@@ -164,6 +167,7 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
   // The shells the `+` offers: the list is asked of the host when the menu is first drawn (and never while it is not), and the items are made again only when the list changes.
   const shells = options.shells ?? appShellList();
   const preferences = options.preferences ?? appTerminalPreferences();
+  const marks = createBellMarks();
   const startFrom = (profile: TerminalProfile) => {
     sessions.open(localProfileTarget(profile), { focus: true });
   };
@@ -321,6 +325,7 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
 
   return {
     screenReader,
+    marks,
     sessions,
     store: guard.guard(store),
     attach: () => {
@@ -392,6 +397,7 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
         load: options.load,
         screenReader,
         preferences,
+        bells: marks,
         name: store.selectors.sessionItem(store.getSnapshot(), session.id)?.name,
         onNewHere: (id) => {
           void openHere(id);

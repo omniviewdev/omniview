@@ -18,6 +18,18 @@ export type PanelCardAction = {
  * What the card of a session says (ch16 SCD1): the kind of session, the resource it belongs to as a link, a compact list of facts, what it does and since when, at most two buttons. Every
  * member is optional; the shell fills in what is missing (the tool's own words, the state of the session) and puts `Open <resource>` first when the resource has a route.
  */
+/** What a tool puts on a session's tab: words, drawn as a mark and said in the tab's accessible name. */
+export type SessionMark = { readonly label: string };
+
+/**
+ * Where the strip reads the marks of its session tabs. `of` answers the same object while a session's mark says the same, so a tab renders only when its own mark changed; `subscribe` tells the strip that some mark may
+ * have changed (a tab is told for every change of any session and renders for its own).
+ */
+export type SessionMarks = {
+  readonly subscribe: (listener: () => void) => () => void;
+  readonly of: (session: SessionId) => SessionMark | undefined;
+};
+
 export type PanelCard = {
   readonly kind?: string | undefined;
   readonly icon?: string | undefined;
@@ -70,6 +82,8 @@ export type PanelBindings = {
   readonly renderTool?: ((tool: ToolId) => ReactElement | undefined) | undefined;
   /** What each tool tab carries beside its words: a count or a dot (`badge.ts`). Member absent: no tab carries one. */
   readonly badges?: ToolBadges | undefined;
+  /** What each session tab carries: a mark and the words of it in the tab's name (a bell rang in a terminal that is not shown). Member absent: no session tab carries one. */
+  readonly marks?: SessionMarks | undefined;
   /** What stops a session and keeps its tab (Stop session), or `undefined` when the host holds nothing of it to stop. Member absent: the menu has no Stop. */
   readonly stopOf?: ((id: SessionId) => (() => void) | undefined) | undefined;
   /** Where the resource of a session is: its address, and what opening it does. The shell knows no address grammar and no tab disposition: the host does. */

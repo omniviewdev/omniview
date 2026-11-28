@@ -189,7 +189,7 @@ describe('the bell of a terminal that is not shown (#697 step 3)', () => {
     const terminals = createTerminals(store, { load: loader.load, preferences: DEFAULT_PREFERENCES_SOURCE });
     const stop = terminals.sessions.attach();
     const opened = terminals.sessions.open({ plugin: HOST, id: 'one', title: 'one', open: () => fakeTerminalFeed() });
-    const session = store.getSnapshot().sessions[opened?.id ?? ''] as Session;
+    const session = store.getSnapshot().sessions[opened?.id ?? ''];
     const view = render(terminals.bodyOf(session, true));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);

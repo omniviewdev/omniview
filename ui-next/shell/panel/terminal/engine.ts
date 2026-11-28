@@ -26,6 +26,16 @@ export type EngineAppearance = {
   readonly cursorStyle: 'block' | 'underline' | 'bar';
 };
 
+/** What the person's settings give the emulator besides its look (`setBehaviour`): the lines it keeps, whether its cursor blinks, and whether Option is the Meta key. */
+export type EngineBehaviour = {
+  /** Lines kept above the screen: a smaller number trims the oldest lines, a larger one keeps every line it has. */
+  readonly scrollback: number;
+  /** Whether the cursor blinks WHILE THE EMULATOR HAS THE FOCUS: a blink is a timer, and an emulator that has not the focus holds none. */
+  readonly cursorBlink: boolean;
+  /** Option is the Meta key (Option B sends ESC b) and types no character, on a Mac. */
+  readonly optionIsMeta: boolean;
+};
+
 export type EngineOptions = {
   readonly cols: number;
   readonly rows: number;
@@ -37,6 +47,10 @@ export type EngineOptions = {
    * parses, and it puts a second copy of the visible rows in the document.
    */
   readonly screenReaderMode: boolean;
+  /** Whether the cursor blinks while the emulator has the focus. Default: it does not (idle is zero timers). */
+  readonly cursorBlink?: boolean | undefined;
+  /** Option is the Meta key. Default: it is not. */
+  readonly optionIsMeta?: boolean | undefined;
   /**
    * The most matches a find highlights and counts: `FIND_LIMIT` when it is absent. The emulator's search counts from the oldest line down and stops at the limit, so a find that has more matches than this is `capped`, and
    * the matches nearest the bottom are the ones that are not counted. A test gives a small one.
@@ -161,6 +175,8 @@ export type Engine = {
   readonly setInput: (on: boolean) => void;
   /** Turns the screen reader mode on or off on the live emulator (the window's choice changed): nothing is created again. */
   readonly setScreenReaderMode: (on: boolean) => void;
+  /** Applies the person's scrollback, cursor blink and Option as Meta to the emulator that is there: no new emulator, and a larger scrollback keeps the lines it has. */
+  readonly setBehaviour: (behaviour: EngineBehaviour) => void;
   /**
    * Switches the renderer. It answers once the new one is in place and never rejects: the GPU's code is a chunk of its own, and its cells are not the DOM's (it rounds the cell to whole device pixels), so
    * whoever asked measures the host again then.
