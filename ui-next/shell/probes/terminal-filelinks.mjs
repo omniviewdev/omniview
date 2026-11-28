@@ -281,7 +281,10 @@ export function createFilelinksSections({ check, note, runAxe }) {
     const prompted = await until(() => host.log.prompts > before);
     const marker = DRAWN[line.split(' ')[0]];
     const drawn = marker === undefined || (await waitFor(page, (text) => (document.querySelector('.xterm-rows')?.textContent ?? '').includes(text), marker));
-    return prompted && drawn;
+    // The new prompt is on the last row: the rows have stopped moving (a position read before it would be a row too high).
+    const settled = await waitFor(page, () => (window.__fl.rows().filter((row) => row !== '').at(-1) ?? '') === 'user@synthetic:~$');
+    await frames(page, 2);
+    return prompted && drawn && settled;
   }
 
   const isMac = async (page) => page.evaluate(() => /Mac/.test(navigator.platform));
