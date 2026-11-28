@@ -567,17 +567,21 @@ func (c *call) reuse(in Input, res Result) recheck {
 	case reason != "" || !within(res.Path, bases):
 		return changed
 	}
-	return c.stillThere(res)
+	c.allowed = c.spellingsOf(bases, in)
+	return c.stillThere(res, bases)
 }
 
-// stillThere asks the file system once whether an answer from the cache is still true: the file may have been deleted since.
-func (c *call) stillThere(res Result) recheck {
-	info, reason := c.lstat(res.Path)
+// stillThere walks the cached path again, with every link followed and inside the directories as they are now, and says whether it is still the
+// same file or directory: a component swapped for a link out, or the file deleted, is not what was answered.
+func (c *call) stillThere(res Result, bases []string) recheck {
+	resolved, info, reason := c.real(res.Path, c.allowed)
 	switch {
 	case reason == ReasonTimeout:
 		return timedOut
-	case reason != "":
+	case reason == ReasonNotFound:
 		return gone
+	case reason != "" || resolved != res.Path || !within(resolved, bases):
+		return changed
 	case res.Kind == KindFile && info.Mode().IsRegular(), res.Kind == KindDir && info.IsDir():
 		return stillThere
 	}
