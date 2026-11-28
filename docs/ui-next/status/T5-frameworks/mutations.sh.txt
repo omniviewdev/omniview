@@ -77,7 +77,7 @@ run p10k-guard-removed "$Z" 's|if (( ! ${+P9K_VERSION} )); then|if true; then|' 
 run zsh-preexec-last "$Z" 's|preexec_functions=(__omniview_preexec $preexec_functions)|preexec_functions+=(__omniview_preexec)|' "$T1"
 
 # bash-preexec: the last hook no longer says the prompt is shown, and its first command is lost.
-run bash-preexec-first-command "$B" 's|\*__bp_precmd_invoke_cmd\*) __bp_preexec_interactive_mode=on ;;|*__bp_precmd_invoke_cmd*) : ;;|' "$T1 $T4" "TestAUsersCommandNamedLikeBashPreexecsIsStillRecorded"
+run bash-preexec-first-command "$B" 's|\*__bp_precmd_invoke_cmd\*) local __bp_inside_preexec=1; __bp_preexec_interactive_mode=on ;;|*__bp_precmd_invoke_cmd*) : ;;|' "$T1 $T4" "TestAUsersCommandNamedLikeBashPreexecsIsStillRecorded TestBashPreexecWithExtdebugOrFunctraceRecordsEachCommandOnceWithItsOwnLine"
 
 # bash: the first prompt command returns 0, not the status: the framework's hook (starship's $?) sees 0 after `false`. (zsh hands
 # every hook the status of the command whatever a hook before it returns, so there the fault is to read $? late, below.)
@@ -94,7 +94,7 @@ run bash-preexec-stack-not-walked "$B" 's#for __omniview_fn in "${FUNCNAME\[@\]:
 
 
 # The match on bash-preexec's commands is too broad (every __bp_*): a user's command of that name is no record.
-run bash-preexec-match-too-broad "$B" 's#^    case $BASH_COMMAND in .__bp_precmd_invoke_cmd.*#    case $BASH_COMMAND in __bp_*) return "$__omniview_ret" ;; esac#' "TestAUsersCommandNamedLikeBashPreexecsIsStillRecorded"
+run bash-preexec-match-too-broad "$B" 's#^    case $BASH_COMMAND in .__bp_precmd_invoke_cmd.*#    case $BASH_COMMAND in __bp_*) return "$__omniview_ret" ;; esac#' "TestAUsersCommandNamedLikeBashPreexecsIsStillRecorded" "TestBashPreexecWithExtdebugOrFunctraceRecordsEachCommandOnceWithItsOwnLine"
 
 run bash-status-clobbered "$B" '0,/^    return "$__omniview_status"$/s||    return 0|' "$T4"
 
@@ -102,7 +102,11 @@ run bash-status-clobbered "$B" '0,/^    return "$__omniview_status"$/s||    retu
 run zsh-status-read-late "$Z" 's|^    local __omniview_last=$?$|    setopt localoptions; local __omniview_last=$?|' "$T1"
 # fish 3.7 (no marks of its own): the end mark reads $status after `test`, which makes it 0. Run with OMNIVIEW_TEST_FISHES=<fish 3.7>
 # (a fish 4 prints its own D and does not see it; the control is then undetected: the script requires 3.7 on the list).
+if "${OMNIVIEW_TEST_FISHES%%:*}" --version | grep -q "version 3"; then
 run fish-status-read-after-test "$F" 's|printf .\\e\]133;D;%d\\a. $__omniview_last|printf '"'"'\\e]133;D;%d\\a'"'"' $status|; s|^            set -l __omniview_last $status$|            true|' "$TF" "$T1"
+else
+  echo "CONTROL fish-status-read-after-test: NOT RUN (fish 4 prints its own end mark: put a fish 3.x first in OMNIVIEW_TEST_FISHES)"
+fi
 
 # fish: a builtin runs before the user's (starship's) fish_prompt, which then reads $status 0.
 run fish-status-clobbered "$F" 's|^                    __omniview_user_prompt $argv$|                    true; __omniview_user_prompt $argv|' "$T4"
