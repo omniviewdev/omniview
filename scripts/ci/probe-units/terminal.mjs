@@ -451,4 +451,24 @@ export const units = [
     // An ESTIMATE from the laptop, to be set from the first nightly figure.
     seconds: 200,
   },
+
+  // URLs and OSC 8 hyperlinks through the host's opener (#696 step 1): a hyperlink whose text and target differ shows its target before it opens, the platform's click opens the target and never calls window.open or confirm, a script, a
+  // file and the host's own server are refused, the links in view are reachable from the keyboard (Open link in the menu), and axe (the sections are in terminal-urls.mjs). WebKit and Chromium at both viewports. An ESTIMATE from the
+  // laptop, to be set from the first nightly figure.
+  {
+    id: 'terminal-urls',
+    name: 'Probe that a hyperlink shows its target, opens through the host and is reachable by keyboard, and that a script, a file and the host\'s own server are refused',
+    script: 'ui-next/shell/probes/terminal-urls-probe.mjs',
+    env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/terminal-urls-probe.json' },
+    seconds: 120,
+  },
+  {
+    id: 'terminal-controls-urls',
+    name: 'Probe that the urls probe sees a target that is not shown, a window that is opened, the text opened for the target, a file, a script or the host\'s own server followed, a menu that names a link by its text and a violation',
+    script: 'ui-next/shell/probes/terminal-probe.mjs',
+    env: { FONT_DELAY_MS: '40' },
+    controls: ['urls-target-hidden', 'urls-window-open', 'urls-text-opened', 'urls-file-allowed', 'urls-script-allowed', 'urls-own-allowed', 'urls-keys-text', 'urls-tooltip-axe'],
+    plants: 'page',
+    seconds: 150,
+  },
 ];

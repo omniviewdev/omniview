@@ -2283,6 +2283,19 @@ describe('opening an address outside the app (T3a: what a person follows from a 
     expect(r.warn.mock.calls[0]?.[0]).toBe('[terminal] the link could not be opened: only http and https addresses are opened');
   });
 
+  it('never opens a window of its own and never asks with confirm: the window\'s way is the only one a link is followed by', () => {
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+    const ask = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const way = vi.fn();
+    const r = harness({ openExternal: way });
+    r.sessions.openExternal('https://b.example/login');
+    r.sessions.openExternal('file:///etc/passwd');
+    r.sessions.openExternal('http://localhost:34115/');
+    expect(way.mock.calls).toEqual([['https://b.example/login']]);
+    expect(open).not.toHaveBeenCalled();
+    expect(ask).not.toHaveBeenCalled();
+  });
+
   // The host's own server (#696 step 1): a link that points back at the page's own port is an open redirect to the host's loopback API, so the registry does not open it, and says so once. Any other loopback port is a dev server.
   describe('the host\'s own server', () => {
     it.each(['http://localhost:34115/', 'http://127.0.0.1:34115/api/x', 'http://[::1]:34115/', 'http://0.0.0.0:34115/'])('does not open %s, and says why, once', (address) => {
