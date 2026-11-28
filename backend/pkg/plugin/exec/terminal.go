@@ -377,6 +377,16 @@ func (c *controller) ChannelTerminalCommands(capability string) (_ terminal.Comm
 	return c.terminalManager.ChannelCommands(capability)
 }
 
+// ChannelTerminalResolveLink says what a candidate link in a channel terminal's output names on this machine. The span has no attribute and nothing is
+// logged: the text and the paths are the user's data.
+//
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (c *controller) ChannelTerminalResolveLink(capability, rowDirectory, text string) (_ terminal.LinkResolution, err error) {
+	_, span := tracer.Start(context.Background(), "exec.ChannelTerminalResolveLink")
+	defer finishOp(span, &err)
+	return c.terminalManager.ChannelResolveLink(capability, rowDirectory, text)
+}
+
 // ListChannelTerminals lists the channel terminals of the capabilities given, and only those, in the order given. It
 // opens no span: a page asks it once as it loads.
 func (c *controller) ListChannelTerminals(capabilities []string) ([]terminal.ChannelListed, error) {

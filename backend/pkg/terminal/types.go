@@ -524,3 +524,67 @@ func defaultLimits() Limits {
 		ChannelMaxInputBytes:  ChannelMaxInputBytes,
 	}
 }
+
+// LinkKind says what a candidate link names.
+type LinkKind string
+
+const (
+	// LinkFile is a regular file.
+	LinkFile LinkKind = "file"
+	// LinkDir is a directory.
+	LinkDir LinkKind = "dir"
+	// LinkUnknown is no answer; LinkResolution.Reason says why.
+	LinkUnknown LinkKind = "unknown"
+)
+
+// LinkReason says why a candidate link has no answer. A page shows no link for any of them, and the page's wording for 'gone' is "no longer there".
+type LinkReason string
+
+const (
+	// LinkNotFound: nothing the text can name exists where it was looked for.
+	LinkNotFound LinkReason = "not-found"
+	// LinkGone: the text was answered a moment ago and the file is no longer there.
+	LinkGone LinkReason = "gone"
+	// LinkNoDirectory: the host does not know where the command ran (an unknown directory is never home).
+	LinkNoDirectory LinkReason = "no-directory"
+	// LinkUnvouched: the row's directory is not one the shell proved or is in now: the host does not resolve against a directory a page names alone.
+	LinkUnvouched LinkReason = "unvouched"
+	// LinkRemote: the terminal's shell is on another machine, and a path of it is not a path of this disk.
+	LinkRemote LinkReason = "remote"
+	// LinkInvalid: the text is empty, holds a control character or is not UTF-8.
+	LinkInvalid LinkReason = "invalid"
+	// LinkTooLong: the text is over 2,048 bytes or its path over 1,024.
+	LinkTooLong LinkReason = "too-long"
+	// LinkURL: the text is a URL, which is never a path.
+	LinkURL LinkReason = "url"
+	// LinkDenied: the path is under /dev, /proc or /sys, which are never looked at.
+	LinkDenied LinkReason = "denied"
+	// LinkOutside: the path, with its links followed, is outside the directory of the row and the roots.
+	LinkOutside LinkReason = "outside"
+	// LinkSpecial: the path is a pipe, a socket or a device: never opened.
+	LinkSpecial LinkReason = "special"
+	// LinkLoop: the path runs through a loop of links.
+	LinkLoop LinkReason = "loop"
+	// LinkAmbiguous: more than one file ends with the text.
+	LinkAmbiguous LinkReason = "ambiguous"
+	// LinkTimeout: the call used its time, or the file system is stuck.
+	LinkTimeout LinkReason = "timeout"
+)
+
+// LinkResolution is what the host says of a candidate link: the real absolute path of the file or directory the text names, with the line and
+// column the text gave (zero when it gave none), or kind `unknown` with a reason. The fact is the host's: the page never guesses that a file exists.
+type LinkResolution struct {
+	Kind LinkKind `json:"kind"`
+	// Path is the real path, with every link followed, when Kind is file or dir.
+	Path string `json:"path,omitempty"`
+	// Line and Col are 1-based, and absent when the text gave none.
+	Line int `json:"line,omitempty"`
+	Col  int `json:"col,omitempty"`
+	// Reason is set when Kind is unknown.
+	Reason LinkReason `json:"reason,omitempty"`
+}
+
+// UnknownLink is an answer of no link.
+func UnknownLink(reason LinkReason) LinkResolution {
+	return LinkResolution{Kind: LinkUnknown, Path: "", Line: 0, Col: 0, Reason: reason}
+}

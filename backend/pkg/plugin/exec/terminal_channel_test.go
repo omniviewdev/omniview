@@ -184,7 +184,7 @@ func channelBindingKinds() ([]string, []string, []string) {
 		"GetSession", "AttachSession", "DetachSession", "WriteSession", "CloseSession", "ResizeSession", "WriteTerminal",
 		"ResizeTerminal", "IsBusy", "GetCwd", "AckTerminal", "AttachTerminal", "DetachTerminal",
 	}
-	byCapability := []string{"CloseChannelTerminal", "ChannelTerminalBusy", "ChannelTerminalCwd", "ChannelTerminalCommands", "ListChannelTerminals", "DismissChannelTerminal"}
+	byCapability := []string{"CloseChannelTerminal", "ChannelTerminalBusy", "ChannelTerminalCwd", "ChannelTerminalCommands", "ChannelTerminalResolveLink", "ListChannelTerminals", "DismissChannelTerminal"}
 	unrelated := []string{
 		"ServiceStartup", "ServiceShutdown", "CreateSession", "OpenNativeSession", "GetNativeTerminalSupport", "GetNativeTerminalApplications",
 		"CreateTerminal", "ListTerminalShells", "ListSessions", "ListTerminals", "GetHandler", "GetHandlers", "GetPluginHandlers", "ListPlugins", "HasPlugin",
@@ -338,11 +338,12 @@ func TestTheFiveNewBindingsAnswerTheOneNotFoundForACapabilityThatOpensNothing(t 
 	wrong := []string{"", "x", strings.Repeat("A", 43), a.Cap[:42], a.Cap + "A", a.ID}
 	for _, capability := range wrong {
 		for name, call := range map[string]func(string) error{
-			"CloseChannelTerminal":    fx.wrapper.CloseChannelTerminal,
-			"DismissChannelTerminal":  fx.wrapper.DismissChannelTerminal,
-			"ChannelTerminalBusy":     func(c string) error { _, err := fx.wrapper.ChannelTerminalBusy(c); return err },
-			"ChannelTerminalCwd":      func(c string) error { _, err := fx.wrapper.ChannelTerminalCwd(c); return err },
-			"ChannelTerminalCommands": func(c string) error { _, err := fx.wrapper.ChannelTerminalCommands(c); return err },
+			"CloseChannelTerminal":       fx.wrapper.CloseChannelTerminal,
+			"DismissChannelTerminal":     fx.wrapper.DismissChannelTerminal,
+			"ChannelTerminalBusy":        func(c string) error { _, err := fx.wrapper.ChannelTerminalBusy(c); return err },
+			"ChannelTerminalCwd":         func(c string) error { _, err := fx.wrapper.ChannelTerminalCwd(c); return err },
+			"ChannelTerminalCommands":    func(c string) error { _, err := fx.wrapper.ChannelTerminalCommands(c); return err },
+			"ChannelTerminalResolveLink": func(c string) error { _, err := fx.wrapper.ChannelTerminalResolveLink(c, "", "a.go"); return err },
 		} {
 			err := call(capability)
 			require.Error(t, err, "%s(%q)", name, capability)
@@ -521,6 +522,7 @@ func TestTheCapabilityAppearsNowhereInALogAnEventAnErrorAFrameOrASpan(t *testing
 			func() error { _, err := fx.wrapper.ChannelTerminalBusy(wrong); return err }(),
 			func() error { _, err := fx.wrapper.ChannelTerminalCwd(wrong); return err }(),
 			func() error { _, err := fx.wrapper.ChannelTerminalCommands(wrong); return err }(),
+			func() error { _, err := fx.wrapper.ChannelTerminalResolveLink(wrong, "", "a.go"); return err }(),
 		} {
 			require.Error(t, err)
 			note("an error", err)

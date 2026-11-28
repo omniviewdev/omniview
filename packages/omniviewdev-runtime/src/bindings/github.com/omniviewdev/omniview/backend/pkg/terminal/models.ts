@@ -1125,6 +1125,152 @@ export class Limits {
 }
 
 /**
+ * LinkKind says what a candidate link names.
+ */
+export enum LinkKind {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    /**
+     * LinkFile is a regular file.
+     */
+    LinkFile = "file",
+
+    /**
+     * LinkDir is a directory.
+     */
+    LinkDir = "dir",
+
+    /**
+     * LinkUnknown is no answer; LinkResolution.Reason says why.
+     */
+    LinkUnknown = "unknown",
+};
+
+/**
+ * LinkReason says why a candidate link has no answer. A page shows no link for any of them, and the page's wording for 'gone' is "no longer there".
+ */
+export enum LinkReason {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    /**
+     * LinkNotFound: nothing the text can name exists where it was looked for.
+     */
+    LinkNotFound = "not-found",
+
+    /**
+     * LinkGone: the text was answered a moment ago and the file is no longer there.
+     */
+    LinkGone = "gone",
+
+    /**
+     * LinkNoDirectory: the host does not know where the command ran (an unknown directory is never home).
+     */
+    LinkNoDirectory = "no-directory",
+
+    /**
+     * LinkUnvouched: the row's directory is not one the shell proved or is in now: the host does not resolve against a directory a page names alone.
+     */
+    LinkUnvouched = "unvouched",
+
+    /**
+     * LinkRemote: the terminal's shell is on another machine, and a path of it is not a path of this disk.
+     */
+    LinkRemote = "remote",
+
+    /**
+     * LinkInvalid: the text is empty, holds a control character or is not UTF-8.
+     */
+    LinkInvalid = "invalid",
+
+    /**
+     * LinkTooLong: the text is over 2,048 bytes or its path over 1,024.
+     */
+    LinkTooLong = "too-long",
+
+    /**
+     * LinkURL: the text is a URL, which is never a path.
+     */
+    LinkURL = "url",
+
+    /**
+     * LinkDenied: the path is under /dev, /proc or /sys, which are never looked at.
+     */
+    LinkDenied = "denied",
+
+    /**
+     * LinkOutside: the path, with its links followed, is outside the directory of the row and the roots.
+     */
+    LinkOutside = "outside",
+
+    /**
+     * LinkSpecial: the path is a pipe, a socket or a device: never opened.
+     */
+    LinkSpecial = "special",
+
+    /**
+     * LinkLoop: the path runs through a loop of links.
+     */
+    LinkLoop = "loop",
+
+    /**
+     * LinkAmbiguous: more than one file ends with the text.
+     */
+    LinkAmbiguous = "ambiguous",
+
+    /**
+     * LinkTimeout: the call used its time, or the file system is stuck.
+     */
+    LinkTimeout = "timeout",
+};
+
+/**
+ * LinkResolution is what the host says of a candidate link: the real absolute path of the file or directory the text names, with the line and
+ * column the text gave (zero when it gave none), or kind `unknown` with a reason. The fact is the host's: the page never guesses that a file exists.
+ */
+export class LinkResolution {
+    "kind": LinkKind;
+
+    /**
+     * Path is the real path, with every link followed, when Kind is file or dir.
+     */
+    "path"?: string;
+
+    /**
+     * Line and Col are 1-based, and absent when the text gave none.
+     */
+    "line"?: number;
+    "col"?: number;
+
+    /**
+     * Reason is set when Kind is unknown.
+     */
+    "reason"?: LinkReason;
+
+    /** Creates a new LinkResolution instance. */
+    constructor($$source: Partial<LinkResolution> = {}) {
+        if (!("kind" in $$source)) {
+            this["kind"] = LinkKind.$zero;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new LinkResolution instance from a string or object.
+     */
+    static createFrom($$source: any = {}): LinkResolution {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new LinkResolution($$parsedSource as Partial<LinkResolution>);
+    }
+}
+
+/**
  * Listed is one terminal of ListTerminals: what a page that comes back needs to match it with a tab.
  */
 export class Listed {
