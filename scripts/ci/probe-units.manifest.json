@@ -444,6 +444,10 @@
       "slot-undeclared"
     ]
   },
+  "ui-next/shell/probes/terminal-apply-probe.mjs": {
+    "probe": true,
+    "controls": []
+  },
   "ui-next/shell/probes/terminal-data-probe.mjs": {
     "probe": true,
     "controls": []
@@ -666,10 +670,6 @@
     "controls": []
   },
   "ui-next/shell/probes/terminal-reattach-probe.mjs": {
-    "probe": true,
-    "controls": []
-  },
-  "ui-next/shell/probes/terminal-apply-probe.mjs": {
     "probe": true,
     "controls": []
   },
