@@ -83,13 +83,13 @@ const rounded = (value) => Math.round(value * 10) / 10;
  * The negative controls: a fault of the page (`init` before the page's own scripts, `after` at the `stage` the section names). Each runs in Chromium: what it proves does not depend on the engine.
  */
 export const PANES_CONTROLS = {
-  // The first pane takes three times the room of the second.
+  // The first pane takes a little more than its share: 3 px of 1,400, which the emulators' columns do not see (a third of a column) and the equal widths do.
   'panes-unequal': {
     assertion: 'panes.equal',
     section: 'panes-layout',
     engines: ['chromium'],
     stage: 'split',
-    after: (page) => page.evaluate(() => document.querySelector('[data-shell-part="panelBody"][data-pane]').style.setProperty('--_share', '3')),
+    after: (page) => page.evaluate(() => document.querySelector('[data-shell-part="panelBody"][data-pane]').style.setProperty('--_share', '0.502')),
   },
   // The request for the new terminal carries another directory than the one the host said the first was in.
   'panes-wrong-directory': {
@@ -97,8 +97,9 @@ export const PANES_CONTROLS = {
     section: 'panes-layout',
     engines: ['chromium'],
     init: () => {
-      const send = window.fetch.bind(window);
-      window.fetch = (input, init) => send(input, typeof init?.body === 'string' ? { ...init, body: init.body.replaceAll('/home/user', '/etc') } : init);
+      // What the page asks the host for a terminal in goes through the probe's binding: the directory is changed on its way.
+      const call = window.__host;
+      window.__host = async (id, method, args) => call(id, method, method === 'CreateTerminal' ? JSON.parse(JSON.stringify(args).replaceAll('/home/user', '/etc')) : args);
     },
   },
   // The keyboard stays where it was when the new terminal is made.
@@ -147,17 +148,22 @@ export const PANES_CONTROLS = {
     stage: 'start',
     after: (page) => page.evaluate(() => document.querySelectorAll('[data-shell-part="paneSash"]').forEach((sash) => sash.setAttribute('tabindex', '-1'))),
   },
-  // A pane is left at 30 px after the window is made narrower, as a page that never fitted the shares would.
+  // The deck is never observed: a window made narrower leaves the panes as they were, and the first is under 80 px.
   'panes-fit-lost': {
     assertion: 'panes.fit',
     section: 'panes-resize',
     engines: ['chromium'],
-    stage: 'narrow',
-    after: (page) =>
-      page.evaluate(() => {
-        const [first] = document.querySelectorAll('[data-shell-part="panelBody"][data-pane]');
-        first.style.setProperty('--_share', '0.03');
-      }),
+    init: () => {
+      const Observer = window.ResizeObserver;
+      window.ResizeObserver = class extends Observer {
+        constructor(callback) {
+          super((entries, observer) => {
+            const kept = entries.filter((entry) => entry.target.getAttribute('data-shell-part') !== 'panelDeck');
+            if (kept.length > 0) callback(kept, observer);
+          });
+        }
+      };
+    },
   },
   // Split terminal does not say it cannot when no pane fits.
   'panes-full-enabled': {
@@ -437,8 +443,10 @@ export function createPanesSections({ check, note, report, runAxe }) {
       const equalWidths = widthsOf(await bodies(page));
       check('panes.reset', equal, `${tag}: a double click on the sash: ${equal ? `${equalWidths.map(rounded).join(' and ')} px` : `the panes are ${equalWidths.map(rounded).join(' and ')} px, not equal`}`);
 
-      // The keys.
+      // The keys. They start from equal panes whatever the double click did (Enter on the sash is the keys' own check below).
       await page.locator('[data-shell-part="paneSash"]').focus();
+      await page.keyboard.press('Enter');
+      await until(async () => near(...widthsOf(await bodies(page)).slice(0, 2), 1));
       const keyProblems = [];
       const width = async () => widthsOf(await bodies(page))[0];
       const base = await width();
@@ -473,7 +481,6 @@ export function createPanesSections({ check, note, report, runAxe }) {
       await until(async () => near(widthsOf(await bodies(page))[0], 80, 1));
       const width = ctx.viewport.width;
       await page.setViewportSize({ width: Math.round(width * 0.6), height: ctx.viewport.height });
-      await perturb(ctx, page, 'narrow');
       const fitted = await until(async () => {
         const shown = await bodies(page);
         const deck = await page.evaluate(() => window.__panes.deck());
