@@ -36,7 +36,8 @@ Under the modifier (Command on a Mac, Control elsewhere) a path such as `src/a.g
 |---|---|---|
 | red | `0043130c7` | 51 tests fail by their assertions (the real-xterm provider tests, the hook, the menu, the gutter's `directoryAt`, the feed and the channel), with stubs |
 | green | `3aa5935b7` | the code |
-| probe | `0e5bad58d` | the probe, its host, the controls script, the units; then `PROBE_SHA` for the settle of the rows and the keyboard |
+| probe | `0e5bad58d` | the probe, its host, the controls script, the units |
+| fixes | `531638c17`, `06807bfaa`, `b6a89f6aa`, `51725d950` | the probe waits for the rows to settle; the redundant URL filter dropped (the matcher gives none); the provider answers the emulator at once and asks the row again (the seam found the blocked web links); the controls follow the new shape |
 
 **The emulator of each test.** `xtermEngine.test.ts` ("the file links of a real emulator"): REAL xterm 6.0.0 in jsdom, with Unicode 11 as the engine loads it (the ranges, the cells, wrapped rows, wide characters, the modifier, the settle with fake `setTimeout`, the cap, the alternate screen, the URL overlap, the megabyte), the handler a recording fake. `links/fileLinksXterm.test.ts`: real xterm (the matcher's offsets over `cells.ts`). `gutter/commandGutter.test.ts`: real xterm (`directoryAt`). `menu/hookup.test.tsx`: the real screen and body over the FAKE engine (call order only). `useTerminalLinks.test.tsx`, `terminalMenu.test.ts`, `useTerminalMenu.test.tsx`, `execFeed.test.ts`, `terminalChannel.test.ts`: no emulator. The probe: REAL xterm in WebKit and Chromium (DOM renderer).
 
@@ -44,11 +45,50 @@ Under the modifier (Command on a Mac, Control elsewhere) a path such as `src/a.g
 
 `ui-next/shell/probes/terminal-filelinks-controls.sh` (from the repository root; exit 0 only when every control is seen; `FIXTURE_DIST=<dir>` reuses a build of the fixture).
 
-CONTROLS_PLACEHOLDER
+Result of the last run on `51725d950`: **21 of 21 seen**, exit 0.
+
+| half | control | seen by |
+|---|---|---|
+| probe (Chromium; detected with its assertion, NOT DETECTED with `ASSERTION_OFF`) | `files-missing-link` (the host says a missing file is there) | `files.link` |
+| | `files-tooltip-position-lost` (the tooltip loses where in the file) | `files.link` |
+| | `files-all-lines`, `files-no-cap` (the page asks the host about every line printed, or about more than 10 candidates) | `files.counts` |
+| | `files-foreign-link` (the host says idle while a program holds the foreground; the shell has no integration there) | `files.foreign` |
+| | `files-wrong-directory` (the host ignores the directory the page names) | `files.directory` |
+| | `files-no-modifier` (the modifier is always held) | `files.modifier` |
+| | `files-clipboard-dropped` (a click copies nothing) | `files.click` |
+| | `files-tooltip-axe` (an image with no alternative in the tooltip) | `axe.files` |
+| source (the clean run passes, the planted source fails) | the hook makes a link for an answer with no path | hook tests |
+| | the hook names a directory of its own | hook tests |
+| | the hook asks while a program holds the foreground | hook tests |
+| | the hook has no cap on the candidates asked | hook tests |
+| | the hook follows without the modifier | hook tests |
+| | the provider asks without the modifier | real-emulator tests |
+| | the provider asks for every line in view | real-emulator tests |
+| | the provider holds back the web links (a question left open) | real-emulator tests |
+| | the provider does not settle | real-emulator tests |
+| | the provider reads a line without a bound (a megabyte) | real-emulator tests |
+| | the provider maps offsets as columns | real-emulator tests |
+| | the gutter names the last command's directory for every row | gutter tests (real xterm) |
+| | the feed accepts a file with no path | feed tests |
 
 ## 5. Commands and results
 
-RESULTS_PLACEHOLDER
+Load 2 to 14 (`uptime`; a shared machine). Exit codes read, not last lines.
+
+| Check | Result |
+|---|---|
+| red run, `0043130c7` (vitest on the terminal directory) | 51 failed, each by its assertion |
+| `pnpm exec vitest run ui-next/shell/panel/terminal` on `51725d950` | 53 files, 2,683 tests, all pass |
+| `tsc -p tsconfig.app.json`, `tsc -p tsconfig.test.json`, `pnpm --filter @omniviewdev/kit run typecheck` | 0, 0, 0 |
+| `pnpm --filter @omniviewdev/runtime run api:check` | 0 (the runtime now exports `ChannelTerminalResolveLink`) |
+| `pnpm lint` | exit 0 |
+| `node scripts/ci/probe-shards.mjs check`; manifest keys sorted | ok (110 units, 60 control units, 497 controls); sorted |
+| `node ui-next/shell/probes/terminal-filelinks-probe.mjs`, WebKit and Chromium at 1440x900 and 1280x800, `FONT_DELAY_MS=40` | PASS, 36 assertions (9 each): the tooltip says the resolved path and `line 12, column 3`; a missing path is no link; no question without the modifier, one when the key is pressed while the pointer rests; a click copies `/home/user/src/a.go:12:3` once; after `cd` the new row resolves against the new directory and the old row against its own; 10 questions for a line of 30 candidates, none for other lines; a megabyte of `a:1` makes no question and a key reaches the screen within 2 frames; no question while `ssh` holds the foreground; Open link lists the file and Enter copies it; axe clean |
+| `ui-next/shell/probes/terminal-filelinks-controls.sh` | exit 0, 21 of 21 seen |
+| `task local:seam -- terminal-core,terminal-find,terminal-integration`, `SEAM_SHELL=/bin/bash`, real host, WebKit and Chromium | exit 0 (the first run of this branch failed `hovering a web address says Follow link` in both engines: the blocked web links of decision 3; fixed and rerun) |
+| `pnpm build` then `node --test scripts/ui-flavour.test.mjs` | build exit 0; 7 of 7 pass |
+
+Not run: `node --test scripts/ci/*.test.mjs` (the aggregator tests need `jq`, which this machine lacks; no CI script other than the unit table and the manifest changed).
 
 ## 6. Not verified
 
