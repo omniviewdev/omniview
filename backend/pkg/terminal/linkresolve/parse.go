@@ -11,7 +11,12 @@ const (
 	maxPath = 1024
 	// maxDigits is the most digits a line or a column has: more is not a position.
 	maxDigits = 7
+	// decimal is the base of the digits of a position.
+	decimal = 10
 )
+
+// noTarget is the target of a text that names none.
+var noTarget = target{path: "", line: 0, col: 0} //nolint:gochecknoglobals // a constant value of a struct
 
 // target is the text, taken apart: the path it names and the position it gives.
 type target struct {
@@ -25,18 +30,18 @@ type target struct {
 // and a wrapping quote or bracket, taken off.
 func parse(text string) (target, Reason) {
 	if len(text) > maxText {
-		return target{}, ReasonTooLong
+		return noTarget, ReasonTooLong
 	}
 	if !utf8.ValidString(text) {
-		return target{}, ReasonInvalid
+		return noTarget, ReasonInvalid
 	}
 	for _, r := range text {
 		if r < 0x20 || r == 0x7f {
-			return target{}, ReasonInvalid
+			return noTarget, ReasonInvalid
 		}
 	}
 	if strings.Contains(text, "://") {
-		return target{}, ReasonURL
+		return noTarget, ReasonURL
 	}
 	s := strings.TrimSpace(text)
 	var tail string
@@ -53,7 +58,7 @@ func parse(text string) (target, Reason) {
 			s = strings.TrimRight(s, ")]>")
 		}
 	}
-	var out target
+	out := noTarget
 	if tail != "" {
 		out.path = s
 		out.line, out.col = position(tail)
@@ -62,17 +67,17 @@ func parse(text string) (target, Reason) {
 	}
 	out.path = strings.TrimSpace(out.path)
 	if out.path == "" {
-		return target{}, ReasonInvalid
+		return noTarget, ReasonInvalid
 	}
 	if len(out.path) > maxPath {
-		return target{}, ReasonTooLong
+		return noTarget, ReasonTooLong
 	}
 	return out, ""
 }
 
 // split cuts s at the first marker of a position and reads the position that follows it.
-func split(s string) (path string, line, col int) {
-	cut := len(s)
+func split(s string) (string, int, int) {
+	cut, line, col := len(s), 0, 0
 	for i := 0; i < len(s) && i < cut; i++ {
 		var at bool
 		switch s[i] {
@@ -107,7 +112,7 @@ func lineWord(s string) int {
 }
 
 // position reads a line and a column from the front of s, which begins at a marker (`:`, `(`, `#L`, ` line `), as far as it goes.
-func position(s string) (line, col int) {
+func position(s string) (int, int) {
 	s = strings.TrimLeft(s, ", ")
 	switch {
 	case s == "":
@@ -118,24 +123,26 @@ func position(s string) (line, col int) {
 			return 0, 0
 		}
 		if len(rest) > 1 && rest[0] == ':' {
-			col, _ = number(rest[1:])
+			col, _ := number(rest[1:])
+			return line, col
 		}
-		return line, col
+		return line, 0
 	case s[0] == '(':
 		line, rest := number(s[1:])
 		if line == 0 {
 			return 0, 0
 		}
 		if len(rest) > 1 && (rest[0] == ',' || rest[0] == ':') {
-			col, _ = number(strings.TrimLeft(rest[1:], " "))
+			col, _ := number(strings.TrimLeft(rest[1:], " "))
+			return line, col
 		}
-		return line, col
+		return line, 0
 	case strings.HasPrefix(s, "#L"):
-		line, _ = number(s[2:])
+		line, _ := number(s[2:])
 		return line, 0
 	default:
 		if n := lineWord(" " + s); n > 0 {
-			line, _ = number(s[n-1:])
+			line, _ := number(s[n-1:])
 			return line, 0
 		}
 	}
@@ -149,7 +156,7 @@ func number(s string) (int, string) {
 		if i >= maxDigits {
 			return 0, s
 		}
-		n = n*10 + int(s[i]-'0')
+		n = n*decimal + int(s[i]-'0')
 		i++
 	}
 	return n, s[i:]

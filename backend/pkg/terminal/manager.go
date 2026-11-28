@@ -149,7 +149,7 @@ func NewManager(ctx context.Context, log logging.Logger, sink Sink) *Manager {
 	m := &Manager{
 		base: shellenv.LaunchEnvironment, resolve: shellenv.Resolve, probe: shellenv.Probe, integrationOn: func() (bool, error) { return true, nil }, bashVersion: probeBashVersion,
 		ctx: ctx, log: log.Named("TerminalManager"), sink: sink, reported: reported, closing: atomic.Bool{}, launching: sync.WaitGroup{}, flowStall: FlowStall, closeWait: closeWait,
-		replayBytes: ReplayBytes, channel: defaultChannelLimits(), links: linkresolve.New(linkresolve.Config{}), offsets: offsets, detachments: detachments,
+		replayBytes: ReplayBytes, channel: defaultChannelLimits(), links: linkresolve.NewDefault(), offsets: offsets, detachments: detachments,
 		mu: sync.RWMutex{}, sessions: make(map[string]*session), starting: make(map[string]struct{}), ended: nil, tombs: nil, tombTimer: nil, clock: wallClock{},
 	}
 	go m.forwardSignals()

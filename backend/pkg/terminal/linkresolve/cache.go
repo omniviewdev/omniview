@@ -26,7 +26,7 @@ type cached struct {
 }
 
 func newCache(size int, ttl time.Duration, now func() time.Time) *cache {
-	return &cache{size: size, ttl: ttl, now: now, order: list.New(), byKey: make(map[string]*list.Element, size)}
+	return &cache{mu: sync.Mutex{}, size: size, ttl: ttl, now: now, order: list.New(), byKey: make(map[string]*list.Element, size)}
 }
 
 func (c *cache) get(key string) (Result, bool) {
@@ -34,13 +34,13 @@ func (c *cache) get(key string) (Result, bool) {
 	defer c.mu.Unlock()
 	el, ok := c.byKey[key]
 	if !ok {
-		return Result{}, false
+		return unknown(""), false
 	}
 	entry, _ := el.Value.(*cached)
 	if c.now().Sub(entry.at) >= c.ttl {
 		c.order.Remove(el)
 		delete(c.byKey, key)
-		return Result{}, false
+		return unknown(""), false
 	}
 	c.order.MoveToFront(el)
 	return entry.res, true

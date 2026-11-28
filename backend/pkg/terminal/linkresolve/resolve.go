@@ -44,21 +44,25 @@ type Resolver struct {
 
 // New makes a resolver.
 func New(cfg Config) *Resolver {
-	r := &Resolver{fs: cfg.FS, budget: cfg.Budget, maxOps: cfg.MaxOps, scanEntries: cfg.ScanEntries, scanDepth: cfg.ScanDepth}
-	if r.fs == nil {
-		r.fs = OSFS{}
+	files := cfg.FS
+	if files == nil {
+		files = OSFS{}
 	}
-	r.budget = orDefault(r.budget, defaultBudget)
-	r.maxOps = orDefault(r.maxOps, defaultMaxOps)
-	r.scanEntries = orDefault(r.scanEntries, defaultScanEntries)
-	r.scanDepth = orDefault(r.scanDepth, defaultScanDepth)
-	r.slots = make(chan struct{}, orDefault(cfg.MaxInFlight, defaultMaxInFlight))
 	now := cfg.Now
 	if now == nil {
 		now = time.Now
 	}
-	r.cache = newCache(orDefault(cfg.CacheSize, defaultCacheSize), orDefault(cfg.CacheTTL, defaultCacheTTL), now)
-	return r
+	return &Resolver{
+		fs: files, budget: orDefault(cfg.Budget, defaultBudget), maxOps: orDefault(cfg.MaxOps, defaultMaxOps),
+		scanEntries: orDefault(cfg.ScanEntries, defaultScanEntries), scanDepth: orDefault(cfg.ScanDepth, defaultScanDepth),
+		slots: make(chan struct{}, orDefault(cfg.MaxInFlight, defaultMaxInFlight)),
+		cache: newCache(orDefault(cfg.CacheSize, defaultCacheSize), orDefault(cfg.CacheTTL, defaultCacheTTL), now),
+	}
+}
+
+// NewDefault makes a resolver with every bound at its default.
+func NewDefault() *Resolver {
+	return New(Config{FS: nil, Budget: 0, MaxOps: 0, MaxInFlight: 0, ScanEntries: 0, ScanDepth: 0, CacheTTL: 0, CacheSize: 0, Now: nil})
 }
 
 func orDefault[T int | time.Duration](v, d T) T {
@@ -116,7 +120,7 @@ func (r *Resolver) Resolve(in Input) Result {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), r.budget)
 	defer cancel()
-	c := &call{r: r, ctx: ctx, lstats: map[string]lstatMemo{}, links: map[string]string{}}
+	c := newCall(ctx, r)
 
 	key := in.Dir + "\x00" + strings.Join(in.Roots, "\x00") + "\x00" + in.Text
 	if cached, ok := r.cache.get(key); ok {
@@ -140,7 +144,13 @@ func (r *Resolver) Resolve(in Input) Result {
 	return out
 }
 
-func unknown(reason Reason) Result { return Result{Kind: KindUnknown, Reason: reason} }
+// unknown is the answer of no link.
+func unknown(reason Reason) Result {
+	return Result{Kind: KindUnknown, Path: "", Line: 0, Col: 0, Reason: reason}
+}
+
+// hit is the answer of a file or a directory.
+func hit(kind Kind, p string) Result { return Result{Kind: kind, Path: p, Line: 0, Col: 0, Reason: ""} }
 
 // call is the state of one Resolve: its deadline, its operations counted, and what it has already asked the file system.
 type call struct {
@@ -153,65 +163,85 @@ type call struct {
 	stuck   bool
 }
 
+func newCall(ctx context.Context, r *Resolver) *call {
+	return &call{r: r, ctx: ctx, ops: 0, lstats: map[string]lstatMemo{}, links: map[string]string{}, scanned: 0, stuck: false}
+}
+
 type lstatMemo struct {
 	info fs.FileInfo
 	err  error
 }
 
+// outcome is what a guarded operation gave: its value and error, and whether the call waited for it.
+type outcome[T any] struct {
+	v    T
+	err  error
+	done bool
+}
+
 // guarded runs one file system operation under the call's deadline and operation count, in a goroutine that holds a slot until the operation
-// returns. It reports false when the call may not wait for it: the deadline passed, the call used its operations, or every slot is taken.
-func guarded[T any](c *call, op func() (T, error)) (T, error, bool) { //nolint:revive // the value, the error and whether it was waited for
-	var zero T
-	if c.stuck || c.ctx.Err() != nil || c.ops >= c.r.maxOps {
+// returns. It is not done when the call may not wait for it: the deadline passed, the call used its operations, or every slot is taken.
+func guarded[T any](c *call, op func() (T, error)) outcome[T] {
+	var none outcome[T]
+	if c.stuck || c.ops >= c.r.maxOps {
 		c.stuck = true
-		return zero, nil, false
+		return none
 	}
 	select {
+	case <-c.ctx.Done():
+		c.stuck = true
+		return none
 	case c.r.slots <- struct{}{}:
 	default:
 		c.stuck = true
-		return zero, nil, false
+		return none
 	}
 	c.ops++
-	type answer struct {
-		v   T
-		err error
-	}
-	done := make(chan answer, 1)
+	answer := make(chan outcome[T], 1)
 	go func() {
 		v, err := op()
 		<-c.r.slots
-		done <- answer{v, err}
+		answer <- outcome[T]{v: v, err: err, done: true}
 	}()
 	select {
-	case a := <-done:
-		return a.v, a.err, true
+	case got := <-answer:
+		return got
 	case <-c.ctx.Done():
 		c.stuck = true
-		return zero, nil, false
+		return none
 	}
 }
 
-func (c *call) lstat(p string) (fs.FileInfo, error, bool) { //nolint:revive // as guarded
-	if m, ok := c.lstats[p]; ok {
-		return m.info, m.err, true
+// lstat is os.Lstat through the guard, asked once for a path in one call. The reason is empty when the path exists.
+func (c *call) lstat(p string) (fs.FileInfo, Reason) {
+	m, ok := c.lstats[p]
+	if !ok {
+		got := guarded(c, func() (fs.FileInfo, error) { return c.r.fs.Lstat(p) })
+		if !got.done {
+			return nil, ReasonTimeout
+		}
+		m = lstatMemo{info: got.v, err: got.err}
+		c.lstats[p] = m
 	}
-	info, err, ok := guarded(c, func() (fs.FileInfo, error) { return c.r.fs.Lstat(p) })
-	if ok {
-		c.lstats[p] = lstatMemo{info, err}
+	if m.err != nil {
+		return nil, ReasonNotFound
 	}
-	return info, err, ok
+	return m.info, ""
 }
 
-func (c *call) readlink(p string) (string, error, bool) { //nolint:revive // as guarded
+func (c *call) readlink(p string) (string, Reason) {
 	if t, ok := c.links[p]; ok {
-		return t, nil, true
+		return t, ""
 	}
-	t, err, ok := guarded(c, func() (string, error) { return c.r.fs.Readlink(p) })
-	if ok && err == nil {
-		c.links[p] = t
+	got := guarded(c, func() (string, error) { return c.r.fs.Readlink(p) })
+	switch {
+	case !got.done:
+		return "", ReasonTimeout
+	case got.err != nil:
+		return "", ReasonNotFound
 	}
-	return t, err, ok
+	c.links[p] = got.v
+	return got.v, ""
 }
 
 // denied is whether a path is one that is never looked at.
@@ -230,7 +260,7 @@ func (c *call) real(p string) (string, fs.FileInfo, Reason) {
 	if denied(p) {
 		return "", nil, ReasonDenied
 	}
-	queue := splitPath(p)
+	queue := strings.Split(p, "/")
 	resolved, links := "/", 0
 	var info fs.FileInfo
 	for len(queue) > 0 {
@@ -240,20 +270,16 @@ func (c *call) real(p string) (string, fs.FileInfo, Reason) {
 		case "", ".":
 			continue
 		case "..":
-			resolved = path.Dir(resolved)
-			info = nil
+			resolved, info = path.Dir(resolved), nil
 			continue
 		}
 		next := path.Join(resolved, name)
 		if denied(next) {
 			return "", nil, ReasonDenied
 		}
-		fi, err, ok := c.lstat(next)
-		if !ok {
-			return "", nil, ReasonTimeout
-		}
-		if err != nil {
-			return "", nil, ReasonNotFound
+		fi, reason := c.lstat(next)
+		if reason != "" {
+			return "", nil, reason
 		}
 		if fi.Mode()&fs.ModeSymlink == 0 {
 			resolved, info = next, fi
@@ -262,32 +288,23 @@ func (c *call) real(p string) (string, fs.FileInfo, Reason) {
 		if links++; links > maxLinks {
 			return "", nil, ReasonLoop
 		}
-		target, err, ok := c.readlink(next)
-		if !ok {
-			return "", nil, ReasonTimeout
-		}
-		if err != nil {
-			return "", nil, ReasonNotFound
+		target, reason := c.readlink(next)
+		if reason != "" {
+			return "", nil, reason
 		}
 		if strings.HasPrefix(target, "/") {
 			resolved = "/"
 		}
-		queue = append(splitPath(target), queue...)
+		queue = append(strings.Split(target, "/"), queue...)
 	}
 	if info == nil {
-		fi, err, ok := c.lstat(resolved)
-		switch {
-		case !ok:
-			return "", nil, ReasonTimeout
-		case err != nil:
-			return "", nil, ReasonNotFound
+		var reason Reason
+		if info, reason = c.lstat(resolved); reason != "" {
+			return "", nil, reason
 		}
-		info = fi
 	}
 	return resolved, info, ""
 }
-
-func splitPath(p string) []string { return strings.Split(p, "/") }
 
 // bases are the directories a path is resolved in and may lie in: the real path of the row's directory first, then those of the roots. A root
 // that is not a directory here is left out; a row directory that is not one, or is in /dev, /proc or /sys, is the answer.
@@ -297,7 +314,7 @@ func (c *call) bases(in Input) ([]string, Reason) {
 		if !filepath.IsAbs(dir) {
 			continue
 		}
-		real, info, reason := c.real(filepath.Clean(dir))
+		resolved, info, reason := c.real(filepath.Clean(dir))
 		if reason == ReasonTimeout || (reason == ReasonDenied && i == 0) {
 			return nil, reason
 		}
@@ -307,9 +324,17 @@ func (c *call) bases(in Input) ([]string, Reason) {
 			}
 			continue
 		}
-		out = append(out, real)
+		out = append(out, resolved)
 	}
 	return out, ""
+}
+
+// worse is the answer to keep of two misses: the first that is not a plain not-found.
+func worse(kept, got Result) Result {
+	if kept.Reason == ReasonNotFound {
+		return got
+	}
+	return kept
 }
 
 func (c *call) resolve(in Input, t target) Result {
@@ -317,59 +342,84 @@ func (c *call) resolve(in Input, t target) Result {
 	if reason != "" {
 		return unknown(reason)
 	}
-	var first Reason = ReasonNotFound
-	note := func(got Reason) {
-		if first == ReasonNotFound && got != ReasonNotFound {
-			first = got
-		}
-	}
 	cleaned := path.Clean(filepath.ToSlash(t.path))
-	candidates := []string{cleaned}
-	if strings.HasPrefix(cleaned, "a/") || strings.HasPrefix(cleaned, "b/") {
-		candidates = append(candidates, cleaned[2:])
-	}
-	for _, cand := range candidates {
-		for _, name := range spellings(cand) {
-			tries := []string{name}
-			if !path.IsAbs(name) {
-				tries = tries[:0]
-				for _, base := range bases {
-					tries = append(tries, path.Join(base, name))
-				}
+	miss := unknown(ReasonNotFound)
+	for _, name := range names(cleaned) {
+		for _, lex := range joined(name, bases) {
+			got := c.attempt(lex, bases)
+			if got.Kind != KindUnknown {
+				return at(got, t)
 			}
-			for _, lex := range tries {
-				res, got := c.attempt(lex, bases)
-				if got == ReasonTimeout {
-					return unknown(ReasonTimeout)
-				}
-				if got == "" {
-					res.Line, res.Col = t.line, t.col
-					return res
-				}
-				note(got)
+			if got.Reason == ReasonTimeout {
+				return got
 			}
+			miss = worse(miss, got)
 		}
 	}
-	if first == ReasonNotFound && !path.IsAbs(cleaned) && !strings.HasPrefix(cleaned, "../") && cleaned != ".." && cleaned != "." {
-		res, got := c.scan(bases, cleaned)
-		if got == "" {
-			res.Line, res.Col = t.line, t.col
-			return res
+	if miss.Reason == ReasonNotFound && scannable(cleaned) {
+		if got := c.scan(bases, cleaned); got.Kind != KindUnknown {
+			return at(got, t)
+		} else if got.Reason != ReasonNotFound {
+			miss = got
 		}
-		note(got)
 	}
 	if c.stuck {
 		return unknown(ReasonTimeout)
 	}
-	return unknown(first)
+	return miss
+}
+
+// at puts the position of the text on an answer.
+func at(res Result, t target) Result {
+	res.Line, res.Col = t.line, t.col
+	return res
+}
+
+// scannable is whether a cleaned text may be looked for by its suffix: a relative name that climbs nowhere.
+func scannable(cleaned string) bool {
+	return !path.IsAbs(cleaned) && cleaned != "." && cleaned != ".." && !strings.HasPrefix(cleaned, "../")
+}
+
+// names are the names to look for, in order: the text as printed, then without a leading `a/` or `b/` (a git diff's), each in the spellings a disk may have.
+func names(cleaned string) []string {
+	var out []string
+	for _, name := range []string{cleaned, stripDiffPrefix(cleaned)} {
+		if name == "" {
+			continue
+		}
+		for _, spelled := range spellings(name) {
+			if !slices.Contains(out, spelled) {
+				out = append(out, spelled)
+			}
+		}
+	}
+	return out
+}
+
+func stripDiffPrefix(name string) string {
+	if strings.HasPrefix(name, "a/") || strings.HasPrefix(name, "b/") {
+		return name[2:]
+	}
+	return ""
+}
+
+// joined are the absolute paths a name may be: itself when it is absolute, else it under each base, the row's directory first.
+func joined(name string, bases []string) []string {
+	if path.IsAbs(name) {
+		return []string{name}
+	}
+	out := make([]string, 0, len(bases))
+	for _, base := range bases {
+		out = append(out, path.Join(base, name))
+	}
+	return out
 }
 
 // spellings are the names a text may be spelled as on a disk: as printed, then the other normal forms.
 func spellings(name string) []string {
 	out := []string{name}
 	for _, form := range [...]norm.Form{norm.NFC, norm.NFD} {
-		alt := form.String(name)
-		if !slices.Contains(out, alt) {
+		if alt := form.String(name); !slices.Contains(out, alt) {
 			out = append(out, alt)
 		}
 	}
@@ -377,21 +427,19 @@ func spellings(name string) []string {
 }
 
 // attempt looks for one absolute, lexically cleaned path: its real path must lie in a base, and be a file or a directory.
-func (c *call) attempt(lex string, bases []string) (Result, Reason) {
-	real, info, reason := c.real(lex)
-	if reason != "" {
-		return Result{}, reason
-	}
-	if !within(real, bases) {
-		return Result{}, ReasonOutside
-	}
+func (c *call) attempt(lex string, bases []string) Result {
+	resolved, info, reason := c.real(lex)
 	switch {
+	case reason != "":
+		return unknown(reason)
+	case !within(resolved, bases):
+		return unknown(ReasonOutside)
 	case info.Mode().IsRegular():
-		return Result{Kind: KindFile, Path: real}, ""
+		return hit(KindFile, resolved)
 	case info.IsDir():
-		return Result{Kind: KindDir, Path: real}, ""
+		return hit(KindDir, resolved)
 	}
-	return Result{}, ReasonSpecial
+	return unknown(ReasonSpecial)
 }
 
 func within(p string, bases []string) bool {
@@ -403,53 +451,71 @@ func within(p string, bases []string) bool {
 	return false
 }
 
+// scanState is the suffix scan in progress: the one match so far.
+type scanState struct {
+	suffix string
+	match  string
+}
+
+type level struct {
+	dir   string
+	depth int
+}
+
 // scan looks for the one file under the bases whose path ends with name, never entering a link, a hidden directory or node_modules, and
 // reading at most scanEntries entries to scanDepth directories deep.
-func (c *call) scan(bases []string, name string) (Result, Reason) {
-	suffix := "/" + name
-	var match string
-	type level struct {
-		dir   string
-		depth int
-	}
+func (c *call) scan(bases []string, name string) Result {
+	st := &scanState{suffix: "/" + name, match: ""}
 	for _, base := range bases {
-		queue := []level{{base, 0}}
-		for len(queue) > 0 {
+		queue := []level{{dir: base, depth: 0}}
+		for len(queue) > 0 && c.r.scanEntries-c.scanned > 0 {
 			at := queue[0]
 			queue = queue[1:]
-			left := c.r.scanEntries - c.scanned
-			if left <= 0 {
-				break
+			next, miss := c.scanDir(st, at)
+			if miss != "" {
+				return unknown(miss)
 			}
-			entries, err, ok := guarded(c, func() ([]fs.DirEntry, error) { return c.r.fs.ReadDir(at.dir, min(left, scanBatch)) })
-			if !ok {
-				return Result{}, ReasonTimeout
-			}
-			if err != nil {
-				continue
-			}
-			c.scanned += len(entries)
-			sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
-			for _, e := range entries {
-				full := path.Join(at.dir, e.Name())
-				typ := e.Type()
-				if (typ.IsRegular() || typ.IsDir()) && strings.HasSuffix(full, suffix) && full != match {
-					if match != "" {
-						return Result{}, ReasonAmbiguous
-					}
-					match = full
-				}
-				if typ.IsDir() && at.depth < c.r.scanDepth && !strings.HasPrefix(e.Name(), ".") && e.Name() != "node_modules" && !denied(full) {
-					queue = append(queue, level{full, at.depth + 1})
-				}
-			}
+			queue = append(queue, next...)
 		}
 	}
-	if match == "" {
-		return Result{}, ReasonNotFound
+	if st.match == "" {
+		return unknown(ReasonNotFound)
 	}
-	return c.attempt(match, bases)
+	return c.attempt(st.match, bases)
 }
+
+// scanDir reads one directory of the scan: it notes a match, and answers the directories to read next. The reason is set when the scan ends.
+func (c *call) scanDir(st *scanState, at level) ([]level, Reason) {
+	n := min(c.r.scanEntries-c.scanned, scanBatch)
+	got := guarded(c, func() ([]fs.DirEntry, error) { return c.r.fs.ReadDir(at.dir, n) })
+	if !got.done {
+		return nil, ReasonTimeout
+	}
+	if got.err != nil {
+		return nil, ""
+	}
+	entries := got.v
+	c.scanned += len(entries)
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
+	var next []level
+	for _, e := range entries {
+		full := path.Join(at.dir, e.Name())
+		typ := e.Type()
+		if (typ.IsRegular() || typ.IsDir()) && strings.HasSuffix(full, st.suffix) && full != st.match {
+			if st.match != "" {
+				return nil, ReasonAmbiguous
+			}
+			st.match = full
+		}
+		if typ.IsDir() && at.depth < c.r.scanDepth && !skipped(e.Name()) && !denied(full) {
+			next = append(next, level{dir: full, depth: at.depth + 1})
+		}
+	}
+	return next, ""
+}
+
+// skipped is whether the scan leaves a directory unread: hidden ones and node_modules.
+func skipped(name string) bool { return strings.HasPrefix(name, ".") || name == "node_modules" }
 
 type recheck int
 
@@ -462,11 +528,11 @@ const (
 
 // stillThere asks the file system once whether an answer from the cache is still true: the file may have been deleted since.
 func (c *call) stillThere(res Result) recheck {
-	info, err, ok := c.lstat(res.Path)
+	info, reason := c.lstat(res.Path)
 	switch {
-	case !ok:
+	case reason == ReasonTimeout:
 		return timedOut
-	case err != nil:
+	case reason != "":
 		return gone
 	case res.Kind == KindFile && info.Mode().IsRegular(), res.Kind == KindDir && info.IsDir():
 		return stillThere
