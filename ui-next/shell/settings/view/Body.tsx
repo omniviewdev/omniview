@@ -1,11 +1,12 @@
 import { Button, Text } from '@omniviewdev/kit';
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { FormStore } from '../../core/fields';
 import type { PageMemory } from '../host';
 import type { SettingsModel } from '../model/adapter';
-import type { SettingsSession } from '../model/session';
-import { Nav } from './Nav';
-import { Page, type HeadingLevel } from './Page';
+import type { SessionState, SettingsSession } from '../model/session';
+import { Nav, type NavNotice } from './Nav';
+import { Page, type HeadingLevel, type PageView } from './Page';
+import { focusSetting } from './SettingRow';
 import styles from './Body.module.css';
 
 type ReadyProps = {
@@ -15,12 +16,6 @@ type ReadyProps = {
   readonly session: SettingsSession;
   readonly memory: PageMemory;
 };
-
-/** The page to open on: the one Settings was last on in this window when it is still there, else the first. */
-function firstPage(model: SettingsModel, memory: PageMemory): string | undefined {
-  const last = memory.get();
-  return model.pages.some((page) => page.id === last) ? last : model.pages[0]?.id;
-}
 
 /** A refused draft does not outlive its field (S125): the page being entered starts from what the host has applied, so a value the host refused when the page was left is not found waiting on the way back. */
 function dropRefused(form: FormStore, ids: readonly string[]): void {
@@ -33,54 +28,178 @@ function dropRefused(form: FormStore, ids: readonly string[]): void {
   }
 }
 
+function clearSecrets(model: SettingsModel, form: FormStore): void {
+  for (const page of model.pages) {
+    for (const id of page.fields) {
+      if (form.field(id)?.secret?.changed === true) {
+        form.revert(id);
+      }
+    }
+  }
+}
+
 function Ready({ headingLevel, model, form, session, memory }: ReadyProps) {
-  const [selected, setSelected] = useState(() => firstPage(model, memory));
-  const layout = useRef<HTMLDivElement>(null);
-  const page = model.pages.find((candidate) => candidate.id === selected) ?? model.pages[0];
-  // Settings opens with the keyboard on its navigation, on the page that is on screen: the arrows move between pages from the first key.
-  useEffect(() => {
-    layout.current?.querySelector<HTMLElement>('[aria-current="page"]')?.focus({ preventScroll: true });
-  }, []);
-  // A Body that is mounted anew starts with no secret being typed: the Settings window's Body is keyed by the host's request, so a request for a page remounts it, and the secret's input comes back empty over a vault that still holds what the host refused.
-  useEffect(() => {
-    for (const entry of model.pages) {
-      for (const id of entry.fields) {
-        if (form.field(id)?.secret?.changed === true) {
-          form.revert(id);
+  const plugins = useSyncExternalStore(session.plugins.subscribe, session.plugins.getSnapshot);
+  const { pages, notices, loading, unavailable } = useMemo(() => {
+    const pages: PageView[] = model.pages.map(page => ({ ...page, branch: 'core', form, session }));
+    const notices: NavNotice[] = [];
+    const unavailable = new Map<string, Exclude<SessionState, { phase: 'ready' }>>();
+    let loading = plugins.phase === 'loading';
+    if (plugins.phase === 'failed') {
+      notices.push({ id: 'notice:inventory', label: 'Couldn’t list plugins. Retry', retry: session.plugins.refresh });
+    }
+
+    for (const plugin of plugins.entries) {
+      const state = plugin.session.getState();
+      if (state.phase !== 'ready') {
+        unavailable.set(plugin.id, state);
+      }
+
+      if (state.phase === 'loading') {
+        loading = true;
+        if (state.warning) {
+          notices.push({ id: `warning:${plugin.id}`, label: `${plugin.title}: ${state.warning}` });
+        }
+      } else if (state.phase === 'failed') {
+        const message = state.warning ? `${plugin.title}: ${state.warning}` : `Couldn’t load settings for ${plugin.title}.`;
+        notices.push({ id: `retry:${plugin.id}`, label: `${message} Retry`, retry: plugin.session.load });
+      } else {
+        const declared = state.model.pages[0];
+        if (declared) {
+          pages.push({
+            id: plugin.id,
+            title: plugin.title,
+            description: plugin.description,
+            icon: plugin.icon,
+            fields: declared.fields,
+            branch: 'plugins',
+            form: state.form,
+            session: plugin.session,
+          });
         }
       }
     }
-  }, [form, model]);
 
-  if (page === undefined) {
-    return (
-      <div className={styles.state} data-settings-part="state" data-settings-state="empty">
-        <Text>The host has no settings to show.</Text>
-      </div>
-    );
+    if (loading) {
+      notices.push({ id: 'notice:loading', label: 'Loading plugin settings…' });
+    }
+
+    return { pages, notices, loading, unavailable };
+  }, [model, form, session, plugins]);
+
+  const [selected, setSelected] = useState<string | undefined>(() => memory.get() ?? pages[0]?.id);
+  const wanted = pages.find(candidate => candidate.id === selected);
+  const selectedState = selected === undefined ? undefined : unavailable.get(selected);
+  const warning = selectedState?.warning;
+  // Keep a recovering plugin selected, including while its Retry action is available.
+  const waiting = selected !== undefined && selected.startsWith('plugin/') && (plugins.phase === 'loading' || selectedState?.phase === 'loading' || warning !== undefined);
+  const page = wanted ?? (waiting ? undefined : pages[0]);
+  const pageId = page?.id;
+  if (!waiting && pageId !== selected) {
+    setSelected(pageId);
   }
 
-  return (
-    <div ref={layout} className={styles.layout} data-settings-part="layout">
-      <Nav
-        pages={model.pages}
-        selected={page.id}
-        onSelect={(id) => {
-          const entered = model.pages.find((candidate) => candidate.id === id);
-          if (entered === undefined || entered.id === page.id) {
-            return;
-          }
+  useEffect(() => {
+    if (pageId !== undefined) {
+      memory.set(pageId);
+    }
+  }, [memory, pageId]);
 
-          dropRefused(form, entered.fields);
-          setSelected(id);
-          memory.set(id);
-        }}
-      />
-      {/* Keyed by the page, so that each page opens at its top: the pane that scrolls is a new element. */}
-      <div key={page.id} className={styles.content} data-settings-part="content">
-        <Page page={page} form={form} session={session} headingLevel={headingLevel} />
+  const layout = useRef<HTMLDivElement>(null);
+  const opening = useRef(true);
+  // Sheet opens the native dialog in its layout effect. Focus the page only after it is focusable.
+  useEffect(() => {
+    if (pageId === undefined || (!opening.current && document.activeElement !== document.body)) {
+      return;
+    }
+
+    opening.current = false;
+    // A search begun while discovery was running keeps the keyboard.
+    if (!layout.current?.contains(document.activeElement)) {
+      layout.current?.querySelector<HTMLElement>('[aria-current="page"]')?.focus();
+    }
+  }, [pageId]);
+
+  // A fresh Body (including a new native request) cannot inherit a secret from an input that no longer exists.
+  useEffect(() => {
+    clearSecrets(model, form);
+    for (const plugin of session.plugins.getSnapshot().entries) {
+      const state = plugin.session.getState();
+      if (state.phase === 'ready') {
+        clearSecrets(state.model, state.form);
+      }
+    }
+  }, [form, model, session]);
+
+  const select = (id: string) => {
+    if (id === pageId) {
+      return;
+    }
+
+    const entered = pages.find(candidate => candidate.id === id);
+    if (!entered) {
+      return;
+    }
+
+    dropRefused(entered.form, entered.fields);
+    setSelected(id);
+  };
+
+  const [jump, setJump] = useState<{ readonly page: string; readonly field: string | undefined }>();
+  useLayoutEffect(() => {
+    if (!jump || !layout.current) {
+      return;
+    }
+
+    const pageItem = layout.current.querySelector<HTMLElement>('[data-settings-page][aria-current="page"]');
+    if (pageItem?.dataset.settingsPage !== jump.page) {
+      return;
+    }
+
+    pageItem.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+    if (jump.field !== undefined) {
+      // Plugin field IDs are opaque, so never interpolate one into a selector.
+      for (const row of layout.current.querySelectorAll<HTMLElement>('[data-settings-row]')) {
+        if (row.dataset.settingsRow === jump.field) {
+          focusSetting(row);
+          row.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+          return;
+        }
+      }
+    }
+
+    pageItem.focus({ preventScroll: true });
+  }, [jump]);
+  const announcements = (page?.session ?? session).announcements;
+  const said = useSyncExternalStore(announcements.subscribe, announcements.getSnapshot);
+  const pageState = selectedState?.phase === 'failed' && warning ? 'unavailable' : loading ? 'loading' : notices.length > 0 ? 'unavailable' : 'empty';
+
+  return (
+    <>
+      <div ref={layout} className={styles.layout} data-settings-part="layout">
+        <Nav
+          pages={pages}
+          notices={notices}
+          selected={pageId}
+          onSelect={select}
+          onResult={(id, field) => {
+            select(id);
+            setJump({ page: id, field });
+          }}
+        />
+        {/* Each page starts at its top, without moving the sidebar. */}
+        <div key={pageId} className={styles.content} data-settings-part="content">
+          {page ? <Page page={page} headingLevel={headingLevel} /> : (
+            <div className={styles.state} role="status" data-settings-part="state" data-settings-state={pageState}>
+              {pageState === 'loading' ? <Text tone="muted">{warning ?? 'Loading settings…'}</Text> : (
+                <Text>{pageState === 'empty' ? 'The host has no settings to show.' : `${warning ?? 'Couldn’t load plugin settings.'} Retry from the sidebar.`}</Text>
+              )}
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+      <div className={styles.live} role="status" aria-live="polite" data-settings-part="live">{said.text}</div>
+    </>
   );
 }
 
@@ -123,7 +242,6 @@ export type BodyProps = {
  */
 export function Body({ session, page: memory, headingLevel }: BodyProps) {
   const state = useSyncExternalStore(session.subscribe, session.getState);
-  const said = useSyncExternalStore(session.announcements.subscribe, session.announcements.getSnapshot);
   // A page that was not looking (a laptop that slept, a tab in the background, a dropped events connection that came back) asks the host again when it is looked at: the host's `settings/changed` is not replayed.
   useEffect(() => {
     const ask = (): void => {
@@ -152,9 +270,6 @@ export function Body({ session, page: memory, headingLevel }: BodyProps) {
           <Text tone="muted">Loading settings…</Text>
         </div>
       )}
-      <div className={styles.live} role="status" aria-live="polite" data-settings-part="live">
-        {said.text}
-      </div>
     </div>
   );
 }

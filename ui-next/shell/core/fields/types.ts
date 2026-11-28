@@ -400,13 +400,13 @@ export type SubmitPayload = {
 };
 
 /**
- * What the callback answers. Nothing or `{ ok: true }` is a success; `values` are the canonical applied values when the host normalised them; `notice` is what the host says about a
- * success ("saved but not applied"). `{ ok: false, errors, message }` is a rejection with the reasons by field id. A thrown or rejected value is a host error: the apperror JSON, a
- * `RuntimeError`, or anything: `errors.ts` reads it.
+ * What the callback answers. Nothing or `{ ok: true }` accepts the submitted values. `values` supplies canonical values, or `null` if the write succeeded but its values could not
+ * be read back. In that case the form keeps its last confirmed values. `notice` is what the host says about a success. `{ ok: false, errors, message }` is a rejection with the
+ * reasons by field id. A thrown or rejected value is a host error: the apperror JSON, a `RuntimeError`, or anything: `errors.ts` reads it.
  */
 export type SubmitOutcome =
   | void
-  | { readonly ok: true; readonly values?: Readonly<Record<string, Json>> | undefined; readonly notice?: { readonly kind: 'info' | 'warning'; readonly text: string } | undefined }
+  | { readonly ok: true; readonly values?: Readonly<Record<string, Json>> | null | undefined; readonly notice?: { readonly kind: 'info' | 'warning'; readonly text: string } | undefined }
   | { readonly ok: false; readonly errors?: Readonly<Record<string, string>> | undefined; readonly message?: string | undefined };
 
 export type SubmitFn = (payload: SubmitPayload) => Promise<SubmitOutcome> | SubmitOutcome;

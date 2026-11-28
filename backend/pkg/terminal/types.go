@@ -370,13 +370,15 @@ type Commands struct {
 
 // Sink receives a session's events. All calls for one session come from one goroutine at a time and
 // in order: every Output of a session precedes its one Closed. Calls for different sessions may be
-// concurrent. A Sink must not call back into the Manager for the same session, except Ack and Delivered.
+// concurrent. A Sink must not call back into the Manager for the same session, except Ack and DeliveryCredit.
 //
 // A Sink that returns from Output once the transport has taken the bytes (a blocking write, a bounded
 // queue) needs nothing more: the manager credits what Output returned from. A Sink whose Output returns
 // at once, whatever the client is doing (an unbounded queue, as Wails' server mode has), implements
-// DeliveryReporter and tells the manager when the transport really took the bytes, through
-// Manager.Delivered: the credit comes back only as fast as the client's socket drains.
+// DeliveryReporter and tells the manager when the transport really took the bytes: it asks for the session's
+// Credit (Manager.DeliveryCredit) inside Output and calls Credit.Delivered later, from any goroutine. The Credit
+// is bound to the session, so a report that comes after the session ended and its id was reused credits nothing.
+// The credit comes back only as fast as the client's socket drains.
 type Sink interface {
 	// Output delivers bytes the shell wrote. The slice belongs to the receiver. The bytes are the
 	// shell's, untouched: a multi-byte character may be cut between two calls.
@@ -385,7 +387,7 @@ type Sink interface {
 	Closed(sessionID string, end End)
 }
 
-// DeliveryReporter marks a Sink that reports, through Manager.Delivered, when the transport has taken
+// DeliveryReporter marks a Sink that reports, through Credit.Delivered, when the transport has taken
 // output on its way to the client. Without the mark the manager takes the return of Output for delivery.
 type DeliveryReporter interface {
 	ReportsDelivery()
@@ -521,4 +523,68 @@ func defaultLimits() Limits {
 		ChannelFrameBytes:     ChannelFrameBytes,
 		ChannelMaxInputBytes:  ChannelMaxInputBytes,
 	}
+}
+
+// LinkKind says what a candidate link names.
+type LinkKind string
+
+const (
+	// LinkFile is a regular file.
+	LinkFile LinkKind = "file"
+	// LinkDir is a directory.
+	LinkDir LinkKind = "dir"
+	// LinkUnknown is no answer; LinkResolution.Reason says why.
+	LinkUnknown LinkKind = "unknown"
+)
+
+// LinkReason says why a candidate link has no answer. A page shows no link for any of them, and the page's wording for 'gone' is "no longer there".
+type LinkReason string
+
+const (
+	// LinkNotFound: nothing the text can name exists where it was looked for.
+	LinkNotFound LinkReason = "not-found"
+	// LinkGone: the text was answered a moment ago and the file is no longer there.
+	LinkGone LinkReason = "gone"
+	// LinkNoDirectory: the host does not know where the command ran (an unknown directory is never home).
+	LinkNoDirectory LinkReason = "no-directory"
+	// LinkUnvouched: the row's directory is not one the shell proved or is in now: the host does not resolve against a directory a page names alone.
+	LinkUnvouched LinkReason = "unvouched"
+	// LinkRemote: the terminal's shell is on another machine, and a path of it is not a path of this disk.
+	LinkRemote LinkReason = "remote"
+	// LinkInvalid: the text is empty, holds a control character or is not UTF-8.
+	LinkInvalid LinkReason = "invalid"
+	// LinkTooLong: the text is over 2,048 bytes or its path over 1,024.
+	LinkTooLong LinkReason = "too-long"
+	// LinkURL: the text is a URL, which is never a path.
+	LinkURL LinkReason = "url"
+	// LinkDenied: the path is under /dev, /proc or /sys, which are never looked at.
+	LinkDenied LinkReason = "denied"
+	// LinkOutside: the path, with its links followed, is outside the directory of the row and the roots.
+	LinkOutside LinkReason = "outside"
+	// LinkSpecial: the path is a pipe, a socket or a device: never opened.
+	LinkSpecial LinkReason = "special"
+	// LinkLoop: the path runs through a loop of links.
+	LinkLoop LinkReason = "loop"
+	// LinkAmbiguous: more than one file ends with the text.
+	LinkAmbiguous LinkReason = "ambiguous"
+	// LinkTimeout: the call used its time, or the file system is stuck.
+	LinkTimeout LinkReason = "timeout"
+)
+
+// LinkResolution is what the host says of a candidate link: the real absolute path of the file or directory the text names, with the line and
+// column the text gave (zero when it gave none), or kind `unknown` with a reason. The fact is the host's: the page never guesses that a file exists.
+type LinkResolution struct {
+	Kind LinkKind `json:"kind"`
+	// Path is the real path, with every link followed, when Kind is file or dir.
+	Path string `json:"path,omitempty"`
+	// Line and Col are 1-based, and absent when the text gave none.
+	Line int `json:"line,omitempty"`
+	Col  int `json:"col,omitempty"`
+	// Reason is set when Kind is unknown.
+	Reason LinkReason `json:"reason,omitempty"`
+}
+
+// UnknownLink is an answer of no link.
+func UnknownLink(reason LinkReason) LinkResolution {
+	return LinkResolution{Kind: LinkUnknown, Path: "", Line: 0, Col: 0, Reason: reason}
 }

@@ -106,6 +106,18 @@ export function ChannelTerminalCwd(capability: string): $CancellablePromise<term
 }
 
 /**
+ * ChannelTerminalResolveLink says what a candidate link in the output of the channel terminal that the capability names is on this machine: the real
+ * path of the file or directory that `text` (as a program printed it: `src/a.go:12:3`) names, with its line and column, or kind `unknown` with a
+ * reason. `rowDirectory` is the directory of the command that printed the row (from ChannelTerminalCommands) or empty for where the shell is now; the
+ * host resolves against it only when the shell proved it. It never opens a file, never looks at /dev, /proc or /sys, and answers within a bound.
+ */
+export function ChannelTerminalResolveLink(capability: string, rowDirectory: string, text: string): $CancellablePromise<terminal$0.LinkResolution> {
+    return $Call.ByID(19295801, capability, rowDirectory, text).then(($result: any) => {
+        return $$createType7($result);
+    });
+}
+
+/**
  * CheckResourceShell never creates or restores a shell. An empty root checks only the original
  * attachment before mounting a menu hook. Hook dispatch and delivery must supply its current root.
  */
@@ -137,7 +149,7 @@ export function CloseSession(sessionID: string): $CancellablePromise<void> {
  */
 export function CreateResourceShell(owner: string, encoded: string): $CancellablePromise<$models.ResourceShellAttachment | null> {
     return $Call.ByID(2605916134, owner, encoded).then(($result: any) => {
-        return $$createType8($result);
+        return $$createType9($result);
     });
 }
 
@@ -170,7 +182,7 @@ export function CreateSession(plugin: string, connectionID: string, encoded: str
  */
 export function CreateTerminal(opts: exec$0.SessionOptions, launch: terminal$0.Launch): $CancellablePromise<terminal$0.Session | null> {
     return $Call.ByID(4182196712, opts, launch).then(($result: any) => {
-        return $$createType10($result);
+        return $$createType11($result);
     });
 }
 
@@ -191,7 +203,7 @@ export function DetachSession(sessionID: string): $CancellablePromise<exec$0.Ses
  */
 export function DetachTerminal(sessionID: string, request: terminal$0.DetachRequest): $CancellablePromise<terminal$0.Detached | null> {
     return $Call.ByID(3844471071, sessionID, request).then(($result: any) => {
-        return $$createType12($result);
+        return $$createType13($result);
     });
 }
 
@@ -216,13 +228,13 @@ export function GetCwd(sessionID: string): $CancellablePromise<terminal$0.Direct
 
 export function GetHandler(plugin: string, resource: string): $CancellablePromise<exec$0.Handler | null> {
     return $Call.ByID(1779192716, plugin, resource).then(($result: any) => {
-        return $$createType14($result);
+        return $$createType15($result);
     });
 }
 
 export function GetHandlers(): $CancellablePromise<{ [_ in string]?: { [_ in string]?: exec$0.Handler } }> {
     return $Call.ByID(4033362541).then(($result: any) => {
-        return $$createType16($result);
+        return $$createType17($result);
     });
 }
 
@@ -231,7 +243,7 @@ export function GetHandlers(): $CancellablePromise<{ [_ in string]?: { [_ in str
  */
 export function GetNativeTerminalApplications(): $CancellablePromise<nativeapps$0.Application[]> {
     return $Call.ByID(2940999236).then(($result: any) => {
-        return $$createType18($result);
+        return $$createType19($result);
     });
 }
 
@@ -241,7 +253,7 @@ export function GetNativeTerminalSupport(): $CancellablePromise<boolean> {
 
 export function GetPluginHandlers(plugin: string): $CancellablePromise<{ [_ in string]?: exec$0.Handler }> {
     return $Call.ByID(2619212338, plugin).then(($result: any) => {
-        return $$createType15($result);
+        return $$createType16($result);
     });
 }
 
@@ -273,19 +285,19 @@ export function IsBusy(sessionID: string): $CancellablePromise<terminal$0.Foregr
  */
 export function ListChannelTerminals(capabilities: string[]): $CancellablePromise<terminal$0.ChannelListed[]> {
     return $Call.ByID(3911742752, capabilities).then(($result: any) => {
-        return $$createType20($result);
+        return $$createType21($result);
     });
 }
 
 export function ListPlugins(): $CancellablePromise<string[]> {
     return $Call.ByID(3006426324).then(($result: any) => {
-        return $$createType21($result);
+        return $$createType22($result);
     });
 }
 
 export function ListSessions(): $CancellablePromise<(exec$0.Session | null)[]> {
     return $Call.ByID(265791345).then(($result: any) => {
-        return $$createType22($result);
+        return $$createType23($result);
     });
 }
 
@@ -296,7 +308,7 @@ export function ListSessions(): $CancellablePromise<(exec$0.Session | null)[]> {
  */
 export function ListTerminalShells(): $CancellablePromise<shellenv$0.Shell[]> {
     return $Call.ByID(2954183303).then(($result: any) => {
-        return $$createType24($result);
+        return $$createType25($result);
     });
 }
 
@@ -309,7 +321,7 @@ export function ListTerminalShells(): $CancellablePromise<shellenv$0.Shell[]> {
  */
 export function ListTerminals(pageKey: string): $CancellablePromise<terminal$0.Listed[]> {
     return $Call.ByID(867361533, pageKey).then(($result: any) => {
-        return $$createType26($result);
+        return $$createType27($result);
     });
 }
 
@@ -327,7 +339,7 @@ export function OpenNativeSession(plugin: string, connectionID: string, encoded:
  */
 export function ReadResourceShell(id: string, attachment: string): $CancellablePromise<$models.ResourceShellRead | null> {
     return $Call.ByID(1383870462, id, attachment).then(($result: any) => {
-        return $$createType28($result);
+        return $$createType29($result);
     });
 }
 
@@ -371,25 +383,26 @@ const $$createType3 = $Create.Nullable($$createType2);
 const $$createType4 = terminal$0.Foreground.createFrom;
 const $$createType5 = terminal$0.Commands.createFrom;
 const $$createType6 = terminal$0.Directory.createFrom;
-const $$createType7 = $models.ResourceShellAttachment.createFrom;
-const $$createType8 = $Create.Nullable($$createType7);
-const $$createType9 = terminal$0.Session.createFrom;
-const $$createType10 = $Create.Nullable($$createType9);
-const $$createType11 = terminal$0.Detached.createFrom;
-const $$createType12 = $Create.Nullable($$createType11);
-const $$createType13 = exec$0.Handler.createFrom;
-const $$createType14 = $Create.Nullable($$createType13);
-const $$createType15 = $Create.Map($Create.Any, $$createType13);
-const $$createType16 = $Create.Map($Create.Any, $$createType15);
-const $$createType17 = nativeapps$0.Application.createFrom;
-const $$createType18 = $Create.Array($$createType17);
-const $$createType19 = terminal$0.ChannelListed.createFrom;
-const $$createType20 = $Create.Array($$createType19);
-const $$createType21 = $Create.Array($Create.Any);
-const $$createType22 = $Create.Array($$createType1);
-const $$createType23 = shellenv$0.Shell.createFrom;
-const $$createType24 = $Create.Array($$createType23);
-const $$createType25 = terminal$0.Listed.createFrom;
-const $$createType26 = $Create.Array($$createType25);
-const $$createType27 = $models.ResourceShellRead.createFrom;
-const $$createType28 = $Create.Nullable($$createType27);
+const $$createType7 = terminal$0.LinkResolution.createFrom;
+const $$createType8 = $models.ResourceShellAttachment.createFrom;
+const $$createType9 = $Create.Nullable($$createType8);
+const $$createType10 = terminal$0.Session.createFrom;
+const $$createType11 = $Create.Nullable($$createType10);
+const $$createType12 = terminal$0.Detached.createFrom;
+const $$createType13 = $Create.Nullable($$createType12);
+const $$createType14 = exec$0.Handler.createFrom;
+const $$createType15 = $Create.Nullable($$createType14);
+const $$createType16 = $Create.Map($Create.Any, $$createType14);
+const $$createType17 = $Create.Map($Create.Any, $$createType16);
+const $$createType18 = nativeapps$0.Application.createFrom;
+const $$createType19 = $Create.Array($$createType18);
+const $$createType20 = terminal$0.ChannelListed.createFrom;
+const $$createType21 = $Create.Array($$createType20);
+const $$createType22 = $Create.Array($Create.Any);
+const $$createType23 = $Create.Array($$createType1);
+const $$createType24 = shellenv$0.Shell.createFrom;
+const $$createType25 = $Create.Array($$createType24);
+const $$createType26 = terminal$0.Listed.createFrom;
+const $$createType27 = $Create.Array($$createType26);
+const $$createType28 = $models.ResourceShellRead.createFrom;
+const $$createType29 = $Create.Nullable($$createType28);

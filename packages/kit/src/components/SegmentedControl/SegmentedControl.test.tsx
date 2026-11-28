@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
+import { Field } from '../Field';
 import { SegmentedControl, type SegmentedOption } from './SegmentedControl';
 
 type View = 'table' | 'cards' | 'list';
@@ -31,6 +32,25 @@ describe('SegmentedControl', () => {
     expect(screen.getByRole('radiogroup', { name: 'View as' })).toBeTruthy();
     expect(screen.getAllByRole('radio').map((radio) => radio.getAttribute('aria-checked'))).toEqual(['true', 'false', 'false']);
     expect(screen.getAllByRole('radio').map((radio) => radio.tabIndex)).toEqual([0, -1, -1]);
+  });
+
+  it('inherits a Field’s name, description, error and lock without replacing the radio names', () => {
+    const change = vi.fn();
+    render(
+      <Field label="Density" help="Row spacing." message={{ kind: 'error', text: 'Save failed.' }} disabledReason="Locked.">
+        <Harness onChange={change} />
+      </Field>,
+    );
+    const group = screen.getByRole('radiogroup', { name: 'Density' });
+    expect(group.getAttribute('aria-invalid')).toBe('true');
+    const description = group.getAttribute('aria-describedby')!.split(' ').map(id => document.getElementById(id)?.textContent).join(' ');
+    expect(description).toMatch(/Row spacing\..*Save failed\..*Locked\./);
+    const selected = screen.getByRole('radio', { name: 'Table' });
+    expect(selected.tabIndex).toBe(0);
+    expect(selected.getAttribute('aria-disabled')).toBe('true');
+    fireEvent.keyDown(selected, { key: 'End' });
+    fireEvent.click(screen.getByRole('radio', { name: 'Cards' }));
+    expect(change).not.toHaveBeenCalled();
   });
 
   it('moves and chooses with the arrows, Home and End, and skips an option that is unavailable', () => {

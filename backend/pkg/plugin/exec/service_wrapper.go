@@ -351,6 +351,14 @@ func (s *ServiceWrapper) ChannelTerminalCommands(capability string) (terminal.Co
 	return s.Ctrl.ChannelTerminalCommands(capability)
 }
 
+// ChannelTerminalResolveLink says what a candidate link in the output of the channel terminal that the capability names is on this machine: the real
+// path of the file or directory that `text` (as a program printed it: `src/a.go:12:3`) names, with its line and column, or kind `unknown` with a
+// reason. `rowDirectory` is the directory of the command that printed the row (from ChannelTerminalCommands) or empty for where the shell is now; the
+// host resolves against it only when the shell proved it. It never opens a file, never looks at /dev, /proc or /sys, and answers within a bound.
+func (s *ServiceWrapper) ChannelTerminalResolveLink(capability, rowDirectory, text string) (terminal.LinkResolution, error) {
+	return s.Ctrl.ChannelTerminalResolveLink(capability, rowDirectory, text)
+}
+
 // ListChannelTerminals says what the capabilities a page holds open: one entry for each of those that names a channel terminal
 // (or the end of one that is kept), in the order given, naming the terminal by its id. A capability that opens nothing has no
 // entry, and nothing lists a terminal for a capability that was not given, so a page cannot enumerate terminals it was not given.

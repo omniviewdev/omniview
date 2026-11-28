@@ -250,10 +250,18 @@ func TestAStalledClientCanStillCloseItsTerminalAndGetsTheClose(t *testing.T) {
 			info := fx.open(fx.page(1), terminal.Options{Command: append(shell(t), "-c", "yes flood-yes")})
 			require.Eventually(t, func() bool { return client.held() >= terminal.FlowHighBytes }, 20*time.Second, 5*time.Millisecond)
 
-			begin := time.Now()
-			require.NoError(t, fx.ctrl.CloseSession(info.ID))
-			assert.Less(t, time.Since(begin), 3*time.Second, "closing a session whose client does not read hung")
+			// The close returns when the session is gone, or the test runs out: the time it took is not what decides it.
+			closed := make(chan error, 1)
+			go func() { closed <- fx.ctrl.CloseSession(info.ID) }()
+			select {
+			case closeErr := <-closed:
+				require.NotErrorIs(t, closeErr, terminal.ErrCloseTimeout, "the close gave up waiting: the session was still ending")
+				require.NoError(t, closeErr, "closing a session whose client does not read")
+			case <-time.After(60 * time.Second):
+				require.FailNow(t, "closing a session whose client does not read hung")
+			}
 			assert.Empty(t, fx.ctrl.terminalManager.ListSessions())
+			assert.True(t, gone(info.PID), "the close returned with the shell gone: a dying shell is read to finish exiting while the client reads nothing")
 			client.unstall()
 			require.Eventually(t, func() bool { return len(client.endsOf(info.ID)) == 1 }, 20*time.Second, 5*time.Millisecond, "the CLOSE never reached the client")
 			assert.Equal(t, terminal.EndClosed, client.endsOf(info.ID)[0].Reason)

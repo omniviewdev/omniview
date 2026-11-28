@@ -46,8 +46,14 @@ func (m *Manager) Resize(_ string, _ uint64, _, _ int) error { return unsupporte
 // Ack is not supported.
 func (m *Manager) Ack(_ string, _ int) error { return unsupportedError() }
 
-// Delivered credits nothing: no session can exist.
-func (m *Manager) Delivered(_ string, _ int) {}
+// Credit credits nothing: no session can exist.
+type Credit struct{}
+
+// Delivered credits nothing.
+func (Credit) Delivered(_ int) {}
+
+// DeliveryCredit is a Credit that credits nothing: no session can exist.
+func (m *Manager) DeliveryCredit(_ string) Credit { return Credit{} }
 
 // Busy answers unknown, the third state: a ConPTY has no foreground process group, so whether
 // something other than the shell holds a Windows terminal cannot be read from the system. (The shell's
@@ -116,6 +122,12 @@ func (m *Manager) ChannelBusy(_ string) (Foreground, error) {
 // ChannelCommands is not supported.
 func (m *Manager) ChannelCommands(_ string) (Commands, error) {
 	var none Commands
+	return none, unsupportedError()
+}
+
+// ChannelResolveLink is not supported.
+func (m *Manager) ChannelResolveLink(_, _, _ string) (LinkResolution, error) {
+	var none LinkResolution
 	return none, unsupportedError()
 }
 

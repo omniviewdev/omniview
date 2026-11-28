@@ -72,6 +72,17 @@ if [ -n "${__omniview_nonce+set}" ] && [ "${#__omniview_nonce}" -gt 0 ]; then
     case ${FUNCNAME[1]-} in
       __omniview_escape|__omniview_debug|__omniview_precmd_first|__omniview_precmd_last|__omniview_hup_look|__omniview_hup_on|__omniview_hup_off|__omniview_hup) return 0 ;;
     esac
+    # bash-preexec's own commands are none of the user's. On bash 5.3 (0.7.0) it runs its preexec hook from PS0, in the shell, before
+    # the user's command (__bp_invoke_preexec_from_ps0, and the history it reads then is the previous command's), and its epilogue
+    # of the prompt commands (__bp_interactive_mode) runs after our last hook, when the trap is armed: either would be taken for the
+    # command. On older bash it calls this trap itself and never lets these reach it.
+    case $BASH_COMMAND in '__bp_precmd_invoke_cmd "$_"'|__bp_interactive_mode|'__bp_invoke_preexec_from_ps0 "$_"'*|'__bp_install "$_"') return "$__omniview_ret" ;; esac
+    # With extdebug or set -T the trap follows into bash-preexec's functions: a command inside one of them is its own, whatever the
+    # depth. (Each name by itself: bash-preexec sets IFS to a newline, so ${FUNCNAME[*]} is no string to match.)
+    local __omniview_fn
+    for __omniview_fn in "${FUNCNAME[@]:1}"; do
+      case $__omniview_fn in __bp_invoke_preexec_from_ps0|__bp_interactive_mode|__bp_precmd_invoke_cmd|__bp_install|__bp_load_this_command_from_history) return "$__omniview_ret" ;; esac
+    done
     # extdebug and `set -T` make subshells, command substitutions and the parts of a pipeline inherit the trap: what it prints
     # there would land in the user's data (a file, a variable), and a command would be recorded twice. They are not the shell.
     [ "${BASH_SUBSHELL:-0}" = 0 ] || return "$__omniview_ret"
@@ -168,6 +179,13 @@ if [ -n "${__omniview_nonce+set}" ] && [ "${#__omniview_nonce}" -gt 0 ]; then
     __omniview_histcmd=${HISTCMD:-0}
     __omniview_skipped=0
     __omniview_armed=1
+    # bash-preexec installs itself at the first prompt, from the middle of the prompt commands, and ends its install by marking the
+    # prompt as shown ("interactive mode"). Our last hook runs after that, and bash-preexec's DEBUG trap takes it for a prompt
+    # command and puts the mode out again: the first command of the session is then no command to it, so the user's preexec and
+    # our trap (which it calls) never see it. The prompt is shown when this hook ends: say so.
+    case "${PROMPT_COMMAND[*]-}" in
+      *__bp_precmd_invoke_cmd*) local __bp_inside_preexec=1; __bp_preexec_interactive_mode=on ;;
+    esac
     __omniview_hup_off
     if [ "$__omniview_xtrace" = 1 ]; then set -x; fi
     if [ "${__omniview_errexit:-0}" = 1 ]; then

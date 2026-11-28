@@ -1,14 +1,13 @@
 // Section `a11y` of the Settings probe: axe-core (every rule it runs by default, colour contrast included, which jsdom cannot judge) on the real Settings in a real engine, in both containers: the sheet (the open dialog, the page behind it is
 // inert and is not Settings') and the Settings window's content. Zero violations of any impact.
 //
-//   pages     every page of the host in Void and in Light, in the sheet (at each viewport) and in the window (1060 x 640, once for an engine)
+//   pages     every core page and the installed fixture plugin's page in Void and Light, in the sheet (at each viewport) and in the window (preferred size, once per engine)
 //   themes    one page, Terminal, which has a switch, a choice, a whole number, a text and a Reset, in each of the nine themes the host persists, in both containers
 //   states    the page with what a row can say: an error and the host's words, a restart note, a Reset, a saved secret; and the three states of the body (loading, could not load, nothing to show), in Void and Light
 //
 // What axe judges is the DOM and its paint as the engine computes them, so a violation names the rule, its impact, the number of nodes and the first node's markup.
-import { check, fail, goToPage, note, openFixture, openSheet, PAGES, plant, round, sleep, THEMES, WINDOW_SIZES, wants } from './settings-lib.mjs';
+import { check, fail, goToPage, note, openFixture, openSettings, PAGES, plant, round, sleep, THEMES, wants } from './settings-lib.mjs';
 
-const enc = (value) => encodeURIComponent(JSON.stringify(value));
 const ROOTS = { sheet: 'dialog[open]', window: '[data-settings-part="window"]' };
 const REFERENCE_THEMES = ['void', 'light'];
 
@@ -27,32 +26,19 @@ const judge = (where, violations) => {
   return violations.length;
 };
 
-/** Settings open in a container, on its first page. */
-async function open(env, container, query = 'case=sheet') {
-  if (container === 'sheet') {
-    const opened = await openFixture(env, query);
-    await openSheet(opened.page);
-    return opened;
-  }
-
-  const opened = await openFixture(env, `case=window&request=${enc({ requestId: 1, target: '/settings?category=appearance', visible: true })}`, { viewport: WINDOW_SIZES['1060x640'] });
-  await opened.page.waitForSelector('[data-settings-part="window"][data-visible="true"] [data-settings-row]', { timeout: 10_000 });
-  return opened;
-}
-
-const whereOf = (env, container) => `${env.engine}@${container === 'window' ? '1060x640' : env.viewportName} ${container}`;
+const whereOf = (env, container) => `${env.engine}@${container === 'window' ? 'preferred' : env.viewportName} ${container}`;
 
 async function pagesPart(env, container) {
   const found = {};
-  const { page, context, errors } = await open(env, container, `case=sheet&values=${enc({ 'terminal.cursorBlink': false })}`);
+  const { page, context, errors } = await openSettings(env, container, { plugins: 'installed', values: JSON.stringify({ 'terminal.cursorBlink': false }) });
   try {
     await plant(env, page);
     for (const id of REFERENCE_THEMES) {
       await theme(page, id);
-      for (const entry of PAGES) {
-        await goToPage(page, entry.id);
+      for (const pageId of [...PAGES.map((entry) => entry.id), 'plugin/acme']) {
+        await goToPage(page, pageId);
         await sleep(60);
-        found[`${id} ${entry.id}`] = judge(`${whereOf(env, container)} ${id} ${entry.id}`, await axeOf(page, env.axe, ROOTS[container]));
+        found[`${id} ${pageId}`] = judge(`${whereOf(env, container)} ${id} ${pageId}`, await axeOf(page, env.axe, ROOTS[container]));
       }
     }
     for (const message of errors) fail(whereOf(env, container), 'a11y.axe', `page error: ${message}`);
@@ -64,7 +50,7 @@ async function pagesPart(env, container) {
 
 async function themesPart(env, container) {
   const found = {};
-  const { page, context } = await open(env, container, `case=sheet&values=${enc({ 'terminal.cursorBlink': false })}`);
+  const { page, context } = await openSettings(env, container, { values: JSON.stringify({ 'terminal.cursorBlink': false }) });
   try {
     await goToPage(page, 'terminal');
     await plant(env, page);
@@ -83,7 +69,7 @@ async function statesPart(env) {
   const where = `${env.engine}@${env.viewportName} sheet`;
   // What a row can say: the host's refusal on a number, a restart note, a Reset, a secret that is saved.
   {
-    const { page, context } = await open(env, 'sheet', `case=sheet&values=${enc({ 'developer.show_feature_channels': true, 'developer.marketplace_url': 'https://mkt.example.test' })}&stored=${enc({ 'telemetry.auth_value': true })}`);
+    const { page, context } = await openSettings(env, 'sheet', { values: JSON.stringify({ 'developer.show_feature_channels': true, 'developer.marketplace_url': 'https://mkt.example.test' }), stored: JSON.stringify({ 'telemetry.auth_value': true }) });
     try {
       await goToPage(page, 'developer');
       await plant(env, page);

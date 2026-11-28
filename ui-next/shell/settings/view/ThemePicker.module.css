@@ -1,0 +1,138 @@
+@layer ov.shell {
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(140px, 100%), 1fr));
+    gap: var(--ov-spacing-8);
+    inline-size: 480px;
+    max-inline-size: 100%;
+    min-inline-size: 0;
+  }
+
+  .card {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    gap: var(--ov-spacing-8);
+    min-inline-size: 0;
+    padding: var(--ov-spacing-8) var(--ov-spacing-12);
+    border: 1px solid var(--ov-border-control);
+    border-radius: var(--ov-radius-control);
+    font-size: var(--ov-fs-13);
+    line-height: var(--ov-lh-16);
+    color: var(--ov-fg);
+  }
+
+  .card:has(.radio:hover:not(:disabled, :checked)) {
+    background-color: var(--ov-hover-row);
+  }
+
+  .card:has(.radio:checked) {
+    border-color: var(--ov-tab-border);
+    background-color: var(--ov-selection-active);
+  }
+
+  .card:has(.radio:focus-visible), .grid:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: 0;
+  }
+
+  .radio {
+    position: absolute;
+    inset: 0;
+    inline-size: 100%;
+    block-size: 100%;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+
+  .radio:disabled {
+    cursor: default;
+  }
+
+  .body {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+    pointer-events: none;
+  }
+
+  .mark {
+    display: inline-flex;
+    flex: 0 0 16px;
+    align-items: center;
+    justify-content: center;
+    block-size: var(--ov-lh-16);
+    pointer-events: none;
+  }
+
+  .preview {
+    position: relative;
+    display: block;
+    block-size: 56px;
+    overflow: hidden;
+    border: 1px solid var(--ov-border-control);
+    border-radius: var(--ov-radius-control);
+    background-color: var(--ov-bg-window);
+  }
+
+  .preview::before {
+    content: '';
+    position: absolute;
+    inset: var(--ov-spacing-8) 0 0 var(--ov-spacing-20);
+    border-block-start: 1px solid var(--ov-border-control);
+    border-inline-start: 1px solid var(--ov-border-control);
+    background-color: var(--ov-bg-island);
+  }
+
+  .line, .shortLine, .chip {
+    position: absolute;
+    inset-inline-start: 28px;
+    block-size: 4px;
+    border-radius: var(--ov-radius-mark);
+  }
+
+  .line {
+    inset-block-start: 18px;
+    inline-size: 56%;
+    background-color: var(--ov-fg);
+  }
+
+  .shortLine {
+    inset-block-start: 28px;
+    inline-size: 34%;
+    background-color: var(--ov-fg-muted);
+  }
+
+  .chip {
+    inset-block-start: 38px;
+    inline-size: 24px;
+    block-size: 8px;
+    background-color: var(--ov-accent);
+  }
+
+  .unavailable {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+  }
+
+  /* The palette needs more room than a single control. Put it below the description before either side gets squeezed. */
+  @container settings-content (max-width: 720px) {
+    [data-ov-layout='row']:has(.grid) {
+      flex-direction: column;
+      align-items: stretch;
+      gap: var(--ov-spacing-4);
+    }
+
+    [data-ov-part='control']:has(> .grid) {
+      inline-size: 100%;
+      margin-inline-start: 0;
+    }
+  }
+}

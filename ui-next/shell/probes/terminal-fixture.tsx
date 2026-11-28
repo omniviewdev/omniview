@@ -55,9 +55,11 @@ import type { PluginEntry } from '../../plugins/host/pluginStore';
 import type { PluginSource } from '../../plugins/host/contributions';
 import type { EngineLoader, FindOptions } from '../panel/terminal/engine';
 import { loadXtermEngine } from '../panel/terminal/loadEngine';
-import { attachLocalTerminal, localRestartTarget, localShellTarget, restoreLocalTerminals } from '../panel/terminal/localShell';
+import { attachLocalTerminal, localHereTarget, localRestartTarget, localShellTarget, restoreLocalTerminals } from '../panel/terminal/localShell';
 import { loadTerminalChannels, sessionCapabilityStorage, type ChannelClient, type ChannelSocket } from '../panel/terminal/terminalChannel';
+import { createTerminalPreferences, type PreferencesSource } from '../panel/terminal/preferences';
 import { createShellList, type ShellList } from '../panel/terminal/profiles';
+import type { HostSnapshot } from '../settings/model/types';
 import { loadSession, windowStorage, type WindowState } from '../session';
 import { createHost, FRAME, fromBase64, KNOWN, toBase64, URLS } from './terminal-host.mjs';
 
@@ -1243,6 +1245,52 @@ const shells: ShellList | undefined =
         }),
       onChanged: () => () => undefined,
     });
+/**
+ * `?prefs=1`: the person's terminal settings (#697) are the page's own to change, as the host's settings service is the app's: `window.__prefs.set({ fontSize: 16 })` is one event of the host (`settings/changed`) and the page then asks for the
+ * snapshot, once. `window.__prefsInitial` (set by an init script) is what the host holds when the first terminal is made. The counts are what a probe reads: `events` (changes), `snapshots` (questions of the host), and the way the page asks.
+ * Without it the page asks the runtime, as in the app (which this page has none of).
+ */
+type ProbePrefs = { values: Record<string, unknown>; events: number; snapshots: number; set: (next: Record<string, unknown>) => void };
+function probePreferences(): PreferencesSource {
+  const heard = new Set<() => void>();
+  const prefs: ProbePrefs = {
+    values: { ...((window as unknown as { __prefsInitial?: Record<string, unknown> }).__prefsInitial ?? {}) },
+    events: 0,
+    snapshots: 0,
+    set: (next) => {
+      prefs.values = { ...prefs.values, ...next };
+      prefs.events += 1;
+      for (const listener of [...heard]) {
+        listener();
+      }
+    },
+  };
+  (window as unknown as { __prefs: ProbePrefs }).__prefs = prefs;
+  return createTerminalPreferences({
+    snapshot: async (): Promise<HostSnapshot> => {
+      prefs.snapshots += 1;
+      return {
+        categories: {
+          terminal: {
+            id: 'terminal',
+            label: 'Terminal',
+            description: '',
+            icon: '',
+            settings: Object.fromEntries(Object.entries(prefs.values).map(([id, value]) => [id, { id, label: id, description: '', type: 'text', value, default: null }])),
+          },
+        },
+      };
+    },
+    onChanged: (listener) => {
+      heard.add(listener);
+      return () => {
+        heard.delete(listener);
+      };
+    },
+  });
+}
+
+const preferences = params.get('prefs') === null ? undefined : probePreferences();
 if (control === 'search-eager') {
   void import('@xterm/addon-search');
 }
@@ -1295,7 +1343,7 @@ async function mount(): Promise<void> {
             onRetry={() => undefined}
             onRetryInventory={() => undefined}
             session={session}
-            terminals={{ target: () => localShellTarget(channels), load, restore: async () => restoreLocalTerminals(channels), reattach: (id: string) => attachLocalTerminal(id, undefined, channels), restart: (made, tab: string) => localRestartTarget(made, tab, channels), ...(givesOpenExternal ? { openExternal } : {}), ...(shells === undefined ? {} : { shells }) }}
+            terminals={{ target: () => localShellTarget(channels), load, restore: async () => restoreLocalTerminals(channels), reattach: (id: string) => attachLocalTerminal(id, undefined, channels), restart: (made, tab: string) => localRestartTarget(made, tab, channels), here: (where) => localHereTarget(where, channels), ...(givesOpenExternal ? { openExternal } : {}), ...(shells === undefined ? {} : { shells }), ...(preferences === undefined ? {} : { preferences }) }}
           />
         </Profiler>
       </MenuHost>

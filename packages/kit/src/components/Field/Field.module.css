@@ -170,9 +170,13 @@
     }
   }
 
+  :where(:root[data-ov-motion='reduced']) .lane > svg[data-ov-busy='true'] {
+    animation-name: reveal;
+  }
+
   @media (prefers-reduced-motion: reduce) {
-    .lane > svg[data-ov-busy='true'] {
-      animation: reveal 1ms linear 1s forwards;
+    :where(:root:not([data-ov-motion='normal'])) .lane > svg[data-ov-busy='true'] {
+      animation-name: reveal;
     }
   }
 

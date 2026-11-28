@@ -33,6 +33,7 @@ export function useAppearanceCapabilities(): Capabilities {
 
 const solidMedia = '(prefers-reduced-transparency: reduce), (prefers-contrast: more), (forced-colors: active)';
 const materialAttribute = 'data-ov-material';
+const motionAttribute = 'data-ov-motion';
 const surfaces = [
   ['chromeOpacity', 'data-ov-chrome-opacity'], ['contentOpacity', 'data-ov-content-opacity'],
   ['menuOpacity', 'data-ov-menu-opacity'], ['sheetOpacity', 'data-ov-sheet-opacity'],
@@ -67,7 +68,7 @@ export function WindowAppearance({ children, source = host }: { readonly childre
   useEffect(() => {
     const root = document.documentElement;
     const media = window.matchMedia(solidMedia);
-    const attributes = [materialAttribute, ...surfaces.map(([, key]) => key)];
+    const attributes = [materialAttribute, motionAttribute, ...surfaces.map(([, key]) => key)];
     const prior = attributes.map((key) => [key, root.getAttribute(key)] as const);
     let snapshot: AppearanceSnapshot | undefined;
     let revision = 0;
@@ -86,6 +87,8 @@ export function WindowAppearance({ children, source = host }: { readonly childre
       const effective = material.effective;
       const mode = !forced && p.windowMaterial !== 'opaque' && (effective === 'translucent' || effective === 'glass' || effective === 'in-page') ? effective : 'opaque';
       attribute(root, materialAttribute, mode);
+      // Keep the preference, not a sample of the OS: system CSS follows live media changes in each window.
+      attribute(root, motionAttribute, p.motion);
       for (const [key, name] of surfaces) {
         attribute(root, name, String(p[key]));
       }

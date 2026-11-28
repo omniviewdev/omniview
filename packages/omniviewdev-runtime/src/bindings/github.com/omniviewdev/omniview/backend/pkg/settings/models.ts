@@ -60,6 +60,7 @@ export class AppearancePreferences {
     "theme": string;
     "density": string;
     "textSize": string;
+    "motion": string;
 
     /** Creates a new AppearancePreferences instance. */
     constructor($$source: Partial<AppearancePreferences> = {}) {
@@ -89,6 +90,9 @@ export class AppearancePreferences {
         }
         if (!("textSize" in $$source)) {
             this["textSize"] = "";
+        }
+        if (!("motion" in $$source)) {
+            this["motion"] = "";
         }
 
         Object.assign(this, $$source);

@@ -40,7 +40,13 @@ func (s *Service) OpenSettings(target string) (string, error) {
 	native := entry.native
 	s.mu.Unlock()
 	if native == nil {
-		spec := windowSpec{Name: SettingsWindowName, Kind: KindSettings, Width: 1060, Height: 640}
+		spec := windowSpec{
+			Name:     SettingsWindowName,
+			Kind:     KindSettings,
+			Width:    settingsDefaultWidth,
+			Height:   settingsDefaultHeight,
+			Position: nil,
+		}
 		if area, ok := s.host.workAreaNear(0, 0); ok {
 			spec.Width = min(spec.Width, area.Width)
 			spec.Height = min(spec.Height, area.Height)

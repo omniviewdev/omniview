@@ -23,6 +23,7 @@ export type EngineAppearance = {
   readonly fontSize: number;
   /** A multiple of the font's own line height. */
   readonly lineHeight: number;
+  readonly cursorStyle: 'block' | 'underline' | 'bar';
 };
 
 export type EngineOptions = {

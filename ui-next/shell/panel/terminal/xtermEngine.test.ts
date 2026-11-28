@@ -27,7 +27,8 @@ vi.mock('@xterm/xterm', async (importOriginal) => {
 // The search addon as the module made it (T3a): how many times its code was asked for (the first find asks, nothing else does), and each addon the engine made, with what it was given and every step it was asked. The addon
 // underneath is the real one.
 const searched = vi.hoisted(() => ({ loads: 0, addons: [] as Array<{ readonly options: unknown; readonly steps: Array<{ readonly direction: 'next' | 'previous'; readonly term: string; readonly options: unknown }> }> }));
-vi.mock('@xterm/addon-search', async (importOriginal) => {
+/** The module the search addon is mocked as, one function so that a test that changes the mock can put it back: `vi.doUnmock` would take the `vi.mock` below away for every test that runs after it, and the order the tests run in would decide them. */
+async function recordedSearch(importOriginal: <T>() => Promise<T>): Promise<{ readonly SearchAddon: typeof SearchAddon }> {
   searched.loads += 1;
   const actual = await importOriginal<{ readonly SearchAddon: typeof SearchAddon }>();
   class Recording extends actual.SearchAddon {
@@ -51,7 +52,9 @@ vi.mock('@xterm/addon-search', async (importOriginal) => {
   }
 
   return { ...actual, SearchAddon: Recording };
-});
+}
+
+vi.mock('@xterm/addon-search', recordedSearch);
 
 // The GPU addon as the module made it (#698 item 15): each one the engine made, whether it was disposed, and a way to lose its context or to make the next one fail to be made. In 0.19.0 an addon's `dispose()` does not release
 // its GL context and WebKit allows 16 live ones in a page, so what counts is how many were made.
@@ -105,6 +108,7 @@ const APPEARANCE: EngineAppearance = {
   fontFamily: 'monospace',
   fontSize: 12,
   lineHeight: 1.33,
+  cursorStyle: 'block',
 };
 
 const OPTS: FindOptions = { caseSensitive: false, regex: false, wholeWord: false };
@@ -252,7 +256,22 @@ describe('what a real emulator says on its own while it is replayed', () => {
 // that is counted.
 describe('the search addon of a real emulator', () => {
   it('is loaded by the first find and not before: a terminal nobody searches costs none of it, and every later ask is given the same finder', async () => {
-    const { engine, close } = emulator();
+    // The search module is made once per registry, and an earlier test (this file runs shuffled) has made it in the one this file was imported into: the engine is the one of a registry of its own, where no find was asked yet.
+    vi.resetModules();
+    vi.doMock('@xterm/addon-search', recordedSearch);
+    searched.loads = 0;
+    searched.addons.length = 0;
+    const { createXtermEngine: createFresh } = await import('./xtermEngine');
+    const host = document.createElement('div');
+    document.body.append(host);
+    const engine = createFresh({ cols: 80, rows: 24, scrollback: 100, appearance: APPEARANCE, screenReaderMode: false });
+    engine.open(host);
+    const close = (): void => {
+      engine.dispose();
+      host.remove();
+      vi.resetModules();
+    };
+
     expect(searched.loads).toBe(0);
     const first = await engine.find();
     expect(searched.loads).toBe(1);
@@ -1747,7 +1766,7 @@ describe('the find of a real emulator', () => {
       engine.dispose();
       host.remove();
     } finally {
-      vi.doUnmock('@xterm/addon-search');
+      vi.doMock('@xterm/addon-search', recordedSearch);
       vi.resetModules();
     }
   });
@@ -2437,5 +2456,53 @@ describe('the GPU renderer of a real emulator (#698 item 15)', () => {
     expect(gpus.made).toHaveLength(3);
     first.dispose();
     second.dispose();
+  });
+});
+
+// The person's settings reach a real emulator (#697 step 1): the font names, the size, the line height and the cursor are applied to the emulator that is there. It is the same object (the engine is not made again) and its
+// scrollback is untouched: the lines written before the change are the lines after it.
+describe('the person\'s settings on a real emulator', () => {
+  const lines = (terminal: Terminal): string[] => {
+    const out: string[] = [];
+    const buffer = terminal.buffer.active;
+    for (let row = 0; row < buffer.length; row += 1) {
+      out.push(buffer.getLine(row)?.translateToString(true) ?? '');
+    }
+
+    return out;
+  };
+
+  it('is made in the cursor and the font of the settings', () => {
+    const before = made.length;
+    const engine = createXtermEngine({ cols: 80, rows: 24, scrollback: 777, appearance: { ...APPEARANCE, cursorStyle: 'bar', fontFamily: 'Menlo, monospace', fontSize: 15 }, screenReaderMode: false });
+    const terminal = made.at(-1);
+    expect(made.length).toBe(before + 1);
+    expect(terminal?.options).toMatchObject({ cursorStyle: 'bar', fontFamily: 'Menlo, monospace', fontSize: 15, scrollback: 777 });
+    engine.dispose();
+  });
+
+  it('changes the font names, the size and the cursor of the emulator that is there: no second emulator, and every line it held is still held', async () => {
+    const engine = createXtermEngine({ cols: 20, rows: 4, scrollback: 100, appearance: APPEARANCE, screenReaderMode: false });
+    const terminal = made.at(-1);
+    if (terminal === undefined) {
+      throw new Error('no emulator');
+    }
+
+    const written = async (data: string) => {
+      const { promise, resolve } = Promise.withResolvers<void>();
+      engine.write(data, resolve);
+      return promise;
+    };
+
+    await written(Array.from({ length: 30 }, (_, index) => `line ${String(index)}`).join('\r\n'));
+    const held = lines(terminal);
+    expect(held.length).toBeGreaterThan(20);
+    const count = made.length;
+
+    engine.setAppearance({ ...APPEARANCE, fontFamily: 'JetBrains Mono, monospace', fontSize: 16, cursorStyle: 'underline' });
+    expect(made.length).toBe(count);
+    expect(terminal.options).toMatchObject({ fontFamily: 'JetBrains Mono, monospace', fontSize: 16, cursorStyle: 'underline' });
+    expect(lines(terminal)).toEqual(held);
+    engine.dispose();
   });
 });

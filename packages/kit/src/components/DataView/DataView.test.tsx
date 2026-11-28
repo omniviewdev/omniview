@@ -487,9 +487,9 @@ describe('the DataView stylesheet', () => {
     });
 
     it('appears after 250 ms, so a fast read never flashes one, and at once under reduced motion', () => {
-      expect(rule('.skeleton')).toMatchObject({ visibility: 'hidden', animation: 'reveal 0s linear 250ms forwards' });
+      expect(rule(':where(:root:not([data-ov-motion=\'reduced\'])) .skeleton')).toMatchObject({ visibility: 'hidden', animation: 'reveal 0s linear 250ms forwards' });
       expect(css).toMatch(/@keyframes\s+reveal\s*\{\s*to\s*\{\s*visibility:\s*visible;?\s*\}\s*\}/);
-      expect(declarationsOf(css, '.skeleton', 'prefers-reduced-motion')).toMatchObject({ visibility: 'visible', animation: 'none' });
+      expect(declarationsOf(css, ':where(:root:not([data-ov-motion=\'normal\'])) .skeleton', 'prefers-reduced-motion: reduce')).toMatchObject({ visibility: 'visible', animation: 'none' });
     });
   });
 

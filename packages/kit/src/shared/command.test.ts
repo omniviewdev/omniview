@@ -2,6 +2,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { declarationsOf } from '../../scripts/cssRules.ts';
 
 // The stylesheet of Button and IconButton, as text: jsdom lays nothing out, so what the stylesheet must say is asserted here and
 // what the browser paints from it is probed in WebKit and Chromium (packages/kit/probes).
@@ -53,9 +54,10 @@ describe('the command stylesheet (Button and IconButton)', () => {
   });
 
   it('spins the loader of a busy command, and holds it still under reduced motion', () => {
-    expect(css).toContain('[data-ov-busy=\'true\']');
-    expect(css).toMatch(/@keyframes/);
-    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)[^}]*\{[^}]*animation:\s*none/s);
+    const loader = '.root > svg[data-ov-busy=\'true\']';
+    expect(declarationsOf(css, `:where(:root:not([data-ov-motion='reduced'])) ${loader}`).animation).toBe('spin 1.2s linear infinite');
+    expect(css).toMatch(/@keyframes spin/);
+    expect(declarationsOf(css, `:where(:root:not([data-ov-motion='normal'])) ${loader}`, 'prefers-reduced-motion: reduce').animation).toBe('none');
   });
 
   it('keeps the label whole and the text off a native button face', () => {

@@ -58,7 +58,7 @@ test('the check has at least the phases and the controls it had when N29 split i
   assert.ok(LIST.controls.length >= 29);
   assert.ok(CONTROLS_IN_CHECK >= 104);
   // The controls of a table are one run for the whole table; every other one is a run of its own, the settings controls among them (`SEAM_CONTROL=settings` does not detect `settings-reach`).
-  assert.deepEqual(LIST.controls.filter((entry) => entry.proves.length > 1).map((entry) => entry.run), ['process', 'failed-load', 'plugins-page', 'connections', 'problems-operations', 'ports', 'terminal-reconnect', 'terminal-isolation', 'terminal-where']);
+  assert.deepEqual(LIST.controls.filter((entry) => entry.proves.length > 1).map((entry) => entry.run), ['process', 'failed-load', 'plugins-page', 'connections', 'problems-operations', 'ports', 'terminal-reconnect', 'terminal-isolation', 'terminal-where', 'terminal-integration']);
   assert.ok(LIST.controls.some((entry) => entry.run === 'settings-reach'));
   assert.ok(!LIST.controls.some((entry) => entry.run === 'settings'));
 });
@@ -106,6 +106,10 @@ test('listFromText reads the phase list and the control tables, and says what is
     "  'x1': /x/,",
     "  'x2': /x/,",
     '};',
+    'const INTEGRATION_CONTROLS = {',
+    "  'n1': /x/,",
+    "  'n2': /x/,",
+    '};',
     'const PROFILE_CONTROLS = {',
     "  'q1': /x/,",
     '};',
@@ -132,6 +136,7 @@ test('listFromText reads the phase list and the control tables, and says what is
       { run: 'terminal-isolation', proves: ['i1'] },
       { run: 'terminal-profile', proves: ['q1'] },
       { run: 'terminal-where', proves: ['x1', 'x2'] },
+      { run: 'terminal-integration', proves: ['n1', 'n2'] },
     ],
   });
   assert.throws(() => listFromText(text.replace('const PHASE_IDS = [', 'const OTHER = [')), /no `const PHASE_IDS = \[` list/);
@@ -203,14 +208,14 @@ test('NEGATIVE: a unit that does not hold together is named: no id, a twin id, n
 // The plan
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-test('the plan runs every unit once, in shards that each stay at or under the limit, and the fewest: four', () => {
+test('the plan runs every unit once, in shards that each stay at or under the limit, and the fewest: five', () => {
   const shards = planRun({ units: UNITS });
   assert.deepEqual(shards.flatMap((shard) => shard.units.map((entry) => entry.id)).sort(), UNITS.map((unit) => unit.id).sort());
   for (const shard of shards) assert.ok(shard.seconds <= LIMIT_SECONDS, `shard ${shard.shard}: ${shard.seconds} s`);
   const total = UNITS.reduce((sum, unit) => sum + unit.seconds, 0);
-  assert.equal(shards.length, 4, `${total} s of units`);
+  assert.equal(shards.length, 5, `${total} s of units`);
   assert.ok(total > 2 * (LIMIT_SECONDS - PHASE_START_SECONDS), 'two shards could not hold the table');
-  assert.deepEqual(shards.map((shard) => shard.shard), [1, 2, 3, 4]);
+  assert.deepEqual(shards.map((shard) => shard.shard), [1, 2, 3, 4, 5]);
 });
 
 test('a shard\'s phases are those of its units and its controls the runs of its units; the start of the host is added to a shard that has phases only', () => {
@@ -238,7 +243,7 @@ test('the matrix is every shard in every engine, with the phases in the check\'s
   const shards = planRun({ units: UNITS });
   const matrix = matrixOf(shards, LIST.phases);
   assert.equal(matrix.include.length, ENGINES.length * shards.length);
-  for (const engine of ENGINES) assert.deepEqual(matrix.include.filter((entry) => entry.engine === engine).map((entry) => entry.shard), [1, 2, 3, 4]);
+  for (const engine of ENGINES) assert.deepEqual(matrix.include.filter((entry) => entry.engine === engine).map((entry) => entry.shard), [1, 2, 3, 4, 5]);
   for (const entry of matrix.include) {
     const ids = entry.phases === '' ? [] : entry.phases.split(',');
     assert.deepEqual(ids, [...ids].sort((a, b) => LIST.phases.indexOf(a) - LIST.phases.indexOf(b)), 'in the check\'s order');
@@ -252,7 +257,7 @@ test('the matrix is every shard in every engine, with the phases in the check\'s
 
 test('the plan states what it plans', () => {
   const text = renderPlan(planRun({ units: UNITS }), UNITS, LIST);
-  assert.match(text, new RegExp(`${String(PHASES_IN_CHECK)} phases and ${String(CONTROLS_IN_CHECK)} controls, ${String(UNITS.length)} units, \\d+ s listed in 4 shards of at most 420 s each`));
+  assert.match(text, new RegExp(`${String(PHASES_IN_CHECK)} phases and ${String(CONTROLS_IN_CHECK)} controls, ${String(UNITS.length)} units, \\d+ s listed in 5 shards of at most 420 s each`));
 });
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -385,7 +390,7 @@ const verify = (reports, shards, extra = {}) => verifyRan({ units: UNITS, list: 
 
 test('a run in which every phase and every control ran once and passed in both engines has no problem', () => {
   const { shards, reports } = greenReports();
-  assert.equal(reports.length, 8);
+  assert.equal(reports.length, 10);
   assert.deepEqual(verify(reports, shards), []);
   assert.deepEqual(verify(reports, String(shards)), [], 'the plan\'s count is a string in the workflow');
 });
@@ -393,11 +398,11 @@ test('a run in which every phase and every control ran once and passed in both e
 test('NEGATIVE: a shard that never reported, one that reported twice, one the plan did not make, and an engine that is missing are each named', () => {
   const { shards, reports } = greenReports();
   const without = reports.filter((report) => !(report.engine === 'chromium' && report.shard === 2));
-  assert.ok(verify(without, shards).some((message) => message === 'chromium: shard 2 of 4 did not report'));
+  assert.ok(verify(without, shards).some((message) => message === 'chromium: shard 2 of 5 did not report'));
   assert.ok(verify(without, shards).some((message) => /chromium: the unit ".*" did not run/.test(message)));
   assert.ok(verify([...reports, reports[0]], shards).some((message) => /webkit: shard 1 reported 2 times/.test(message)));
-  assert.ok(verify([...reports, { ...reports[0], shard: 9 }], shards).some((message) => /a report is of shard 9, and the plan made 4/.test(message)));
-  assert.ok(verify(reports.filter((report) => report.engine === 'webkit'), shards).some((message) => message === 'chromium: shard 1 of 4 did not report'));
+  assert.ok(verify([...reports, { ...reports[0], shard: 9 }], shards).some((message) => /a report is of shard 9, and the plan made 5/.test(message)));
+  assert.ok(verify(reports.filter((report) => report.engine === 'webkit'), shards).some((message) => message === 'chromium: shard 1 of 5 did not report'));
   assert.deepEqual(verify(reports, 0), ['the plan says 0 shards: a plan of no shard is no plan']);
   assert.equal(verify(reports, undefined).length, 1);
   assert.equal(verify([], shards).length > 6, true);
@@ -452,8 +457,8 @@ test('check and plan, on this repository: ok, and the plan writes the matrix and
   assert.equal(await main(['plan'], { env: { GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: summary }, ...planned.io }), 0);
   const written = readFileSync(output, 'utf8');
   assert.match(written, /^matrix=\{"include":\[/);
-  assert.match(written, /\nshards=4\n$/);
-  assert.equal(JSON.parse(/^matrix=(.*)$/m.exec(written)[1]).include.length, 8);
+  assert.match(written, /\nshards=5\n$/);
+  assert.equal(JSON.parse(/^matrix=(.*)$/m.exec(written)[1]).include.length, 10);
   assert.match(readFileSync(summary, 'utf8'), /### Seam plan/);
 });
 
@@ -515,27 +520,27 @@ test('report: reads the logs of a shard, writes what it ran where the verdict re
   }
 
   const read = readReports(reports);
-  assert.equal(read.reports.length, 8);
+  assert.equal(read.reports.length, 10);
   assert.deepEqual(read.problems, []);
   const verified = capture();
-  assert.equal(await main(['verify', '--reports', reports, '--shards', '4'], { env: { GITHUB_STEP_SUMMARY: path.join(root, 'verdict') }, ...verified.io }), 0, verified.lines.err);
-  assert.match(verified.lines.out, new RegExp(`seam-shards: ok \\(${String(PHASES_IN_CHECK)} phases and ${String(CONTROLS_IN_CHECK)} controls, in ${String(UNITS.length)} units, ran once and passed in webkit and chromium, in 4 shards each\\)`));
+  assert.equal(await main(['verify', '--reports', reports, '--shards', '5'], { env: { GITHUB_STEP_SUMMARY: path.join(root, 'verdict') }, ...verified.io }), 0, verified.lines.err);
+  assert.match(verified.lines.out, new RegExp(`seam-shards: ok \\(${String(PHASES_IN_CHECK)} phases and ${String(CONTROLS_IN_CHECK)} controls, in ${String(UNITS.length)} units, ran once and passed in webkit and chromium, in 5 shards each\\)`));
   assert.match(readFileSync(path.join(root, 'verdict'), 'utf8'), /\| webkit \| 1 \|/);
 
   // The same run with one shard of one engine gone is red, and with a plan that says five shards is red.
   const gone = capture();
   const { rmSync } = await import('node:fs');
   rmSync(path.join(reports, 'seam-ran-chromium-2'), { recursive: true });
-  assert.equal(await main(['verify', '--reports', reports, '--shards', '4'], { env: {}, ...gone.io }), 1);
-  assert.match(gone.lines.err, /chromium: shard 2 of 4 did not report/);
+  assert.equal(await main(['verify', '--reports', reports, '--shards', '5'], { env: {}, ...gone.io }), 1);
+  assert.match(gone.lines.err, /chromium: shard 2 of 5 did not report/);
   const annotated = capture();
-  assert.equal(await main(['verify', '--reports', reports, '--shards', '4'], { env: { GITHUB_ACTIONS: 'true' }, ...annotated.io }), 1);
-  assert.match(annotated.lines.out, /^::error title=Seam check::chromium: shard 2 of 4 did not report$/m);
+  assert.equal(await main(['verify', '--reports', reports, '--shards', '5'], { env: { GITHUB_ACTIONS: 'true' }, ...annotated.io }), 1);
+  assert.match(annotated.lines.out, /^::error title=Seam check::chromium: shard 2 of 5 did not report$/m);
   const short = capture();
-  assert.equal(await main(['verify', '--reports', reports, '--shards', '5'], { env: {}, ...short.io }), 1);
-  assert.match(short.lines.err, /shard 5 of 5 did not report/);
+  assert.equal(await main(['verify', '--reports', reports, '--shards', '6'], { env: {}, ...short.io }), 1);
+  assert.match(short.lines.err, /shard 6 of 6 did not report/);
   const missingDir = capture();
-  assert.equal(await main(['verify', '--reports', path.join(root, 'nowhere'), '--shards', '4'], { env: {}, ...missingDir.io }), 1);
+  assert.equal(await main(['verify', '--reports', path.join(root, 'nowhere'), '--shards', '5'], { env: {}, ...missingDir.io }), 1);
   assert.match(missingDir.lines.err, /cannot read the reports/);
 });
 

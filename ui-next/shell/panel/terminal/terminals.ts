@@ -1,7 +1,7 @@
 import { createElement, type ReactElement } from 'react';
 import { platformOf } from '../../core/chords';
 import type { NoticesStore } from '../../core/notices';
-import type { PanelStore, Session, SessionId } from '../../core/panel';
+import { roomForPane, type PanelStore, type Session, type SessionId } from '../../core/panel';
 import type { PanelCard, PanelEmpty, PanelNewSession } from '../host';
 import { focusTab } from '../focus';
 import { terminalCardOf } from './card';
@@ -12,6 +12,7 @@ import type { TerminalBusy, TerminalDirectory, TerminalFeedHandle, TerminalResta
 import { createFinishedNotices } from './finishedNotice';
 import { keyOf } from './keys';
 import { localHereTarget, localProfileTarget, localShellTarget } from './localShell';
+import { appTerminalPreferences, type PreferencesSource } from './preferences';
 import { appShellList, shellMenu, type ShellChoice, type ShellList, type TerminalProfile } from './profiles';
 import { clearScreenIn } from './screen';
 import { createScreenReaderChoice, type ScreenReaderChoice } from './screenReader';
@@ -109,6 +110,8 @@ export type TerminalsOptions = {
    * its view to the command. Absent: the window says nothing of a finished command.
    */
   readonly notices?: Pick<NoticesStore, 'notify'> | undefined;
+  /** The person's terminal settings, as every terminal reads them (`preferences.ts`). Default: the host's settings service, asked when the first terminal is shown and never before. */
+  readonly preferences?: PreferencesSource | undefined;
   /** Whether the window is shown to the person (not minimised, not on another desktop): a terminal in front of a window nobody looks at is not in front. Default: the document is visible. */
   readonly windowShown?: (() => boolean) | undefined;
 };
@@ -137,6 +140,13 @@ export type Terminals = {
    * directory is unknown starts in the host's default directory and says so. A session with no feed, or whose feed cannot say, opens nothing. Resolves once the new terminal is opened.
    */
   readonly openHere: (session: SessionId) => Promise<void>;
+  /**
+   * "Split terminal" of the session (#697 step 6): the same host's fact as `openHere`, in a NEW pane beside the one the session is in, never a copy of its process. `extent` is the length the panes would share along the deck, which the
+   * layout measured; with no room for another pane (each needs 80 px) nothing is asked of the host and nothing starts. A session whose feed cannot say where it is opens nothing, as `openHere` does.
+   */
+  readonly splitHere: (session: SessionId, extent: number) => Promise<void>;
+  /** Whether `splitHere` can apply to the session: its feed can say where the terminal is. */
+  readonly canSplit: (session: SessionId) => boolean;
   /** The window's one screen reader choice: every terminal follows it (a terminal that is made later is made in it), and the session saves it. Off until the person turns it on. */
   readonly screenReader: ScreenReaderChoice;
   readonly empty: PanelEmpty;
@@ -153,6 +163,7 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
   const { restore, reattach, restart, openExternal } = options;
   // The shells the `+` offers: the list is asked of the host when the menu is first drawn (and never while it is not), and the items are made again only when the list changes.
   const shells = options.shells ?? appShellList();
+  const preferences = options.preferences ?? appTerminalPreferences();
   const startFrom = (profile: TerminalProfile) => {
     sessions.open(localProfileTarget(profile), { focus: true });
   };
@@ -283,7 +294,7 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
 
   // The directory comes from the session's own feed and from nothing the page knows: the host's `ChannelTerminalCwd` while the shell runs, the directory it started in once it ended or was lost. A feed that throws instead of
   // saying `unknown` is a feed that could not say, and the terminal opens in the host's default directory all the same.
-  const openHere = async (session: SessionId): Promise<void> => {
+  const openHere = async (session: SessionId, split?: { readonly extent: number; readonly beside: SessionId }): Promise<void> => {
     const feed = sessions.feedOf(session);
     if (feed?.directory === undefined) {
       return;
@@ -296,7 +307,16 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
       where = { state: 'unknown', reason: 'unanswered' };
     }
 
-    sessions.open(options.here?.(where) ?? localHereTarget(where), { focus: true });
+    sessions.open(options.here?.(where) ?? localHereTarget(where), { focus: true, ...(split === undefined ? {} : { split }) });
+  };
+
+  const splitHere = async (session: SessionId, extent: number): Promise<void> => {
+    // The room is asked before the host is: a split with no room starts no process.
+    if (!roomForPane(store.getSnapshot(), TERMINAL_TOOL_ID, extent)) {
+      return;
+    }
+
+    await openHere(session, { extent, beside: session });
   };
 
   return {
@@ -361,7 +381,9 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
       },
     },
     empty: TERMINAL_EMPTY,
-    openHere,
+    openHere: async (session) => openHere(session),
+    splitHere,
+    canSplit: (session) => sessions.feedOf(session)?.directory !== undefined,
     bodyOf: (session, visible) =>
       createElement(TerminalBody, {
         sessions,
@@ -369,9 +391,14 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
         visible,
         load: options.load,
         screenReader,
+        preferences,
         name: store.selectors.sessionItem(store.getSnapshot(), session.id)?.name,
         onNewHere: (id) => {
           void openHere(id);
+        },
+        canSplit: sessions.feedOf(session.id)?.directory !== undefined,
+        onSplit: (id, extent) => {
+          void splitHere(id, extent);
         },
       }),
     cardOf: (session) => terminalCardOf(sessions.recordOf(session.id)),

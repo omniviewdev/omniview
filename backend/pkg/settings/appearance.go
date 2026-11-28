@@ -37,6 +37,7 @@ type AppearancePreferences struct {
 	Theme          string `json:"theme"`
 	Density        string `json:"density"`
 	TextSize       string `json:"textSize"`
+	Motion         string `json:"motion"`
 }
 
 type AppearanceSnapshot struct {
@@ -63,7 +64,7 @@ func appearancePreferences(values map[string]any) AppearancePreferences {
 		WindowMaterial: text("windowMaterial"), GlassStyle: text("glassStyle"),
 		ChromeOpacity: number("chromeOpacity"), ContentOpacity: number("contentOpacity"),
 		MenuOpacity: number("menuOpacity"), SheetOpacity: number("sheetOpacity"),
-		Theme: text("theme"), Density: text("density"), TextSize: text("textSize"),
+		Theme: text("theme"), Density: text("density"), TextSize: text("textSize"), Motion: text("motion"),
 	}
 }
 

@@ -1,6 +1,6 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type * as runtime from '../../shell/settings/runtime';
 import { manualClock } from '../../shell/core/fields/testing';
 import { createSettingsSession } from '../../shell/settings/model/session';
@@ -27,6 +27,12 @@ const dialog = HTMLDialogElement.prototype as unknown as { showModal?: () => voi
 dialog.showModal ??= function showModal(this: HTMLDialogElement) {
   this.setAttribute('open', '');
 };
+
+// The sheet is a lazy chunk (`shell/settings/surface`): the first import transforms its whole view tree, which takes longer than the 1 s a query waits when the transform cache is cold (a fresh checkout, a changed lockfile). Load it
+// before the tests, under the hook's own timeout, so what they wait for is the sheet's opening and not the compiler.
+beforeAll(async () => {
+  await import('../../shell/settings/surface');
+}, 60_000);
 
 afterEach(() => {
   cleanup();

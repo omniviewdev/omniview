@@ -416,10 +416,13 @@ func TestDetachTerminalLeavesTheTerminalWaitingForTheLeaseAndAnAttachTakesItBack
 	require.NoError(t, err)
 	assert.Equal(t, 90000, info.LeaseMs)
 
+	before := time.Now()
 	detached, err := fx.wrapper.DetachTerminal(fx.ctx(page), info.ID, terminal.DetachRequest{})
+	after := time.Now()
 	require.NoError(t, err)
 	assert.Equal(t, 90000, detached.LeaseMs)
-	assert.WithinDuration(t, time.Now().Add(90*time.Second), time.UnixMilli(detached.LeaseExpiresUnixMs), 5*time.Second)
+	assert.GreaterOrEqual(t, detached.LeaseExpiresUnixMs, before.Add(90*time.Second).UnixMilli(), "the lease runs from the detach: not before the call")
+	assert.LessOrEqual(t, detached.LeaseExpiresUnixMs, after.Add(90*time.Second).UnixMilli(), "and not after it")
 	fx.detached(info.ID)
 	assert.False(t, listedAttached(t, fx, page), "the page that detached it no longer has it")
 
@@ -551,9 +554,11 @@ func TestAWindowRetiredBetweenTheStartAndTheAnswerOfACreateEndsItsKeyedTerminal(
 
 	require.Eventually(t, func() bool { return len(fx.ctrl.terminalManager.ListSessions()) == 0 }, 20*time.Second, 5*time.Millisecond,
 		"the terminal the failed create made is ended, not detached and kept for a page that never heard of it")
-	if left, ok := children(t); ok {
-		assert.Empty(t, left)
-	}
+	// The list leaves out a session that is ending, and the shell is reaped a moment after: the system's own list is what is asked, so it is waited for.
+	require.Eventually(t, func() bool {
+		left, ok := children(t)
+		return !ok || len(left) == 0
+	}, 20*time.Second, 5*time.Millisecond, "the shell the failed create made is gone, as the system lists this process's children")
 	assert.Zero(t, fx.indexed())
 }
 

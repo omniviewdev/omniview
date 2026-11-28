@@ -64,16 +64,13 @@ describe('the Sheet stylesheet', () => {
     expect(rules.filter((entry) => 'opacity' in entry.declarations)).toEqual([]);
   });
 
-  it('draws the frame 1060 by 640 px, clamped to the window less 24 px on each side, so at both test windows it is its own size', () => {
+  it('centres a 1280 by 800 px Settings frame within 24 px of clearance on each side', () => {
     const frame = rule('.frame');
     expect(frame['box-sizing']).toBe('border-box');
-    for (const viewport of [
-      { width: 1440, height: 900 },
-      { width: 1280, height: 800 },
-    ]) {
-      expect(frameSize(frame['inline-size'], viewport), `${String(viewport.width)} wide`).toBe(1060);
-      expect(frameSize(frame['block-size'], viewport), `${String(viewport.height)} high`).toBe(640);
-    }
+    expect(frameSize(frame['inline-size'], { width: 1440, height: 900 })).toBe(1280);
+    expect(frameSize(frame['block-size'], { width: 1440, height: 900 })).toBe(800);
+    expect(frameSize(frame['inline-size'], { width: 1280, height: 800 })).toBe(1232);
+    expect(frameSize(frame['block-size'], { width: 1280, height: 800 })).toBe(752);
 
     // Below that the window wins, and the margin is the 24 px step of the spacing scale.
     expect(frameSize(frame['inline-size'], { width: 1000, height: 600 })).toBe(952);

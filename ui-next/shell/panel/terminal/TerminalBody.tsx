@@ -4,6 +4,7 @@ import { platformOf } from '../../core/chords';
 import type { Session, SessionId } from '../../core/panel';
 import { copyToClipboard } from '../logs/clipboard';
 import { PanelEmpty } from '../PanelEmpty';
+import { usePaneRoom } from '../panes/room';
 import { useMaybeRenaming } from '../renaming';
 import { toggleChordText } from '../words';
 import { readAppearance, SWATCH_ROLES } from './appearance';
@@ -12,12 +13,13 @@ import { offersTakeBack, type TerminalFeedHandle, type TerminalFeedSnapshot } fr
 import { createFindSession, useTerminalFind } from './find';
 import { useCommandGutter } from './gutter/useCommandGutter';
 import { integrationWords } from './integration';
+import type { PreferencesSource } from './preferences';
 import { loadXtermEngine } from './loadEngine';
 import { useTerminalLinks, useTerminalMenu } from './menu';
 import { createScreen } from './screen';
 import { screenReaderWords, type ScreenReaderSource } from './screenReader';
 import { laneOf } from './state';
-import { HELD_RENAME, TerminalToolbar } from './TerminalToolbar';
+import { HELD_RENAME, NO_DIRECTORY, NO_PANES, NO_ROOM, TerminalToolbar } from './TerminalToolbar';
 import type { TerminalSessions } from './TerminalSessions';
 import { TERMINAL_GONE, TERMINAL_ICON } from './tool';
 import styles from './TerminalBody.module.css';
@@ -140,17 +142,23 @@ type TerminalBodyProps = {
   readonly load?: EngineLoader | undefined;
   /** The window's one screen reader choice (`screenReader.ts`): the emulator is made in it and follows it, and the description says which it is. */
   readonly screenReader: ScreenReaderSource;
+  /** The person's terminal settings (`preferences.ts`): the emulator is made in them and follows them while it lives. Absent: the theme's own look and the host's defaults. */
+  readonly preferences?: PreferencesSource | undefined;
   /** The session as its tab names it, with the ordinal of a twin (`zsh (2)`: the panel's rule): the emulator's input is named by it. Absent, the title and the scope are. */
   readonly name?: string | undefined;
   /** Opens a new terminal where this session's terminal is (the menu's "New terminal here"): the window's own way to do it, which asks the session's feed where it is. Absent: the menu has no such item. */
   readonly onNewHere?: ((session: SessionId) => void) | undefined;
+  /** Splits the terminal: a NEW terminal where this one is, in a pane beside it (the toolbar's Split terminal), given the length the deck says the panes would share. Absent: the toolbar has no Split. */
+  readonly onSplit?: ((session: SessionId, extent: number) => void) | undefined;
+  /** Whether this terminal can say where it is, which a split needs: the host's fact (the feed's `directory`). */
+  readonly canSplit?: boolean | undefined;
 };
 
 /**
  * The body of a Terminal session. A session with no feed (restored from the last run: the host keeps no output across a restart, or its terminal is not adopted yet) has nothing to draw: it says that the earlier output is gone
  * and how to get a shell again, in the empty state the panel has for it, and draws the screen when the registry gives it a feed.
  */
-export function TerminalBody({ sessions, session, visible, load, screenReader, name, onNewHere }: TerminalBodyProps) {
+export function TerminalBody({ sessions, session, visible, load, screenReader, preferences, name, onNewHere, onSplit, canSplit }: TerminalBodyProps) {
   const feed = useSyncExternalStore(sessions.subscribeFeeds, () => sessions.feedOf(session.id));
   // The person pressed a control in the lane (Take it back) and wants the keyboard in the screen the registry makes for it: the request lives here, which that screen does not replace.
   const keyboard = useRef(false);
@@ -195,11 +203,14 @@ export function TerminalBody({ sessions, session, visible, load, screenReader, n
       visible={visible}
       load={load ?? loadXtermEngine}
       screenReader={screenReader}
+      preferences={preferences}
       name={name}
       takeBack={takeBack}
       restart={restart}
       takeKeyboard={takeKeyboard}
       onNewHere={onNewHere}
+      onSplit={onSplit}
+      canSplit={canSplit === true}
     />
   );
 }
@@ -211,6 +222,7 @@ type TerminalViewProps = {
   readonly visible: boolean;
   readonly load: EngineLoader;
   readonly screenReader: ScreenReaderSource;
+  readonly preferences: PreferencesSource | undefined;
   readonly name: string | undefined;
   /** The person pressed Take it back in the lane: asks the registry to take the terminal back, and keeps the request for the keyboard. */
   readonly takeBack: () => void;
@@ -220,10 +232,13 @@ type TerminalViewProps = {
   readonly takeKeyboard: () => boolean;
   /** Opens a new terminal where this one is (the menu's "New terminal here"): the window's own way to do it. Absent: the menu has no such item. */
   readonly onNewHere: ((session: SessionId) => void) | undefined;
+  readonly onSplit: ((session: SessionId, extent: number) => void) | undefined;
+  readonly canSplit: boolean;
 };
 
-function TerminalView({ sessions, session, feed, visible, load, screenReader, name, takeBack, restart, takeKeyboard, onNewHere }: TerminalViewProps) {
+function TerminalView({ sessions, session, feed, visible, load, screenReader, preferences, name, takeBack, restart, takeKeyboard, onNewHere, onSplit, canSplit }: TerminalViewProps) {
   const host = useRef<HTMLDivElement>(null);
+  const room = usePaneRoom();
   const hintId = useId();
   const platform = platformOf(navigator);
   const label = name ?? (session.scope === '' ? session.title : `${session.title} · ${session.scope}`);
@@ -234,7 +249,8 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader, na
       feed,
       load,
       // The swatches are in the body, around the screen's element: found from it, so no ref is read while this renders.
-      appearance: (element) => readAppearance(element.closest('[data-shell-part="terminalBody"]') ?? element),
+      appearance: (element) => readAppearance(element.closest('[data-shell-part="terminalBody"]') ?? element, preferences?.getSnapshot()),
+      preferences,
       platform,
       label: `Terminal input, ${label}`,
       descriptionId: hintId,
@@ -424,6 +440,14 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader, na
           onCopy={copy}
           onRename={renaming === null || session.held === true ? undefined : rename}
           renameReason={session.held === true ? HELD_RENAME : undefined}
+          onSplit={
+            onSplit === undefined || room === null || !room.fits || !canSplit
+              ? undefined
+              : () => {
+                onSplit(session.id, room.extent());
+              }
+          }
+          splitReason={onSplit === undefined ? undefined : !canSplit ? NO_DIRECTORY : room === null ? NO_PANES : NO_ROOM}
         />
       </div>
       <div className={styles.main}>

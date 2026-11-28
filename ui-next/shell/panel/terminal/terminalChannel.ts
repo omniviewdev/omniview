@@ -21,6 +21,8 @@ const MAX_LISTED = 1_024;
 
 /** The type of the error the host answers for a capability that opens nothing (backend/pkg/apperror `SessionNotFound`, `ErrorTypes.SESSION_NOT_FOUND` in the runtime). */
 const SESSION_NOT_FOUND = 'omniview:session/not-found';
+/** The type of the error the host answers for a close that gave up waiting for the terminal to be gone (backend/pkg/terminal `TypeCloseTimeout`, code `CLOSE_TIMEOUT`): the terminal is ending, and its end may still come. */
+const CLOSE_TIMEOUT = 'omniview:terminal/close-timeout';
 
 /** The name of the stream that carries the terminals. It is in a URL, so it carries nothing secret. */
 const STREAM = 'terminal';
@@ -224,9 +226,10 @@ function createCore(deps: ChannelDeps): Core {
   };
 
   const isGone = (error: unknown): boolean => parseAppError(error).type === SESSION_NOT_FOUND;
+  const isClosing = (error: unknown): boolean => parseAppError(error).type === CLOSE_TIMEOUT;
 
   /** A call that names a terminal: the host is asked with its capability, and a terminal the page holds none for is answered as the host answers a capability that opens nothing. */
-  async function named<T>(id: string, call: (cap: string) => PromiseLike<T>, forgetAfter = false): Promise<T> {
+  async function named<T>(id: string, call: (cap: string) => PromiseLike<T>, forgetAfter = false, endedBy: (error: unknown) => boolean = isGone): Promise<T> {
     const cap = caps.get(id);
     if (cap === undefined) {
       throw new TerminalGone();
@@ -240,7 +243,7 @@ function createCore(deps: ChannelDeps): Core {
 
       return answer;
     } catch (error) {
-      if (isGone(error)) {
+      if (endedBy(error)) {
         forget(id, cap);
       }
 
@@ -297,7 +300,12 @@ function createCore(deps: ChannelDeps): Core {
     connect: (id, fromOffset, events, writer) => connect(id, fromOffset, events, writer),
 
     close: async (id) => {
-      await named(id, async (cap) => client.CloseChannelTerminal(cap), true);
+      // A close that gave up waiting is a terminal that is closing and still going: the page has nothing more to ask of it, so it forgets the capability and the close is done (it is no failure to log).
+      await named(id, async (cap) => client.CloseChannelTerminal(cap), true, (error) => isGone(error) || isClosing(error)).catch((error: unknown) => {
+        if (!isClosing(error)) {
+          throw error;
+        }
+      });
     },
 
     dismiss: async (id) => {

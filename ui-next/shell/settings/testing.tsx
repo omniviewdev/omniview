@@ -27,6 +27,8 @@ export type MountOptions = {
   readonly stored?: Record<string, boolean>;
   /** The page the sheet was last on in this window. */
   readonly page?: string;
+  /** Registers installed plugins before the settings session reads its inventory. */
+  readonly prepare?: (host: FakeHost) => void;
   /** What the host answers to the first question, when it is not its snapshot: a promise the test settles by hand, or a failure. */
   readonly first?: () => Promise<HostSnapshot>;
 };
@@ -42,6 +44,7 @@ export async function settle(clock: ManualClock): Promise<void> {
 export async function mount(options: MountOptions = {}): Promise<Mounted> {
   installDialog();
   const host = fakeHost(options.values ?? {}, options.stored ?? {});
+  options.prepare?.(host);
   host.next.snapshot = options.first;
   const clock = manualClock();
   const session = createSettingsSession({ client: host.client, scheduler: clock.scheduler });

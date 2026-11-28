@@ -5,8 +5,8 @@
 //   closed   at load nothing of Settings is in the document but the gear and the chord's listener: no dialog, no node of the sheet                                                                 sheet.closed
 //   open     the platform's chord, the web chord and the gear each open ONE modal dialog named Settings; the chord with Shift does not; asking again while it is open does nothing                  sheet.open
 //   modal    the dialog is modal (`:modal`), the keyboard is inside it on the page on screen, and the page behind refuses the focus                                                                sheet.modal
-//   frame    the dialog covers the window and the frame is 1060 x 640, centred, the header 41 px, Close 24 x 24 12 px in from its end, the title 13/16 at 600                                       sheet.frame
-//   clamp    in a window smaller than the frame the frame is the window less 24 px on each side, and everything in it is still reachable                                                          sheet.clamp
+//   frame    the dialog covers the window; the centred frame prefers 1280 x 800, with a 41 px header, 24 px Close, and the mock's two islands, gutter and form width                               sheet.frame
+//   clamp    the browser always leaves at least 24 px on each side; narrower pages fit their pane and the narrowest layout stacks navigation above content                                          sheet.clamp
 //   paint    the frame's fill, edge, text, shadow and radius are the tokens they name, nothing is drawn over the page (no veil), nothing moves                                                   sheet.paint
 //   trap     Tab and Shift+Tab cycle through the controls of the page in the order of the document and never leave the dialog                                                                    sheet.trap
 //   scrim    a press outside the frame leaves the sheet open, and Tab then goes on inside it                                                                                                   sheet.scrim
@@ -15,7 +15,7 @@
 //   close    Close closes it and gives the focus back; a sheet opened with the chord from a field gives it back to the field                                                                      sheet.close
 //   keep     reopened, it is on the page it was left on, the host's values are kept, and what was typed and not applied is gone                                                                     sheet.keep
 //   tip      a tooltip opened inside the sheet is shown above the dialog and is not inert (the Reset of a modified row)                                                                      sheet.tip
-import { check, chordOf, fail, near, note, openFixture, openSheet, plant, round, sleep, wants } from './settings-lib.mjs';
+import { check, chordOf, fail, goToPage, near, note, openFixture, openSheet, plant, round, sleep, wants } from './settings-lib.mjs';
 
 const GEAR = '[data-shell-part="settings"]';
 const enc = (value) => encodeURIComponent(JSON.stringify(value));
@@ -39,8 +39,8 @@ const READ = () => {
     onOpener: active === opener,
     onBody: active === document.body || active === null,
     active: (active?.getAttribute?.('aria-label') ?? (active?.labels?.[0]?.textContent ?? active?.textContent ?? '')).replace(/\s+/g, ' ').trim().slice(0, 48) || active?.tagName.toLowerCase(),
-    value: document.querySelector('dialog[open] input[type="text"], dialog[open] input:not([type])')?.value ?? null,
-    page: document.querySelector('dialog[open] [data-settings-part="nav"] [aria-current="page"]')?.textContent ?? null,
+    focusedPage: active?.getAttribute('data-settings-page') ?? null,
+    page: dialog?.querySelector('[data-settings-part="tree"] [aria-current="page"]')?.getAttribute('data-settings-page') ?? null,
     parts: document.querySelectorAll('[data-settings-part]').length,
   };
 };
@@ -120,7 +120,7 @@ async function modalPart(env) {
     await plant(env, page);
     const r = await page.evaluate(READ);
     check(r.open === 1 && r.modal, where, 'sheet.modal', `${r.open} dialogs open, modal ${r.modal}`);
-    check(r.inside && r.active === 'Appearance', where, 'sheet.modal', `the keyboard is on ${JSON.stringify(r.active)} (inside the dialog: ${r.inside}), wanted the page on screen, Appearance`);
+    check(r.inside && r.focusedPage === 'appearance' && r.page === r.focusedPage, where, 'sheet.modal', `the keyboard is on ${JSON.stringify(r.active)} (inside the dialog: ${r.inside}), wanted the current Appearance tree item`);
     // Every control of the page behind refuses the focus.
     const took = await page.evaluate(() => {
       const dialog = document.querySelector('dialog[open]');
@@ -148,6 +148,7 @@ const READ_FRAME = () => {
   const dialog = document.querySelector('dialog[open]');
   const part = (name) => dialog.querySelector(`[data-ov-part="${name}"]`);
   const style = (element, property) => getComputedStyle(element)[property];
+  const nav = dialog.querySelector('[data-settings-part="nav"]');
   const content = dialog.querySelector('[data-settings-part="content"]');
   return {
     view: { w: innerWidth, h: innerHeight },
@@ -157,8 +158,11 @@ const READ_FRAME = () => {
     close: rect(part('close')),
     title: rect(part('title')),
     body: rect(part('body')),
-    nav: rect(dialog.querySelector('[data-settings-part="nav"]')),
+    nav: rect(nav),
     content: rect(content),
+    form: rect(content.querySelector('[data-settings-part="page"] > header')),
+    radius: [style(nav, 'borderTopLeftRadius'), style(content, 'borderTopLeftRadius')],
+    contentWidth: content.clientWidth,
     contentOverflowX: content.scrollWidth - content.clientWidth,
     type: { size: style(part('title'), 'fontSize'), line: style(part('title'), 'lineHeight'), weight: style(part('title'), 'fontWeight') },
     controls: [...dialog.querySelectorAll('[data-settings-row] [data-ov-part="control"]')].map((element) => ({ ...rect(element), right: r2(element.getBoundingClientRect().right) })),
@@ -174,18 +178,21 @@ async function framePart(env) {
     await plant(env, page);
     const size = env.viewport;
     const f = await page.evaluate(READ_FRAME);
-    const want = { w: 1060, h: 640, x: (size.width - 1060) / 2, y: (size.height - 640) / 2 };
+    const w = Math.min(1280, size.width - 48);
+    const h = Math.min(800, size.height - 48);
+    const want = { w, h, x: (size.width - w) / 2, y: (size.height - h) / 2 };
     check(near(f.dialog.x, 0) && near(f.dialog.y, 0) && near(f.dialog.w, size.width) && near(f.dialog.h, size.height), where, 'sheet.frame', `the dialog is ${JSON.stringify(f.dialog)}, not the window`);
-    check(near(f.frame.w, want.w) && near(f.frame.h, want.h), where, 'sheet.frame', `the frame is ${f.frame.w} x ${f.frame.h}, not 1060 x 640`);
+    check(near(f.frame.w, want.w) && near(f.frame.h, want.h), where, 'sheet.frame', `the frame is ${f.frame.w} x ${f.frame.h}, wanted ${w} x ${h}`);
     check(near(f.frame.x, want.x) && near(f.frame.y, want.y), where, 'sheet.frame', `the frame is at ${f.frame.x},${f.frame.y}, not centred at ${want.x},${want.y}`);
     check(near(f.header.h, 41), where, 'sheet.frame', `the header is ${f.header.h} px high, not 41`);
     check(near(f.close.w, 24) && near(f.close.h, 24), where, 'sheet.frame', `Close is ${f.close.w} x ${f.close.h}, not 24 x 24`);
     check(near(f.close.x + f.close.w, f.header.x + f.header.w - 12), where, 'sheet.frame', `Close ends at ${f.close.x + f.close.w}, not 12 px inside the header's end`);
     check(near(f.title.x, f.header.x + 12), where, 'sheet.frame', `the title starts at ${f.title.x}, not 12 px inside the header`);
     check(f.type.size === '13px' && f.type.line === '16px' && f.type.weight === '600', where, 'sheet.frame', `the title is ${JSON.stringify(f.type)}, not 13px/16px at 600`);
-    // What the body holds fills it: the navigation is 212 px (the original window's) under the header and the page takes the rest.
-    check(near(f.nav.w, 212) && near(f.nav.h, f.body.h) && near(f.nav.y, f.body.y), where, 'sheet.frame', `the navigation is ${f.nav.w} x ${f.nav.h} at ${f.nav.y}, wanted 212 wide and the body's whole height ${f.body.h}`);
-    check(near(f.content.x, f.nav.x + f.nav.w) && near(f.content.x + f.content.w, f.body.x + f.body.w) && near(f.content.h, f.body.h), where, 'sheet.frame', `the page's pane is ${JSON.stringify(f.content)}, wanted the rest of the body (${f.body.w - 212} x ${f.body.h})`);
+    check(near(f.nav.x, f.body.x + 5) && near(f.nav.y, f.body.y) && near(f.nav.w, 244) && near(f.nav.h, f.body.h - 5), where, 'sheet.frame', `sidebar ${JSON.stringify(f.nav)} does not fit the body's 5 px tracks at 244 px wide`);
+    check(near(f.content.x, f.nav.x + f.nav.w + 5) && near(f.content.x + f.content.w, f.body.x + f.body.w - 5) && near(f.content.h, f.nav.h) && near(f.content.y, f.nav.y), where, 'sheet.frame', `content pane ${JSON.stringify(f.content)} does not fill the remaining space between 5 px tracks`);
+    check(f.radius.every((radius) => radius === '10px'), where, 'sheet.frame', `the pane radii are ${f.radius.join(', ')}, not the mock's 10 px`);
+    check(near(f.form.x, f.content.x + 12) && near(f.form.y, f.content.y + 12) && near(f.form.w, f.contentWidth - 24), where, 'sheet.frame', `the form must fill its pane with 12 px padding; found ${JSON.stringify(f.form)}`);
   } finally {
     await context.close();
   }
@@ -204,15 +211,35 @@ async function clampPart(env) {
     check(near(f.frame.w, want.w) && near(f.frame.h, want.h), where, 'sheet.clamp', `the frame is ${f.frame.w} x ${f.frame.h}, wanted the window less 24 px on each side, ${want.w} x ${want.h}`);
     check(near(f.frame.x, want.x) && near(f.frame.y, want.y), where, 'sheet.clamp', `the frame is at ${f.frame.x},${f.frame.y}, wanted ${want.x},${want.y}`);
     check(f.close.x >= 0 && f.close.x + f.close.w <= size.width && f.close.y >= 0, where, 'sheet.clamp', `Close is ${JSON.stringify(f.close)}, outside the window`);
-    check(near(f.nav.w, 212), where, 'sheet.clamp', `the navigation is ${f.nav.w} px wide in a smaller window, wanted 212`);
+    check(near(f.nav.w, 244), where, 'sheet.clamp', `the navigation is ${f.nav.w} px wide at ${size.width}, wanted 244`);
+    check(near(f.form.w, f.contentWidth - 24), where, 'sheet.clamp', `the constrained form is ${f.form.w} px wide, wanted 12 px of padding at both ends of ${f.contentWidth}`);
     check(f.contentOverflowX <= 0, where, 'sheet.clamp', `the page's pane overflows sideways by ${f.contentOverflowX} px in a window of ${size.width} px`);
     check(f.controls.every((control, index) => control.right <= f.rowEnds[index] + 0.5), where, 'sheet.clamp', 'a row\'s control column goes past the end of its row');
-    // The frame's page still scrolls to its last row in a window 600 px high.
+    // Resize the same open sheet. Navigation moves above the page without pushing controls past the frame.
+    await page.setViewportSize({ width: 390, height: 640 });
+    const narrow = await page.evaluate(READ_FRAME);
+    check(near(narrow.frame.w, 342) && near(narrow.frame.h, 592) && near(narrow.frame.x, 24) && near(narrow.frame.y, 24), where, 'sheet.clamp', `390 x 640: frame ${JSON.stringify(narrow.frame)} does not leave 24 px clear`);
+    check(near(narrow.content.x, narrow.nav.x) && near(narrow.content.w, narrow.nav.w) && near(narrow.content.y, narrow.nav.y + narrow.nav.h + 5), where, 'sheet.clamp', `390 x 640: navigation is not above the page with a 5 px gap`);
+    check(narrow.contentOverflowX <= 0 && narrow.controls.every((control, index) => control.right <= narrow.rowEnds[index] + 0.5), where, 'sheet.clamp', '390 x 640: fields overflow their pane or their reset slot');
     const reach = await page.evaluate(() => {
       const content = document.querySelector('dialog [data-settings-part="content"]');
-      return { scrolls: content.scrollHeight > content.clientHeight, y: getComputedStyle(content).overflowY };
+      content.scrollTop = content.scrollHeight;
+      const last = content.querySelector('[data-settings-part="reset-material"]').getBoundingClientRect();
+      const pane = content.getBoundingClientRect();
+      const tree = document.querySelector('[data-settings-part="tree-scroll"]');
+      const search = document.querySelector('input[data-settings-part="search"]');
+      tree.scrollTop = 0;
+      const searchY = search.getBoundingClientRect().top;
+      const contentTop = content.scrollTop;
+      tree.scrollTop = tree.scrollHeight;
+      return {
+        page: contentTop > 0 && last.top >= pane.top && last.bottom <= pane.bottom,
+        tree: ['auto', 'scroll'].includes(getComputedStyle(tree).overflowY) && tree.scrollTop > 0,
+        independent: search.getBoundingClientRect().top === searchY && content.scrollTop === contentTop,
+      };
     });
-    check(reach.y === 'auto', where, 'sheet.clamp', `the page's pane has overflow-y ${reach.y} in a short window, wanted auto`);
+    check(reach.page, where, 'sheet.clamp', '390 x 640: scrolling the Appearance pane did not bring its last action into view');
+    check(reach.tree && reach.independent, where, 'sheet.clamp', '390 x 640: the expanded tree must scroll without moving search or the page');
   } finally {
     await context.close();
   }
@@ -273,7 +300,11 @@ const MARK_STOPS = () => {
   const dialog = document.querySelector('dialog[open]');
   const stops = [...dialog.querySelectorAll('a[href], button, input:not([type="hidden"]), select, textarea, [tabindex]')].filter((element) => element.getAttribute('tabindex') !== '-1' && !element.matches(':disabled') && element.getClientRects().length > 0);
   window.__tabStops = stops;
-  return stops.map((element) => (element.getAttribute('aria-label') ?? element.labels?.[0]?.textContent ?? element.textContent ?? element.tagName).replace(/\s+/g, ' ').trim().slice(0, 40));
+  return stops.map((element) => {
+    if (element.matches('input[data-settings-part="search"]')) return 'search';
+    if (element.matches('[role="treeitem"]')) return `tree:${element.dataset.settingsPage ?? element.dataset.settingsBranch}`;
+    return (element.getAttribute('aria-label') ?? element.labels?.[0]?.textContent ?? element.textContent ?? element.tagName).replace(/\s+/g, ' ').trim().slice(0, 40);
+  });
 };
 const WHERE_FOCUS = () => window.__tabStops.indexOf(document.activeElement);
 
@@ -282,13 +313,11 @@ async function trapPart(env) {
   const { page, context } = await openFixture(env, MODIFIED);
   try {
     await openSheet(page);
-    await page.locator('[data-settings-part="nav"] [data-settings-page="terminal"]').click();
-    await page.waitForSelector('[data-settings-part="page"][data-settings-page-id="terminal"]', { state: 'attached' });
+    await goToPage(page, 'terminal');
     await plant(env, page);
     const names = await page.evaluate(MARK_STOPS);
-    // In the order of the document, Close first (the header comes before the body), then the page on screen (one stop for the whole navigation), then every row's control and the Reset of a modified row.
-    check(names[0] === 'Close' && names[1] === 'Terminal' && names.length >= 8, where, 'sheet.trap', `the Tab stops are ${JSON.stringify(names)}, wanted Close, the page on screen (Terminal), then the controls of its rows`);
-    check(names.filter((name) => name === 'Terminal').length === 1 && names.filter((name) => /^(Appearance|General|Editor|Telemetry|Developer)/.test(name)).length === 0, where, 'sheet.trap', 'the navigation is more than one Tab stop');
+    check(names[0] === 'Close' && names[1] === 'search' && names[2] === 'tree:terminal' && names.length >= 9, where, 'sheet.trap', `the Tab stops are ${JSON.stringify(names)}, wanted Close, search, the current tree item, then the row controls`);
+    check(names.filter((name) => name.startsWith('tree:')).length === 1, where, 'sheet.trap', 'the tree has more than one Tab stop');
     const { forward, backward } = env.keys;
     const walk = async (press, count) => {
       const seen = [];
@@ -350,7 +379,7 @@ async function closePart(env) {
     // draft: Escape in a field with a draft is the field's; the next Escape closes.
     await page.locator(GEAR).click();
     await page.waitForSelector('dialog[open] [data-settings-row]');
-    await page.locator('[data-settings-part="nav"] [data-settings-page="terminal"]').click();
+    await goToPage(page, 'terminal');
     await field('Default Shell').click();
     const applied = await field('Default Shell').inputValue();
     await page.keyboard.type('x');
@@ -409,7 +438,7 @@ async function keepPart(env) {
   try {
     await plant(env, page);
     await openSheet(page);
-    await page.locator('[data-settings-part="nav"] [data-settings-page="terminal"]').click();
+    await goToPage(page, 'terminal');
     await page.getByRole('switch', { name: 'Cursor Blink' }).click();
     await sleep(200);
     await page.getByRole('textbox', { name: 'Default Shell' }).click();
@@ -419,8 +448,8 @@ async function keepPart(env) {
     await closed(page);
     await openSheet(page);
     const r = await page.evaluate(READ);
-    check(r.page === 'Terminal', where, 'sheet.keep', `the sheet reopened on ${r.page}, wanted Terminal, where it was left`);
-    if (r.page !== 'Terminal') return;
+    check(r.page === 'terminal', where, 'sheet.keep', `the sheet reopened on ${r.page}, wanted Terminal, where it was left`);
+    if (r.page !== 'terminal') return;
     check((await page.getByRole('switch', { name: 'Cursor Blink' }).getAttribute('aria-checked', { timeout: 1500 }).catch(() => null)) === 'false', where, 'sheet.keep', 'a value that was applied is not what the reopened sheet shows');
     check((await page.getByRole('textbox', { name: 'Default Shell' }).inputValue({ timeout: 1500 }).catch(() => null)) === '/bin/zsh', where, 'sheet.keep', 'a draft that was reverted came back');
     // What was typed and not applied is gone with the sheet, which keeps no draft: a second opening starts from what the host holds.
@@ -443,8 +472,7 @@ async function tipPart(env) {
   const { page, context } = await openFixture(env, MODIFIED);
   try {
     await openSheet(page);
-    await page.locator('[data-settings-part="nav"] [data-settings-page="terminal"]').click();
-    await page.waitForSelector('[data-settings-part="page"][data-settings-page-id="terminal"]', { state: 'attached' });
+    await goToPage(page, 'terminal');
     await plant(env, page);
     const reset_ = page.getByRole('button', { name: 'Reset Cursor Blink to default' });
     await reset_.hover();

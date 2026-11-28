@@ -3,6 +3,7 @@ import type { Platform } from '../../core/chords';
 import type { EngineAppearance, LinkHandler, LinkHover } from './engine';
 import type { TerminalModes, TerminalReplay } from './feed';
 import { FLOW, HELD_TYPING, HIDDEN_TICK_MS, SCROLLBACK, clearScreenIn, createScreen, type TerminalScreen } from './screen';
+import { DEFAULT_PREFERENCES, type PreferencesSource, type TerminalPreferences } from './preferences';
 import { createScreenReaderChoice, type ScreenReaderChoice } from './screenReader';
 import { fakeEngineLoader, fakeTerminalFeed, type FakeEngine, type FakeEngineLoader, type FakeEngineOptions, type FakeTerminalFeed } from './testing';
 
@@ -17,6 +18,7 @@ const APPEARANCE: EngineAppearance = {
   fontFamily: 'monospace',
   fontSize: 12,
   lineHeight: 1.33,
+  cursorStyle: 'block',
 };
 
 type Rig = {
@@ -42,6 +44,8 @@ type Rig = {
   readonly reader: ScreenReaderChoice;
   readonly readerListeners: () => number;
   readonly fonts: { readonly release: () => void; readonly asked: () => readonly string[] };
+  /** What the appearance reads from now on (the app's reader gives it from the person's settings and the theme). */
+  readonly look: (next: EngineAppearance) => void;
   /** A reattached feed's replay arrives (the attach was still being answered when the screen asked), and the feed tells its listeners. */
   readonly arrive: (replay: TerminalReplay) => void;
   /** How many times the screen asked the feed to make a full-screen program paint again. */
@@ -58,6 +62,8 @@ type RigOptions = {
   readonly auto?: boolean;
   readonly fontsHeld?: boolean;
   readonly rendererReady?: Promise<void>;
+  /** The person's settings (`ScreenDeps.preferences`). Default: none. */
+  readonly preferences?: PreferencesSource;
   readonly copy?: (text: string) => Promise<boolean>;
   readonly screenReader?: boolean;
   readonly defaultTimer?: boolean;
@@ -117,10 +123,12 @@ function rig(options: RigOptions = {}): Rig {
   const fontsAsked: string[] = [];
   const reader = createScreenReaderChoice(options.screenReader);
   let readerHeard = 0;
+  let looking = APPEARANCE;
   const screen = createScreen({
     feed,
     load: loader.load,
-    appearance: () => APPEARANCE,
+    appearance: () => looking,
+    preferences: options.preferences,
     platform: options.platform ?? 'mac',
     label: 'Terminal input, Terminal',
     descriptionId: 'hint-1',
@@ -232,6 +240,9 @@ function rig(options: RigOptions = {}): Rig {
         resolve(); 
       }); 
     }, asked: () => fontsAsked },
+    look: (next) => {
+      looking = next;
+    },
     arrive: (replay) => {
       held = replay;
       attaching = false;
@@ -3208,5 +3219,208 @@ describe('review of #791: an emulator that runs the barrier\'s callback at once 
     next.push('\u001b[6n');
     r.frame();
     expect(next.replies()).toEqual(['\u001b[1;1R']);
+  });
+});
+
+
+/** The person's settings as a store the test holds: `change` is the host's event and its answer; `settled` waits for `answer`. */
+function fakePreferences(initial: Partial<TerminalPreferences> = {}, held = false) {
+  let current: TerminalPreferences = { ...DEFAULT_PREFERENCES, ...initial };
+  const listeners = new Set<() => void>();
+  const gate = Promise.withResolvers<void>();
+  if (!held) {
+    gate.resolve();
+  }
+
+  const source: PreferencesSource = {
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    getSnapshot: () => current,
+    settled: async () => gate.promise,
+  };
+  return {
+    source,
+    listeners: () => listeners.size,
+    /** The host answered for the first time. */
+    answer: (next: Partial<TerminalPreferences> = {}) => {
+      current = { ...current, ...next };
+      gate.resolve();
+    },
+    change: (next: Partial<TerminalPreferences>) => {
+      current = { ...current, ...next };
+      listeners.forEach((listener) => {
+        listener();
+      });
+    },
+  };
+}
+
+// The person's settings on a screen (#697 step 1): a terminal is made in them (after the host's first answer, so that a font that is not the default is loaded before the first cell), a change is applied to the emulator that
+// is there (never a new one, never the scrollback lost), the font is loaded before the emulator measures it, and a terminal that is not shown takes the change when it is shown.
+describe('the person\'s settings', () => {
+  const FIRA: EngineAppearance = { ...APPEARANCE, fontFamily: '"Fira Code", monospace' };
+
+  it('wait for the host\'s first answer before the emulator is made, and the emulator is made with the scrollback of the answer', async () => {
+    const prefs = fakePreferences({}, true);
+    const { screen, host, loader, settle } = rig({ preferences: prefs.source });
+    screen.mount(host);
+    screen.show();
+    await settle();
+    expect(loader.engines).toHaveLength(0);
+    prefs.answer({ scrollback: 20_000 });
+    await settle();
+    expect(loader.engines).toHaveLength(1);
+    expect(loader.engines[0]?.options.scrollback).toBe(20_000);
+  });
+
+  it('are the defaults of the host\'s declaration when the screen is given none: the scrollback it always had', async () => {
+    const { screen, host, loader, settle } = rig();
+    screen.mount(host);
+    screen.show();
+    await settle();
+    expect(loader.engines[0]?.options.scrollback).toBe(SCROLLBACK);
+  });
+
+  it('reach the emulator that is there when they change: one call of the emulator and no new emulator', async () => {
+    const prefs = fakePreferences();
+    const { screen, host, loader, engine, look, settle } = rig({ preferences: prefs.source });
+    screen.mount(host);
+    screen.show();
+    await settle();
+    expect(engine().appearances).toHaveLength(0);
+
+    look({ ...APPEARANCE, fontSize: 16, cursorStyle: 'bar' });
+    prefs.change({ fontSize: 16, cursorStyle: 'bar' });
+    expect(engine().appearances).toEqual([{ ...APPEARANCE, fontSize: 16, cursorStyle: 'bar' }]);
+    expect(loader.engines).toHaveLength(1);
+    expect(loader.loads()).toBe(1);
+    expect(engine().disposed()).toBe(0);
+  });
+
+  it('are not applied for a change of what the emulator is not told of (the bell, copy on select, the paste warning, the renderer, Option as Meta, blink, scrollback): this step reads them and applies none', async () => {
+    const prefs = fakePreferences();
+    const { screen, host, engine, settle } = rig({ preferences: prefs.source });
+    screen.mount(host);
+    screen.show();
+    await settle();
+    prefs.change({ bell: 'off', copyOnSelect: true, multiLinePasteWarning: 'always', gpuAcceleration: 'off', macOptionIsMeta: 'on', cursorBlink: true, scrollback: 9000 });
+    expect(engine().appearances).toHaveLength(0);
+  });
+
+  it('load the font before the emulator measures it: a new family is awaited, and nothing is applied until it is loaded', async () => {
+    const prefs = fakePreferences();
+    const { screen, host, engine, look, fonts, settle } = rig({ preferences: prefs.source, fontsHeld: true });
+    screen.mount(host);
+    screen.show();
+    await settle();
+    fonts.release();
+    await settle();
+    expect(engine().appearances).toHaveLength(0);
+    const asked = fonts.asked().length;
+
+    look(FIRA);
+    prefs.change({ fontFamily: 'Fira Code' });
+    await settle();
+    expect(fonts.asked()).toHaveLength(asked + 1);
+    expect(fonts.asked().at(-1)).toBe('12px "Fira Code", monospace');
+    expect(engine().appearances).toHaveLength(0);
+    fonts.release();
+    await settle();
+    expect(engine().appearances).toEqual([FIRA]);
+  });
+
+  it('load the font of the look a new terminal is made in: a family chosen while the first font was loading is awaited too, and the emulator is made only after it', async () => {
+    const prefs = fakePreferences();
+    const { screen, host, loader, look, fonts, settle } = rig({ preferences: prefs.source, fontsHeld: true });
+    screen.mount(host);
+    screen.show();
+    await settle();
+    expect(fonts.asked()).toEqual(['12px monospace']);
+    look(FIRA);
+    fonts.release();
+    await settle();
+    expect(fonts.asked()).toEqual(['12px monospace', '12px "Fira Code", monospace']);
+    expect(loader.engines).toHaveLength(0);
+    fonts.release();
+    await settle();
+    expect(loader.engines).toHaveLength(1);
+    expect(loader.engines[0]?.options.appearance.fontFamily).toBe(FIRA.fontFamily);
+  });
+
+  it('wait once when the family did not change while the font loaded', async () => {
+    const prefs = fakePreferences();
+    const { screen, host, fonts, settle } = rig({ preferences: prefs.source });
+    screen.mount(host);
+    screen.show();
+    await settle();
+    expect(fonts.asked()).toEqual(['12px monospace']);
+  });
+
+  it('do not wait for a font when the family did not change: a new size is applied at once', async () => {
+    const prefs = fakePreferences();
+    const { screen, host, engine, look, fonts, settle } = rig({ preferences: prefs.source, fontsHeld: true });
+    screen.mount(host);
+    screen.show();
+    await settle();
+    fonts.release();
+    await settle();
+    const asked = fonts.asked().length;
+    look({ ...APPEARANCE, fontSize: 18 });
+    prefs.change({ fontSize: 18 });
+    expect(fonts.asked()).toHaveLength(asked);
+    expect(engine().appearances).toHaveLength(1);
+  });
+
+  it('apply the last of two changes that came while a font loaded, and never the first after it', async () => {
+    const prefs = fakePreferences();
+    const { screen, host, engine, look, fonts, settle } = rig({ preferences: prefs.source, fontsHeld: true });
+    screen.mount(host);
+    screen.show();
+    await settle();
+    fonts.release();
+    await settle();
+    look(FIRA);
+    prefs.change({ fontFamily: 'Fira Code' });
+    const second: EngineAppearance = { ...APPEARANCE, fontFamily: '"JetBrains Mono", monospace' };
+    look(second);
+    prefs.change({ fontFamily: 'JetBrains Mono' });
+    await settle();
+    fonts.release();
+    await settle();
+    expect(engine().appearances).toEqual([second]);
+  });
+
+  it('wait for the screen to be shown when it is hidden, and are applied once when it is: a hidden terminal measures nothing', async () => {
+    const prefs = fakePreferences();
+    const { screen, host, engine, look, settle } = rig({ preferences: prefs.source });
+    screen.mount(host);
+    screen.show();
+    await settle();
+    screen.hide();
+    look({ ...APPEARANCE, fontSize: 20 });
+    prefs.change({ fontSize: 20 });
+    prefs.change({ fontSize: 21 });
+    expect(engine().appearances).toHaveLength(0);
+    screen.show();
+    await settle();
+    expect(engine().appearances).toHaveLength(1);
+  });
+
+  it('keep listening while the screen is hidden (every open terminal follows) and stop for good when it is disposed', async () => {
+    const prefs = fakePreferences();
+    const { screen, host, settle } = rig({ preferences: prefs.source });
+    screen.mount(host);
+    expect(prefs.listeners()).toBe(0);
+    screen.show();
+    await settle();
+    expect(prefs.listeners()).toBe(1);
+    screen.hide();
+    expect(prefs.listeners()).toBe(1);
+    screen.dispose();
+    expect(prefs.listeners()).toBe(0);
   });
 });

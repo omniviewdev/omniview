@@ -132,7 +132,7 @@
 //      several assertions true, the kill, the refused choice and the connection that answers, a wrong attribute or a decoy once the act is done); SEAM_CONTROL=<one of them> makes that one only, and SEAM_REMOVE=<one of them> leaves that control's assertion out, which must let its fault pass
 //      undetected by every other assertion of the act. The Logs control `page-error` is not v's: the control of v that reads the page's errors is `pt-page-error`
 //
-//   The terminal scenarios (r to r9) drive the Terminal tool over the TERMINAL CHANNEL (docs/ui-next/terminal-channel-protocol.md): a terminal is reached by a capability and by one stream, a WebSocket at `/wails/stream/ws` that the check records frame by frame (Playwright's
+//   The terminal scenarios (r to r10) drive the Terminal tool over the TERMINAL CHANNEL (docs/ui-next/terminal-channel-protocol.md): a terminal is reached by a capability and by one stream, a WebSocket at `/wails/stream/ws` that the check records frame by frame (Playwright's
 //   `page.on('websocket')`), and by the calls `CreateTerminal`, `ChannelTerminalBusy`, `ListChannelTerminals`, `CloseChannelTerminal` and `DismissChannelTerminal`. No terminal is listed by the host, so the check learns each capability where the page does (the answer of its
 //   `CreateTerminal`), never prints it, and reads what a terminal printed from what the streams carried. SEAM_TERMINAL_ONLY=r3,r5 (and SEAM_TERMINAL_REPEAT=<n>) runs the ones it names alone. SEAM_SHELL=<path> runs them against another shell (the CI image has bash; a zsh
 //   of a fresh home asks its new-user questions, which swallow the first characters typed).
@@ -173,6 +173,8 @@
 //
 //   r9  where a terminal opens and what it is called (#695 steps 1 to 5, `checkTerminalOpenWhere`, phase `terminal-where`), over the real host and the real bash and zsh of the machine (a machine with no zsh runs bash alone and says so). A shell chosen in the menu beside the `+` is named on its tab and says its own name to `echo $0` and to `ps`; a terminal started in /tmp with an entry in `launch.env` has `pwd` equal to /tmp and to the host's own cwd fact (read once `pwd` has answered: no wait for time) and the entry in its environment, and a refused env name (`WAILS_MCP_TOKEN`, a name with `=`) is refused with the typed error that names `launch.env`, shows no value and starts no terminal; New terminal here after `cd /usr` starts a shell whose `pwd` is /usr, the directory the host said and the page asked for; a program's `ESC ] 0 ; title BEL` is on the tab while it runs and the shell's name is back after it, and a title of 100,000 characters with a control character is bounded and clean; a renamed tab keeps its name while programs set titles (the host's title frame reached the page) and after a reload; Restart starts the same shell in the directory the ended one STARTED in, under another id, in the same tab with its name, with the ended terminal's transcript above the new shell's, and for a page that reloaded with the environment it was asked to start with. The page has no gesture that sends a start directory or an environment yet (a profile with either is for a later step), so the check writes them into the page's own `CreateTerminal` (`addToNextCreate`) and says so. SEAM_TERMINAL_ONLY=r9 runs it alone; SEAM_CONTROL=terminal-where runs it with every control of WHERE_CONTROLS made in turn (a premise broken before the act, or a fault planted in the shell or the host, each seen by the assertion it is named for); SEAM_CONTROL=<one of them> makes that one only, and SEAM_REMOVE=<one of them> leaves that control's assertion out, which must let its fault pass undetected
 //
+//   r10 the shell integration (#694 step 7, `checkTerminalIntegration`, phase `terminal-integration`), over the real host and the real bash and zsh (both are needed: the scenario stops with a message when one is not listed): the typed marks carry the exit codes of true, false and (exit 3), a command whose end has no status is incomplete and Ctrl-C at an empty prompt makes no command; the gutter draws success, an error and incomplete and comes back after a reload; a jump moves the viewport and Select output selects exactly the output the host's record cuts out; `cat` of a file with forged 133, 633 and OSC 7 marks (wrong nonce, none) gives no command line and no directory, and the same marks with the shell's own nonce are trusted; the user's rc files have the same sha256 after the sessions; with terminal.shellIntegration off a new terminal says off, has none of the integration's variables and receives no mark; the session's nonce is in no DOM node, host log line, typed frame, record or error. SEAM_TERMINAL_ONLY=r10 runs it alone; SEAM_CONTROL=terminal-integration runs it with every control of INTEGRATION_CONTROLS made in turn; SEAM_REMOVE=<one of them> leaves that control's assertion out.
+//
 //   w  the Ports tool (PF1, PF2, PF3, `checkPorts`), over the real host, on a host of its own whose plugin `fixture-g-ports` (Seam Ports) has a PROCESS that serves one connection (`harbor`) and forwards a local port to a TCP server of its own (it sends `PF1-FIXTURE-HELLO` to every
 //      connection and sends back what it is sent). One window with nothing saved, opened at the plugin's page before its connection is started: the tool, which has not been on screen, holds no handler of the host's port-forward events and asks for no list of forwards, though the
 //      host's operator starts the connection (`StartConnection`) and the window hears it (`connection/status`). The press of the page's button asks the host once (`StartResourcePortForwardingSession`, in the page's own plugin and connection) and the page says
@@ -200,8 +202,9 @@
 //
 //   node ui-next/plugins/e2e/seam.check.mjs        needs bin/Omniview-server (OMNIVIEW_UI=next task build:server) and Playwright's browsers; ENGINES=webkit or ENGINES=chromium runs one engine
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { execFile, spawn, spawnSync } from 'node:child_process';
-import { chmod, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { appendFile, chmod, mkdir, mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -212,7 +215,6 @@ import { AGAIN_LABEL, buildConnectionsProcess, buildPortsProcess, buildProcess, 
 import { ASKED, LAPSE_MS, LAPSE_WORDS, LAPSED_LABEL, LONG_ID_LABEL, MANY_LABEL, STOP_ALL_LABEL } from '../fixture/src/ports.ts';
 import { startWithPortRetry } from './hostStart.mjs';
 import { uninstallWords } from '../../shell/plugins-page/core/words.ts';
-import { appearanceOrder } from '../../shell/settings/model/material.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const server = path.join(root, 'bin/Omniview-server');
@@ -533,6 +535,45 @@ const WHERE_CONTROLS = {
   'where-restart-dir': /a restarted terminal starts in the directory the ended one started in/,
   'where-restart-env': /a restarted terminal has the environment the ended one was asked to start with/,
 };
+const INTEGRATION_GROUP = 'terminal-integration';
+// The negative controls of scenario r10, the shell integration with the real bash and zsh (#694 step 7). Each is a fault made in what the assertion reads (an attribute the gutter draws, a window of the output where the opposite happened, the user's file edited, a
+// terminal that has the integration read as one that has not, a nonce planted in a sink) or a premise broken before the act, and the assertion it is named for must fail with ITS words and no other. One run serves them all (SEAM_CONTROL=terminal-integration);
+// SEAM_CONTROL=<name> makes that one only; SEAM_REMOVE=<name> leaves that assertion out, and the fault must then pass undetected.
+const INTEGRATION_CONTROLS = {
+  'integration-exit-true': /true ends with exit 0 in the host's marks/,
+  'integration-exit-false': /false ends with exit 1 in the host's marks/,
+  'integration-exit-three': /ends with exit 3 in the host's marks/,
+  'integration-ctrlc-none': /Ctrl-C at an empty prompt makes no command/,
+  'integration-gutter-success': /the gutter shows success for a command that exited 0/,
+  'integration-gutter-error': /the gutter shows an error for the commands that exited with a status/,
+  'integration-gutter-incomplete': /the gutter shows incomplete for a command that ended with no status/,
+  'integration-jump': /a jump moves the viewport to the previous command's line/,
+  'integration-jump-top': /after a jump the command's line is the top row of the view/,
+  'integration-select-output': /Select output selects exactly the output of the command/,
+  'integration-forged-line': /a forged mark, with a wrong nonce or none, gives no command line/,
+  'integration-forged-cwd': /a forged mark, with a wrong nonce or none, changes no directory/,
+  'integration-forged-midcommand': /633;E is believed only for a command started at a prompt/,
+  'integration-trusted-line': /a mark with the session's nonce gives a trusted command line/,
+  'integration-trusted-cwd': /a mark with the session's nonce gives a trusted directory/,
+  'integration-file-zshrc': /~\/\.zshrc is byte for byte as it was/,
+  'integration-file-zprofile': /~\/\.zprofile is byte for byte as it was/,
+  'integration-file-bashrc': /~\/\.bashrc is byte for byte as it was/,
+  'integration-file-bash-profile': /~\/\.bash_profile is byte for byte as it was/,
+  'integration-file-config-fish': /~\/\.config\/fish\/config\.fish is byte for byte as it was/,
+  'integration-optout-fact': /with the integration off the host says it is off/,
+  'integration-optout-env': /with the integration off the shell has none of its variables/,
+  'integration-optout-marks': /with the integration off no mark arrives/,
+  'integration-reload-gutter': /after a reload the gutter shows the commands that are still in the replay/,
+  'integration-canary-dom': /the session's nonce is in no DOM node/,
+  'integration-canary-log': /the session's nonce is in no host log line/,
+  'integration-canary-frames': /the session's nonce is in no typed frame the page receives/,
+  'integration-canary-records': /the session's nonce is in no record or answer the host gives/,
+  'integration-canary-end-log': /after the terminals ended no host log line holds the session's nonce/,
+  'integration-canary-end-state': /after the terminals ended no file of the state root holds the session's nonce/,
+  'integration-canary-end-tmp': /after the terminals ended no file of the temporary directory holds the session's nonce/,
+  'integration-canary-end-shimdir': /after the terminals ended no file under the host's integration directories/,
+  'integration-canary-errors': /the session's nonce is in no error or console line of the page/,
+};
 /** The second page of scenario r7: the 404s of its own calls are what the scenario asks for (RUNTIME_ALLOW). */
 const ISOLATION_PAGES = new WeakSet();
 /** The tab that holds the terminal in the displaced-close control of scenario r7, while the control ends the terminal by a call: its lane says the terminal ended, what the check types there is an Enter on that lane, which restarts it (#695 step 5) and lets the ended feed go, and the close of that feed dismisses a terminal the host no longer holds. */
@@ -548,11 +589,11 @@ const ONLY = process.env.SEAM_ONLY ?? '';
 if (ONLY !== '' && ONLY !== PAGE_GROUP && ONLY !== CONNECTIONS_GROUP && ONLY !== PT_GROUP && ONLY !== PORTS_GROUP && ONLY !== SETTINGS_SLOTS) {
   throw new Error(`SEAM_ONLY must be ${PAGE_GROUP}, ${CONNECTIONS_GROUP}, ${PT_GROUP}, ${PORTS_GROUP} or ${SETTINGS_SLOTS}`);
 }
-if (CONTROL !== '' && CONTROL !== 'process' && CONTROL !== FAILED_GROUP && CONTROL !== SETTINGS_GROUP && CONTROL !== PAGE_GROUP && CONTROL !== CONNECTIONS_GROUP && CONTROL !== RECONNECT_GROUP && CONTROL !== ISOLATION_GROUP && CONTROL !== PROFILE_GROUP && PROFILE_CONTROLS[CONTROL] === undefined && CONTROL !== PT_GROUP && CONTROL !== PORTS_GROUP && CONTROL !== WHERE_GROUP && WHERE_CONTROLS[CONTROL] === undefined && CONTROLS[CONTROL] === undefined && PROCESS_CONTROLS[CONTROL] === undefined && FAILED_CONTROLS[CONTROL] === undefined && PAGE_CONTROLS[CONTROL] === undefined && CONNECTIONS_CONTROLS[CONTROL] === undefined && RECONNECT_CONTROLS[CONTROL] === undefined && ISOLATION_CONTROLS[CONTROL] === undefined && PT_CONTROLS[CONTROL] === undefined && PORTS_CONTROLS[CONTROL] === undefined) {
-  throw new Error(`SEAM_CONTROL must be one of ${[...Object.keys(CONTROLS), 'process', ...Object.keys(PROCESS_CONTROLS), FAILED_GROUP, ...Object.keys(FAILED_CONTROLS), PAGE_GROUP, ...Object.keys(PAGE_CONTROLS), CONNECTIONS_GROUP, ...Object.keys(CONNECTIONS_CONTROLS), PROFILE_GROUP, ...Object.keys(PROFILE_CONTROLS), RECONNECT_GROUP, ...Object.keys(RECONNECT_CONTROLS), ISOLATION_GROUP, ...Object.keys(ISOLATION_CONTROLS), WHERE_GROUP, ...Object.keys(WHERE_CONTROLS), PT_GROUP, ...Object.keys(PT_CONTROLS), PORTS_GROUP, ...Object.keys(PORTS_CONTROLS), SETTINGS_GROUP].join(', ')}`);
+if (CONTROL !== '' && CONTROL !== 'process' && CONTROL !== FAILED_GROUP && CONTROL !== SETTINGS_GROUP && CONTROL !== PAGE_GROUP && CONTROL !== CONNECTIONS_GROUP && CONTROL !== RECONNECT_GROUP && CONTROL !== ISOLATION_GROUP && CONTROL !== PROFILE_GROUP && PROFILE_CONTROLS[CONTROL] === undefined && CONTROL !== PT_GROUP && CONTROL !== PORTS_GROUP && CONTROL !== WHERE_GROUP && WHERE_CONTROLS[CONTROL] === undefined && CONTROL !== INTEGRATION_GROUP && INTEGRATION_CONTROLS[CONTROL] === undefined && CONTROLS[CONTROL] === undefined && PROCESS_CONTROLS[CONTROL] === undefined && FAILED_CONTROLS[CONTROL] === undefined && PAGE_CONTROLS[CONTROL] === undefined && CONNECTIONS_CONTROLS[CONTROL] === undefined && RECONNECT_CONTROLS[CONTROL] === undefined && ISOLATION_CONTROLS[CONTROL] === undefined && PT_CONTROLS[CONTROL] === undefined && PORTS_CONTROLS[CONTROL] === undefined) {
+  throw new Error(`SEAM_CONTROL must be one of ${[...Object.keys(CONTROLS), 'process', ...Object.keys(PROCESS_CONTROLS), FAILED_GROUP, ...Object.keys(FAILED_CONTROLS), PAGE_GROUP, ...Object.keys(PAGE_CONTROLS), CONNECTIONS_GROUP, ...Object.keys(CONNECTIONS_CONTROLS), PROFILE_GROUP, ...Object.keys(PROFILE_CONTROLS), RECONNECT_GROUP, ...Object.keys(RECONNECT_CONTROLS), ISOLATION_GROUP, ...Object.keys(ISOLATION_CONTROLS), WHERE_GROUP, ...Object.keys(WHERE_CONTROLS), INTEGRATION_GROUP, ...Object.keys(INTEGRATION_CONTROLS), PT_GROUP, ...Object.keys(PT_CONTROLS), PORTS_GROUP, ...Object.keys(PORTS_CONTROLS), SETTINGS_GROUP].join(', ')}`);
 }
-if (REMOVE !== '' && PROFILE_CONTROLS[REMOVE] === undefined && FAILED_CONTROLS[REMOVE] === undefined && PROCESS_CONTROLS[REMOVE] === undefined && PAGE_CONTROLS[REMOVE] === undefined && CONNECTIONS_CONTROLS[REMOVE] === undefined && RECONNECT_CONTROLS[REMOVE] === undefined && ISOLATION_CONTROLS[REMOVE] === undefined && WHERE_CONTROLS[REMOVE] === undefined && PT_CONTROLS[REMOVE] === undefined && PORTS_CONTROLS[REMOVE] === undefined && SETTINGS_PARTS[REMOVE] === undefined && REMOVE !== RUNTIME_CONTROL) {
-  throw new Error(`SEAM_REMOVE must be one of ${[...Object.keys(PROFILE_CONTROLS), ...Object.keys(PROCESS_CONTROLS), ...Object.keys(FAILED_CONTROLS), ...Object.keys(PAGE_CONTROLS), ...Object.keys(CONNECTIONS_CONTROLS), ...Object.keys(RECONNECT_CONTROLS), ...Object.keys(ISOLATION_CONTROLS), ...Object.keys(WHERE_CONTROLS), ...Object.keys(PT_CONTROLS), ...Object.keys(PORTS_CONTROLS), ...Object.keys(SETTINGS_PARTS), RUNTIME_CONTROL].join(', ')}`);
+if (REMOVE !== '' && PROFILE_CONTROLS[REMOVE] === undefined && FAILED_CONTROLS[REMOVE] === undefined && PROCESS_CONTROLS[REMOVE] === undefined && PAGE_CONTROLS[REMOVE] === undefined && CONNECTIONS_CONTROLS[REMOVE] === undefined && RECONNECT_CONTROLS[REMOVE] === undefined && ISOLATION_CONTROLS[REMOVE] === undefined && WHERE_CONTROLS[REMOVE] === undefined && INTEGRATION_CONTROLS[REMOVE] === undefined && PT_CONTROLS[REMOVE] === undefined && PORTS_CONTROLS[REMOVE] === undefined && SETTINGS_PARTS[REMOVE] === undefined && REMOVE !== RUNTIME_CONTROL) {
+  throw new Error(`SEAM_REMOVE must be one of ${[...Object.keys(PROFILE_CONTROLS), ...Object.keys(PROCESS_CONTROLS), ...Object.keys(FAILED_CONTROLS), ...Object.keys(PAGE_CONTROLS), ...Object.keys(CONNECTIONS_CONTROLS), ...Object.keys(RECONNECT_CONTROLS), ...Object.keys(ISOLATION_CONTROLS), ...Object.keys(WHERE_CONTROLS), ...Object.keys(INTEGRATION_CONTROLS), ...Object.keys(PT_CONTROLS), ...Object.keys(PORTS_CONTROLS), ...Object.keys(SETTINGS_PARTS), RUNTIME_CONTROL].join(', ')}`);
 }
 
 // A control's name belongs to one table. The dispatch at the end of this file runs the scenario of the first group that holds the name, so a name that two tables held would run one scenario and never the other: `page-error` was the control of the Logs scenari
@@ -567,12 +608,13 @@ for (const [table, names] of [
   ['PROFILE_CONTROLS', Object.keys(PROFILE_CONTROLS)],
   ['RECONNECT_CONTROLS', Object.keys(RECONNECT_CONTROLS)],
   ['WHERE_CONTROLS', Object.keys(WHERE_CONTROLS)],
+  ['INTEGRATION_CONTROLS', Object.keys(INTEGRATION_CONTROLS)],
   ['ISOLATION_CONTROLS', Object.keys(ISOLATION_CONTROLS)],
   ['PT_CONTROLS', Object.keys(PT_CONTROLS)],
   ['PORTS_CONTROLS', Object.keys(PORTS_CONTROLS)],
   ['SETTINGS_PARTS', Object.keys(SETTINGS_PARTS)],
   ['the watch over failed requests', [RUNTIME_CONTROL]],
-  ['the groups', ['process', FAILED_GROUP, SETTINGS_GROUP, PAGE_GROUP, CONNECTIONS_GROUP, PROFILE_GROUP, RECONNECT_GROUP, ISOLATION_GROUP, WHERE_GROUP, PT_GROUP, PORTS_GROUP]],
+  ['the groups', ['process', FAILED_GROUP, SETTINGS_GROUP, PAGE_GROUP, CONNECTIONS_GROUP, PROFILE_GROUP, RECONNECT_GROUP, ISOLATION_GROUP, WHERE_GROUP, INTEGRATION_GROUP, PT_GROUP, PORTS_GROUP]],
 ]) {
   for (const name of names) NAMED_ONCE.set(name, [...(NAMED_ONCE.get(name) ?? []), table]);
 }
@@ -609,6 +651,7 @@ const PHASE_IDS = [
   'terminal-isolation',
   'terminal-find',
   'terminal-where',
+  'terminal-integration',
   'session',
   'process',
   'failed-load',
@@ -642,6 +685,7 @@ if (process.env.SEAM_LIST !== undefined) {
     { run: ISOLATION_GROUP, proves: Object.keys(ISOLATION_CONTROLS) },
     { run: PROFILE_GROUP, proves: Object.keys(PROFILE_CONTROLS) },
     { run: WHERE_GROUP, proves: Object.keys(WHERE_CONTROLS) },
+    { run: INTEGRATION_GROUP, proves: Object.keys(INTEGRATION_CONTROLS) },
   ];
   console.log(JSON.stringify({ phases: PHASE_IDS, controls }));
   process.exit(0);
@@ -6381,10 +6425,11 @@ const SETTINGS_CALLS = {
   hide: methodId(WINDOW_SERVICE, 'HideSettings'),
 };
 
-/** The bound method a request of a page asks for, or `undefined` when it is not a call of the runtime. */
-function calledMethod(request) {
+/** The bound method a page asks for, optionally limited to settings calls whose first argument names the given scope. */
+function calledMethod(request, scope) {
   try {
-    return JSON.parse(request.postData() ?? '{}')?.args?.methodID;
+    const call = JSON.parse(request.postData() ?? '{}')?.args;
+    return scope === undefined || call?.args?.[0]?.kind === scope ? call?.methodID : undefined;
   } catch {
     return undefined;
   }
@@ -6397,29 +6442,28 @@ async function answerWith(route, body, status = 200) {
 }
 
 /**
- * Takes the host's place in one page for the calls `answer` wants: `answer(route, id)` takes the call (`answerWith`) and returns true, or returns false and the call goes on to the host. This is how a control changes what the host
- * answers a page: in a copy of the page's view of the host, never in the host. Returns what puts the page back.
+ * Takes the host's place in one page for the calls `answer` wants, optionally limited to a settings scope. `answer(route, id)` returns true if it answered the call; the rest go to the host. Returns what puts the page back.
  */
-async function standIn(page, answer) {
+async function standIn(page, answer, scope) {
   const handler = async (route) => {
-    if (!(await answer(route, calledMethod(route.request())))) await route.continue();
+    if (!(await answer(route, calledMethod(route.request(), scope)))) await route.continue();
   };
   await page.route('**/wails/runtime', handler);
   return async () => page.unroute('**/wails/runtime', handler);
 }
 
-/** The pages of Settings in the order the sheet lists them (the design's table), and what it leaves out of its first slice: two settings that are pickers in the old window, and whatever is for developers only. */
+/** The navigation and Appearance group order. Native terminal discovery remains outside this settings slice. */
 const SETTINGS_PAGE_ORDER = ['appearance', 'general', 'editor', 'terminal', 'notifications', 'telemetry', 'developer'];
-const SETTINGS_NOT_DRAWN = ['appearance.theme', 'terminal.nativeApplication'];
+const SETTINGS_NOT_DRAWN = ['terminal.nativeApplication'];
+const APPEARANCE_ORDER = ['theme', 'density', 'textSize', 'motion', 'windowMaterial', 'glassStyle', 'chromeOpacity', 'contentOpacity', 'menuOpacity', 'sheetOpacity'];
 const SETTINGS_DRAWN_TYPES = ['toggle', 'integer', 'float', 'password', 'text', 'select'];
 
-/** The rows a page of Settings draws for one category of the host's snapshot, in the order it draws them (by id) and with the host's own label: what the host declares, less what the first slice leaves out. */
+/** The host's drawable rows in their page order, with the host's labels. */
 function settingsRowsOf(snapshot, category) {
   const settings = snapshot.categories[category]?.settings ?? {};
-  // The rule of the page (shell/settings/model/adapter.ts): with the material settings declared, the rows are in material.ts's order, the unlisted last, ties by id.
-  const rank = (key) => (category === 'appearance' && settings.windowMaterial !== undefined ? appearanceOrder(`${category}.${key}`) : 0);
-  return Object.keys(settings)
-    .sort((a, b) => rank(a) - rank(b) || (a < b ? -1 : a > b ? 1 : 0))
+  const keys = Object.keys(settings).sort();
+  const ordered = category === 'appearance' ? [...APPEARANCE_ORDER.filter((key) => Object.hasOwn(settings, key)), ...keys.filter((key) => !APPEARANCE_ORDER.includes(key))] : keys;
+  return ordered
     .map((key) => ({ id: `${category}.${key}`, setting: settings[key] }))
     .filter(({ id, setting }) => {
       const secret = setting.sensitive === true || setting.type === 'password';
@@ -6442,6 +6486,11 @@ function settingsPagesOf(snapshot) {
 
 /** The rows a root has drawn, with the labels they carry. */
 const rowsDrawn = async (root) => root.locator('[data-settings-row]').evaluateAll((rows) => rows.map((row) => ({ id: row.getAttribute('data-settings-row'), label: row.querySelector('label')?.textContent ?? '' })));
+
+const settingsTreeItems = '[data-settings-part="tree"] [role="treeitem"]';
+const settingsPage = (root, id) => root.locator(`${settingsTreeItems}[data-settings-page="${id}"]`);
+
+const paneHeadingBox = (root) => root.locator('[data-settings-part="page"] > header').boundingBox();
 
 /** The part of a box that two boxes share, or `undefined` when they do not meet. */
 function overlap(a, b) {
@@ -6505,10 +6554,13 @@ async function settingsSheet(c) {
   const search = page.locator('[data-shell-part="search"]');
   const dialog = page.getByRole('dialog', { name: 'Settings' });
   const palette = page.getByRole('dialog', { name: 'Search' });
-  const nav = dialog.getByRole('navigation', { name: 'Settings pages' });
-  const toPage = async (title) => nav.getByRole('button', { name: title, exact: true }).click();
+  const nav = dialog.locator('[data-settings-part="nav"]');
+  const filter = nav.locator('input[data-settings-part="search"]');
+  const core = nav.locator(`${settingsTreeItems}[data-settings-branch="core"]`);
+  const plugins = nav.locator(`${settingsTreeItems}[data-settings-branch="plugins"]`);
+  const current = nav.locator(`${settingsTreeItems}[data-settings-page][aria-current="page"]`);
   const hasFocus = async (locator) => locator.evaluate((element) => element === document.activeElement);
-  const onPage = async () => nav.locator('[aria-current="page"]').getAttribute('data-settings-page');
+  const onPage = async () => current.getAttribute('data-settings-page');
   await gear.waitFor({ timeout: 30_000 });
   await afterFrames(page);
   const snapshot = await c.snapshot();
@@ -6552,14 +6604,22 @@ async function settingsSheet(c) {
     assert.equal(await page.locator('dialog[open]').count(), 1, `${engine}: ${how} opens one dialog`);
     assert.equal(await dialog.getAttribute('data-settings-part'), 'sheet', `${engine}: ${how} opens the Settings sheet`);
     const frame = await dialog.locator('[data-ov-part="frame"]').boundingBox();
-    assert.deepEqual([Math.round(frame.width), Math.round(frame.height)], [1060, 640], `${engine}: ${how}: the sheet is 1060 by 640 px`);
+    assert.deepEqual([Math.round(frame.width), Math.round(frame.height)], [1280, 800], `${engine}: ${how}: the sheet is 1280 by 800 px`);
+    const sidebar = await nav.boundingBox();
+    const pane = await dialog.locator('[data-settings-part="content"]').boundingBox();
+    const form = await paneHeadingBox(dialog);
+    assert.deepEqual([sidebar.width, pane.x - sidebar.x - sidebar.width, form.x - pane.x, pane.x + pane.width - form.x - form.width].map(Math.round), [244, 5, 12, 12], `${engine}: ${how}: sidebar and gutter leave equal page insets`);
     assert.ok(Math.abs(frame.x + frame.width / 2 - 720) <= 1 && Math.abs(frame.y + frame.height / 2 - 450) <= 1, `${engine}: ${how}: and is centred in the window`);
     assert.equal(Math.round((await dialog.locator('[data-ov-part="header"]').boundingBox()).height), 41, `${engine}: ${how}: its header is 41 px`);
     assert.equal(await dialog.locator('[data-ov-part="header"]').getByRole('button', { name: 'Close', exact: true }).count(), 1, `${engine}: ${how}: and holds its Close`);
-    assert.deepEqual(await nav.getByRole('button').allInnerTexts(), pages.map((entry) => entry.title), `${engine}: ${how}: the pages are the host's categories, in the design's order`);
+    assert.ok(await filter.isVisible(), `${engine}: ${how}: the tree has a search field`);
+    assert.equal(await core.getAttribute('aria-expanded'), 'true', `${engine}: ${how}: Core starts expanded`);
+    assert.equal(await plugins.getAttribute('aria-expanded'), 'true', `${engine}: ${how}: Plugins starts expanded`);
+    const leaves = nav.locator(`${settingsTreeItems}[data-settings-page]:visible`);
+    assert.deepEqual(await leaves.evaluateAll((items) => items.map((item) => ({ id: item.dataset.settingsPage, title: item.querySelector('[data-settings-part="tree-label"]').textContent }))), pages, `${engine}: ${how}: the pluginless host lists only its real categories, in the design's order`);
     assert.equal(await onPage(), pages[0].id, `${engine}: ${how}: the sheet opens on the first page`);
     assert.deepEqual(await rowsDrawn(dialog), settingsRowsOf(snapshot, pages[0].id), `${engine}: ${how}: the rows are the host's own, with the host's labels`);
-    assert.ok(await hasFocus(nav.locator('[aria-current="page"]')), `${engine}: ${how}: the focus is on the page that is on screen`);
+    assert.ok(await hasFocus(current), `${engine}: ${how}: the focus is on the page that is on screen`);
     await page.keyboard.press('Escape');
     await dialog.waitFor({ state: 'detached' });
     assert.ok(await c.until(5000, async () => hasFocus(origin)), `${engine}: Escape closes the sheet that ${how} opened and gives the focus back to the control that had it`);
@@ -6568,7 +6628,12 @@ async function settingsSheet(c) {
   // A toggle: pressed, applied on the host at once, and still applied after the page is reloaded (the reload is the sheet's own: a copy of the host's answer that forgets it makes the assertion fail).
   await chord();
   await dialog.waitFor();
-  await toPage('Terminal');
+  await core.press('ArrowLeft');
+  assert.equal(await core.getAttribute('aria-expanded'), 'false', `${engine}: Left collapses Core`);
+  assert.equal(await settingsPage(dialog, 'terminal').isVisible(), false, `${engine}: a collapsed Core hides its pages`);
+  await core.press('ArrowRight');
+  assert.equal(await core.getAttribute('aria-expanded'), 'true', `${engine}: Right expands Core`);
+  await settingsPage(dialog, 'terminal').click();
   const blink = dialog.getByRole('switch', { name: 'Cursor Blink' });
   const reset = dialog.getByRole('button', { name: 'Reset Cursor Blink to default' });
   assert.equal(await blink.getAttribute('aria-checked'), 'true', `${engine}: the cursor blinks, which is the host's default`);
@@ -6579,7 +6644,7 @@ async function settingsSheet(c) {
   const reopen = async () => {
     await page.reload({ waitUntil: 'load' });
     await sheetByChord(page);
-    await toPage('Terminal');
+    await settingsPage(dialog, 'terminal').click();
     await blink.waitFor();
   };
   const forgetsBlink = async (route, id) => {
@@ -6594,7 +6659,7 @@ async function settingsSheet(c) {
   await asserting(
     'settings-persist',
     async () => {
-      putBack = await standIn(page, forgetsBlink);
+      putBack = await standIn(page, forgetsBlink, 'host');
       await reopen();
     },
     async () => {
@@ -6616,8 +6681,13 @@ async function settingsSheet(c) {
   await reset.waitFor({ state: 'detached' });
 
   // A value the host refuses: its words in the lane, the typed text kept, the host's value untouched. Escape takes the draft first and closes the sheet second.
-  await toPage('Developer Settings');
+  await filter.fill('Host profiling port');
+  await nav.getByRole('button', { name: /Host profiling port/i }).waitFor();
+  await filter.press('Enter');
   const port = dialog.getByRole('spinbutton', { name: 'Host profiling port' });
+  assert.ok(await c.until(5000, async () => hasFocus(port)), `${engine}: Enter on a setting search opens its page and focuses its field`);
+  assert.equal(await onPage(), 'developer', `${engine}: the tree marks the page containing the search hit`);
+  assert.equal(await filter.inputValue(), '', `${engine}: choosing a search hit restores the unfiltered tree`);
   const lane = dialog.locator('[data-settings-row="developer.pprof_port"] [data-ov-part="lane"]');
   const kept = await c.held('developer.pprof_port');
   const refusal = await c.call(SETTINGS_SERVICE, 'Validate', { kind: 'host' }, 'developer.pprof_port', 70000);
@@ -6633,7 +6703,7 @@ async function settingsSheet(c) {
   await asserting(
     'settings-words',
     async () => {
-      putBack = await standIn(page, plantsWords);
+      putBack = await standIn(page, plantsWords, 'host');
       await refuse();
     },
     async () => {
@@ -6662,12 +6732,12 @@ async function settingsWindow(c) {
   const { engine, base, asserting } = c;
   const snapshot = await c.snapshot();
   await c.call(WINDOW_SERVICE, 'HideSettings');
-  const page = await c.page(1060, 640);
+  const page = await c.page(1280, 800);
   const mac = await page.evaluate(() => navigator.platform.includes('Mac'));
   const mod = mac ? 'Meta' : 'Control';
   let asked = 0;
   page.on('request', (request) => {
-    if (calledMethod(request) === SETTINGS_CALLS.snapshot) asked += 1;
+    if (calledMethod(request, 'host') === SETTINGS_CALLS.snapshot) asked += 1;
   });
   await page.goto(`${base}/?screen=settings-window`, { waitUntil: 'load' });
   const frame = page.locator('[data-settings-part="window"]');
@@ -6682,13 +6752,13 @@ async function settingsWindow(c) {
         shell: document.querySelectorAll('[data-shell-part="window"]').length,
         dialogs: document.querySelectorAll('dialog').length,
         caption: caption === null ? null : { height: Math.round(caption.getBoundingClientRect().height), title: caption.querySelector('h1')?.textContent, close: close?.getAttribute('aria-label'), drag: getComputedStyle(caption).getPropertyValue('--wails-draggable').trim(), closeDrag: close === null || close === undefined ? '' : getComputedStyle(close).getPropertyValue('--wails-draggable').trim() },
-        current: document.querySelector('[aria-current="page"]')?.getAttribute('data-settings-page'),
+        current: document.querySelector('[data-settings-part="tree"] [data-settings-page][aria-current="page"]')?.getAttribute('data-settings-page'),
         rows: [...document.querySelectorAll('[data-settings-row]')].map((row) => ({ id: row.getAttribute('data-settings-row'), label: row.querySelector('label')?.textContent ?? '' })),
       };
     });
   const onPage = async (id) =>
     page.waitForFunction(
-      (wanted) => document.querySelector('[data-settings-part="window"]')?.getAttribute('data-visible') === 'true' && document.querySelector('[aria-current="page"]')?.getAttribute('data-settings-page') === wanted && document.querySelectorAll('[data-settings-row]').length > 0,
+      (wanted) => document.querySelector('[data-settings-part="window"]')?.getAttribute('data-visible') === 'true' && document.querySelector('[data-settings-part="tree"] [data-settings-page][aria-current="page"]')?.getAttribute('data-settings-page') === wanted && document.querySelectorAll('[data-settings-row]').length > 0,
       id,
       { timeout: 15_000 },
     );
@@ -6697,6 +6767,9 @@ async function settingsWindow(c) {
   assert.equal(await skipped(), 'hidden', `${engine}: its content is skipped, not laid out`);
   assert.equal(await c.show('/settings?category=terminal'), 'settings', `${engine}: the host answers OpenSettings with the window it shows`);
   await onPage('terminal');
+  const form = await paneHeadingBox(frame);
+  const pane = await frame.locator('[data-settings-part="content"]').boundingBox();
+  assert.deepEqual([Math.round(form.x), Math.round(pane.x + pane.width - form.x - form.width)], [266, 12], `${engine}: the native form fills its pane with equal insets`);
   assert.deepEqual(
     await read(),
     { shell: 0, dialogs: 0, caption: { height: 41, title: 'Settings', close: 'Close', drag: 'drag', closeDrag: 'no-drag' }, current: 'terminal', rows: settingsRowsOf(snapshot, 'terminal') },
@@ -6770,7 +6843,7 @@ async function settingsWindow(c) {
 async function settingsReconnect(c) {
   const { engine, base, asserting } = c;
   await c.commit({ 'terminal.cursorBlink': true });
-  const windowPage = await c.page(1060, 640);
+  const windowPage = await c.page(1280, 800);
   const sockets = [];
   await windowPage.routeWebSocket(/\/wails\/events/, (ws) => {
     const server = ws.connectToServer();
@@ -6807,7 +6880,7 @@ async function settingsReconnect(c) {
     'settings-reconnect',
     async () => {
       // The page asks the host again when its socket is back, and is answered with what the host held before this outage.
-      putBack = await standIn(windowPage, staleSnapshot(JSON.stringify(await c.snapshot())));
+      putBack = await standIn(windowPage, staleSnapshot(JSON.stringify(await c.snapshot())), 'host');
       await outage();
     },
     async () => {
@@ -6834,12 +6907,12 @@ async function settingsTruth(c) {
   const sheet = await c.page(1440, 900);
   await open(sheet, base);
   const dialog = await sheetByChord(sheet);
-  await dialog.getByRole('navigation', { name: 'Settings pages' }).getByRole('button', { name: 'Terminal', exact: true }).click();
-  const windowPage = await c.page(1060, 640);
+  await settingsPage(dialog, 'terminal').click();
+  const windowPage = await c.page(1280, 800);
   await windowPage.goto(`${base}/?screen=settings-window`, { waitUntil: 'load' });
   await c.show('/settings?category=terminal');
   await windowPage.waitForFunction(
-    () => document.querySelector('[data-settings-part="window"]')?.getAttribute('data-visible') === 'true' && document.querySelector('[aria-current="page"]')?.getAttribute('data-settings-page') === 'terminal' && document.querySelectorAll('[data-settings-row]').length > 0,
+    () => document.querySelector('[data-settings-part="window"]')?.getAttribute('data-visible') === 'true' && document.querySelector('[data-settings-part="tree"] [data-settings-page][aria-current="page"]')?.getAttribute('data-settings-page') === 'terminal' && document.querySelectorAll('[data-settings-row]').length > 0,
     null,
     { timeout: 15_000 },
   );
@@ -6887,7 +6960,9 @@ async function settingsTruth(c) {
   await asserting(
     'settings-reach',
     async () => {
-      putBack = await standIn(sheet, staleSnapshot(JSON.stringify(await c.snapshot())));
+      // The first press returns before its host commit and the other window's refresh. Freeze the sheet only after that change arrived, or the stale snapshot can already contain the next press's value.
+      assert.ok(await reaches(sheet, 2000), `${engine}: before the fault, the sheet received the first change from the Settings window`);
+      putBack = await standIn(sheet, staleSnapshot(JSON.stringify(await c.snapshot())), 'host');
       await change();
     },
     async () => {
@@ -6928,6 +7003,15 @@ async function settingsTruth(c) {
   assert.equal(await shell.inputValue(), had, `${engine}: Escape takes the draft`);
   assert.equal(await dialog.count(), 1, `${engine}: and the sheet stays`);
   await c.commit({ 'terminal.cursorBlink': true });
+
+  // One committed motion preference controls both documents, not just the selected radio in the open sheet.
+  await settingsPage(dialog, 'appearance').click();
+  const motion = dialog.locator('[data-settings-row="appearance.motion"]');
+  for (const [label, preference] of [['Reduced', 'reduced'], ['Normal', 'normal'], ['Follow System', 'system']]) {
+    await motion.getByRole('radio', { name: label, exact: true }).click();
+    await Promise.all([sheet, windowPage].map((page) => page.waitForFunction((value) => document.documentElement.dataset.ovMotion === value, preference, { timeout: 5000 })));
+    assert.equal(await c.held('appearance.motion'), preference, `${engine}: ${label} is committed and painted in both windows`);
+  }
 }
 
 /**
@@ -6944,14 +7028,14 @@ async function settingsSlots(c) {
   let refused = false;
   const refusal = async (route, id) => (id === SETTINGS_CALLS.snapshot ? answerWith(route, { message: 'The operation exceeds a host resource limit.', code: 'RESOURCE_LIMIT' }, 429) : false);
   const read = async (number) => {
-    const page = await c.page(1060, 640);
+    const page = await c.page(1280, 800);
     try {
-      if (refused) await standIn(page, refusal);
+      if (refused) await standIn(page, refusal, 'host');
       await page.goto(`${base}/?screen=settings-window`, { waitUntil: 'load' });
       // The wait ends on the page's own state (its rows, or the failed notice) and is bounded. When it is lost, the failure says what the page was doing and what the host held at that moment, so a slow runner's
       // lost page is told from a host that refused it: no CI run has shown the cause of the one 30 s wait of 2026-11-24 (WebKit, PR #705), and 3 runs in a 2-CPU arm64 container and 1 in the CI image under emulation had none.
       try {
-        await page.waitForFunction(() => (document.querySelector('[aria-current="page"]')?.getAttribute('data-settings-page') === 'terminal' && document.querySelectorAll('[data-settings-row]').length > 0) || document.querySelector('[data-settings-state="failed"]') !== null, null, { timeout: 30_000 });
+        await page.waitForFunction(() => (document.querySelector('[data-settings-part="tree"] [data-settings-page][aria-current="page"]')?.getAttribute('data-settings-page') === 'terminal' && document.querySelectorAll('[data-settings-row]').length > 0) || document.querySelector('[data-settings-state="failed"]') !== null, null, { timeout: 30_000 });
       } catch (error) {
         const seen = await page
           .evaluate(() => ({ text: document.body.innerText.slice(0, 200), state: document.querySelector('[data-settings-state]')?.getAttribute('data-settings-state') ?? null, rows: document.querySelectorAll('[data-settings-row]').length }))
@@ -7020,7 +7104,7 @@ async function settingsSecrets(c) {
   const row = dialog.locator(`[data-settings-row="${ID}"]`);
   const reopen = async () => {
     await sheetByChord(page);
-    await dialog.getByRole('navigation', { name: 'Settings pages' }).getByRole('button', { name: 'Telemetry', exact: true }).click();
+    await settingsPage(dialog, 'telemetry').click();
     await row.waitFor();
   };
   const field = row.locator('[data-ov-part="secret"]');
@@ -7096,7 +7180,7 @@ async function settingsSecrets(c) {
   await asserting(
     'settings-secret-saved',
     async () => {
-      putBack = await standIn(page, forgetsStored);
+      putBack = await standIn(page, forgetsStored, 'host');
       await page.reload({ waitUntil: 'load' });
       await reopen();
     },
@@ -7126,12 +7210,11 @@ async function settingsSecrets(c) {
  */
 async function settingsPopups(c) {
   const { engine, base, asserting } = c;
-  await c.commit({ 'terminal.cursorBlink': false, 'appearance.density': 'comfortable' });
+  await c.commit({ 'terminal.cursorBlink': false, 'terminal.cursorStyle': 'block' });
   const page = await c.page(1440, 900);
   await open(page, base);
   const dialog = await sheetByChord(page);
-  const toPage = async (title) => dialog.getByRole('navigation', { name: 'Settings pages' }).getByRole('button', { name: title, exact: true }).click();
-  await toPage('Terminal');
+  await settingsPage(dialog, 'terminal').click();
   const reset = dialog.getByRole('button', { name: 'Reset Cursor Blink to default' });
   await reset.waitFor();
   const tipSelector = '[role="tooltip"][popover]';
@@ -7189,35 +7272,31 @@ async function settingsPopups(c) {
   );
 
   // Type-ahead in a native select inside the sheet: the first letters of an option choose it, and the host takes the choice.
-  await toPage('Appearance');
-  const density = dialog.locator('[data-settings-row="appearance.density"] select');
-  const typeAhead = async () => {
-    await c.commit({ 'appearance.density': 'comfortable' });
-    assert.ok(await c.until(5000, async () => (await density.inputValue()) === 'comfortable'), `${engine}: the sheet follows the host to the first option of the select`);
-    await density.focus();
-    await page.keyboard.type('Compa', { delay: 30 });
+  const cursorStyle = dialog.getByRole('combobox', { name: 'Cursor Style' });
+  const typeAhead = async (disable = false) => {
+    // A native select keeps a type-ahead prefix between key presses. Give each attempt a fresh field, not the prefix left by the previous attempt.
+    await settingsPage(dialog, 'general').click();
+    await c.commit({ 'terminal.cursorStyle': 'block' });
+    await settingsPage(dialog, 'terminal').click();
+    assert.ok(await c.until(5000, async () => (await cursorStyle.inputValue()) === 'block'), `${engine}: the sheet follows the host to the first option of the select`);
+    if (disable) await cursorStyle.evaluate((element) => { element.disabled = true; });
+    await cursorStyle.focus();
+    await page.keyboard.type('Under', { delay: 30 });
   };
   await typeAhead();
   await asserting(
     'settings-typeahead',
     async () => {
-      await density.evaluate((element) => {
-        element.disabled = true;
-      });
-      await typeAhead();
+      assert.ok(await c.until(5000, async () => (await c.held('terminal.cursorStyle')) === 'underline'), `${engine}: before the fault, the host received the first type-ahead choice`);
+      await typeAhead(true);
     },
+    () => typeAhead(),
     async () => {
-      await density.evaluate((element) => {
-        element.disabled = false;
-      });
-      await typeAhead();
-    },
-    async () => {
-      assert.equal(await density.inputValue(), 'compact', `${engine}: typing the first letters of an option in the sheet's select chooses it`);
+      assert.equal(await cursorStyle.inputValue(), 'underline', `${engine}: typing the first letters of an option in the sheet's select chooses it`);
     },
   );
-  assert.ok(await c.until(5000, async () => (await c.held('appearance.density')) === 'compact'), `${engine}: and the host holds the choice`);
-  await c.commit({ 'terminal.cursorBlink': true, 'appearance.density': 'comfortable' });
+  assert.ok(await c.until(5000, async () => (await c.held('terminal.cursorStyle')) === 'underline'), `${engine}: and the host holds the choice`);
+  await c.commit({ 'terminal.cursorBlink': true, 'terminal.cursorStyle': 'block' });
 }
 
 /** Part of s, the watch over errors, after the others: no page of the scenario wrote an error, the host's log holds no settings error, and none of the secrets that were typed is in it. */
@@ -7445,6 +7524,14 @@ function outputSince(id, from) {
   return (store.chunks[0] ?? Buffer.alloc(0)).subarray(Math.max(0, from - store.start)).toString('utf8');
 }
 
+/** The text of the output between two absolute positions (bytes): what the host's record says a command printed. */
+function outputBetween(id, from, to) {
+  const store = OUTPUTS.get(id);
+  if (store === undefined) return '';
+  if (store.chunks.length > 1) store.chunks = [Buffer.concat(store.chunks)];
+  return (store.chunks[0] ?? Buffer.alloc(0)).subarray(Math.max(0, from - store.start), Math.max(0, to - store.start)).toString('utf8');
+}
+
 /** What the shell of a terminal has printed lately (the last MiB of what the streams carried), as text. */
 async function transcriptOf(base, id) {
   return outputSince(id, outputEnd(id) - 1_048_576);
@@ -7555,6 +7642,9 @@ function watchStreams(page) {
         note({ dir: 'host', type, v: json()?.v });
       } else if (type === 'gap' && payload.length === 17) {
         note({ dir: 'host', type, from: Number(payload.readBigUInt64BE(1)), to: Number(payload.readBigUInt64BE(9)) });
+      } else if (type === 'marks') {
+        // The typed marks (docs/ui-next/terminal-channel-protocol.md 4a), as the host sent them: scenario r10 reads what each says.
+        note({ dir: 'host', type, marks: json()?.marks ?? [] });
       } else if (type === 'title') {
         note({ dir: 'host', type, title: json() });
       } else if (type === 'ended') {
@@ -12143,6 +12233,671 @@ async function checkTerminalOpenWhere(page, base, engine) {
   console.log(`terminal-open-where ${engine}:\n${observed.map((line) => `  ${line}`).join('\n')}`);
 }
 
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// r10: the shell integration (issue #694 step 7)
+
+/** The files of the user's home that the shell integration must never touch (issue #694: "never edits the user's rc files"). */
+const INTEGRATION_FILES = ['.zshrc', '.zprofile', '.bashrc', '.bash_profile', '.config/fish/config.fish'];
+const INTEGRATION_FILE_CONTROLS = { '.zshrc': 'integration-file-zshrc', '.zprofile': 'integration-file-zprofile', '.bashrc': 'integration-file-bashrc', '.bash_profile': 'integration-file-bash-profile', '.config/fish/config.fish': 'integration-file-config-fish' };
+/** What differs between the shells for the lines the check types: the way a status of 3 is made (fish has no `(exit 3)`), the variables the user's own files set (the premise of the hashes) and the line that counts the integration's variables. */
+const SHELL_USES = {
+  zsh: { exit3: '(exit 3)', vars: ['SEAM_R10_ZSHRC', 'SEAM_R10_ZPROFILE'] },
+  bash: { exit3: '(exit 3)', vars: ['SEAM_R10_BASHRC', 'SEAM_R10_BASH_PROFILE'] },
+  fish: { exit3: "sh -c 'exit 3'", vars: ['SEAM_R10_FISH', 'SEAM_R10_FISH'] },
+};
+const INTEG_ENV_SH = 'printf \'INTEG_ENV|%s|%s|%s|\\n\' "$(env | grep -c -E \'^(OMNIVIEW_|__omniview|ZDOTDIR=.*omniview-integration|XDG_DATA_DIRS=.*omniview-integration)\')" "$( (set; typeset -f) 2>/dev/null | grep -c \'^__omniview\')" "${__omniview_nonce+set}"';
+const INTEG_ENV_FISH = 'printf \'INTEG_ENV|%s|%s|%s|\\n\' (env | grep -c -E \'^(OMNIVIEW_|__omniview|XDG_DATA_DIRS=.*omniview-integration)\') (begin; set; functions -n; end | grep -c \'^__omniview\') (set -q __omniview_nonce; and echo set)';
+const nonceVariantsOf = (nonce) => [Buffer.from(nonce), ...[0, 1, 2].map((shift) => Buffer.from(Buffer.concat([Buffer.alloc(shift), Buffer.from(nonce)]).toString('base64').slice(4, -4)))];
+
+/** The files under a directory, to a depth, that were written at or after `since`, none over 20 MB; a directory that cannot be read is left (the search is for a nonce in what the check can read). */
+async function filesUnder(root, { depth, since = 0, skip = () => false }) {
+  const found = [];
+  const visit = async (directory, level) => {
+    let entries;
+    try {
+      entries = await readdir(directory, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      const full = path.join(directory, entry.name);
+      if (skip(full)) continue;
+      if (entry.isDirectory()) {
+        if (level < depth) await visit(full, level + 1);
+      } else if (entry.isFile()) {
+        const info = await stat(full).catch(() => null);
+        if (info !== null && info.mtimeMs >= since && info.size <= 20_000_000) found.push(full);
+      }
+    }
+  };
+  await visit(root, 0);
+  return found;
+}
+
+const blobOf = async (files) => Buffer.concat(await Promise.all(files.map((file) => readFile(file).catch(() => Buffer.alloc(0)))));
+const takeOutOf = (list, item) => { const at = list.indexOf(item); if (at >= 0) list.splice(at, 1); };
+const sha256Of = (bytes) => createHash('sha256').update(bytes).digest('hex');
+const OSC = (body) => `\u001b]${body}\u0007`;
+
+/** The lines a command printed, as a person reads them: control sequences out, the end of each line trimmed, and the trailing lines that hold nothing (zsh redraws a `%` and blanks after the output). */
+function printedLines(raw) {
+  const lines = plain(raw).replace(/\u001b[()][0-9A-Za-z]/g, '').split('\n').map((line) => line.trimEnd());
+  while (lines.length > 0 && (lines.at(-1) === '' || lines.at(-1) === '%' || lines.at(-1) === '#')) lines.pop();
+  return lines;
+}
+
+/**
+ * r10. The shell integration (issue #694 step 7), over the real host and the real bash and zsh of this machine. For each of them, in a terminal the page made from the menu of the `+`: `true`, `false` and `(exit 3)` end with exit 0, 1 and 3 in the typed
+ * marks the host sent and in its record; a command whose end mark carries no status is incomplete; Ctrl-C at an empty prompt makes no command. The gutter draws success, an error and incomplete. A reload brings the gutter back from the replay. A jump (the
+ * terminal's chord) moves the viewport to the previous command's line, and the chord with Shift selects exactly that command's output: the copy equals the lines the host's record cuts out of the output. `cat` of a file that prints 133, 633 and OSC 7 marks with
+ * a wrong nonce or none gives no command line and no directory; the same marks with the nonce the shell holds (read by the check, from the shell's own variable, into a file only the check reads) are trusted. With `terminal.shellIntegration` off (set through
+ * the host's settings) a new terminal says it is off, has none of the integration's variables or functions and receives no mark. The user's `~/.zshrc`, `~/.zprofile`, `~/.bashrc` and `~/.bash_profile` (seeded with content, and run by the shells) have the same sha256
+ * before and after. The canary: the session's nonce is in no DOM node, no host log line, no typed frame or record the page receives and no error; the raw output frames are the documented exception (the shell prints the nonce inside its own marks).
+ * Fish is not listed on every machine and has no pass here (NOT RUN); a machine with no zsh or no bash stops with a message. Every assertion has a control (INTEGRATION_CONTROLS): a premise broken before the act, or a fault made in what the assertion reads
+ * (a glyph's state, the window of the output where the opposite happened, the file, the terminal that has the integration, a planted nonce), and it must fail with ITS words.
+ */
+async function checkTerminalIntegration(page, host, engine) {
+  const base = host.base;
+  const work = path.dirname(host.logFile);
+  const home = path.join(work, 'home');
+  const { afterwards, asserting, verdict } = withPremises(INTEGRATION_GROUP, INTEGRATION_CONTROLS);
+  const errors = [];
+  const consoleLines = [];
+  const received = [];
+  const recordsSeen = [];
+  const plantedLog = [];
+  const observed = [];
+  const note = (name, text) => observed.push(`${name}: ${text}`);
+  page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));
+  page.on('console', (message) => consoleLines.push(message.text()));
+  // Every frame the page receives that is not output: the typed frames of a stream and the whole of the events socket. (Output frames carry the shell's own bytes, nonce included, by design.)
+  page.on('websocket', (ws) => {
+    const stream = new URL(ws.url()).pathname === STREAM_PATH;
+    ws.on('framereceived', ({ payload }) => {
+      const whole = Buffer.isBuffer(payload) ? payload : Buffer.from(String(payload));
+      if (stream && whole[0] === 0x82) return;
+      received.push(whole);
+    });
+  });
+  const wire = watchExecCalls(page);
+  const streams = watchStreams(page);
+  await spoofPlatform(page);
+  await keepCopiesOnEveryLoad(page);
+
+  // The user's files, seeded with content that the shells run, and their hashes before the session.
+  const originals = {};
+  for (const file of INTEGRATION_FILES) originals[file] = await readFile(path.join(home, file), 'utf8').catch(() => null);
+  const seeds = {
+    '.zshrc': '# the user\'s own zshrc\nexport SEAM_R10_ZSHRC=yes\n',
+    '.bashrc': '# the user\'s own bashrc\nexport SEAM_R10_BASHRC=yes\n',
+    '.zprofile': `${originals['.zprofile'] ?? ''}export SEAM_R10_ZPROFILE=yes\n`,
+    '.bash_profile': `${originals['.bash_profile'] ?? ''}export SEAM_R10_BASH_PROFILE=yes\n[ -r "$HOME/.bashrc" ] && . "$HOME/.bashrc"\n`,
+    '.config/fish/config.fish': '# the user\'s own config.fish\nset -gx SEAM_R10_FISH yes\n',
+  };
+  await mkdir(path.join(home, '.config', 'fish'), { recursive: true });
+  for (const file of INTEGRATION_FILES) await writeFile(path.join(home, file), seeds[file]);
+  const hashes = async () => Object.fromEntries(await Promise.all(INTEGRATION_FILES.map(async (file) => [file, sha256Of(await readFile(path.join(home, file)))])));
+  const hashesBefore = await hashes();
+  const sessionStart = Date.now();
+  const nonces = [];
+  const plantedEnd = [];
+  const dir = await realpath(await mkdtemp(path.join(os.tmpdir(), 'seam-r10-')));
+  let integrationOff = false;
+
+  try {
+    await open(page, base);
+    await page.getByRole('region', { name: 'Plugins you can open' }).waitFor({ timeout: 30_000 });
+    const mac = await page.evaluate(() => /Mac/.test(navigator.platform));
+    await page.locator('[data-shell-part="panelToggle"]').click();
+    const MOD = mac ? 'Meta' : 'Control';
+    const ids = async () => terminalIds(base);
+    const labels = async () => tabLabelsOf(page);
+    const recordOf = async (id) => {
+      const record = await callBound(base, EXEC_SERVICE, 'ChannelTerminalCommands', capOf(id));
+      recordsSeen.push(JSON.stringify(record));
+      return record;
+    };
+    /** Every mark the host sent for a terminal, once each (a reload's replay sends them again), in the order of the output. */
+    const marksOf = (id) => {
+      const seen = new Set();
+      return streams
+        .of(id)
+        .flatMap((socket) => gotOf(socket, 'marks').flatMap((frame) => frame.marks))
+        .filter((mark) => {
+          const key = `${mark.kind}:${String(mark.at)}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .sort((a, b) => a.at - b.at);
+    };
+    const inWindow = (marks, window) => marks.filter((mark) => mark.at >= window.from && mark.at < window.to);
+    /** Types a line at the prompt and waits until the shell says it is ready for input again (the next input-start mark): the window of the output that the line made. */
+    const typeBare = async (id, line) => {
+      const from = outputEnd(id);
+      await typeLine(page, line);
+      await waitUntil(`the prompt after ${line}`, async () => marksOf(id).some((mark) => mark.kind === 'input-start' && mark.at >= from), 30_000);
+      return { from, to: outputEnd(id) };
+    };
+    /** The position in the output of a text the shell printed after `from`, in bytes. */
+    const offsetOf = (id, from, needle) => {
+      const text = outputSince(id, from);
+      const at = text.indexOf(needle);
+      return at < 0 ? -1 : from + Buffer.byteLength(text.slice(0, at));
+    };
+    const say = async (id, line, pattern, what) => {
+      const from = outputEnd(id);
+      await typeLine(page, line);
+      let found = null;
+      await waitUntil(what, async () => {
+        found = pattern.exec(plain(outputSince(id, from)));
+        return found !== null;
+      }, 30_000);
+      return found;
+    };
+    const doIt = async (id, line) => say(id, `${line}; echo INTEG_DO""NE`, /INTEG_DONE\r?\n/, 'the shell to run a line of the check');
+    const focusTab = async (index) => {
+      await sessionTabsOf(page).nth(index).click();
+      await takeKeyboard(page);
+    };
+    const arrive = async (before) => {
+      await waitUntil('the host to list the new shell', async () => (await ids()).length === before.length + 1, 30_000);
+      const id = (await ids()).find((one) => !before.includes(one));
+      await takeKeyboard(page);
+      await waitUntil('the shell to say its prompt', async () => (await transcriptOf(base, id)).trim() !== '', 20_000);
+      await waitUntil('the host to say the shell is at its prompt', async () => (await busyOf(base, id)).state === 'idle', 15_000);
+      return { id, index: (await labels()).length - 1 };
+    };
+    const chooseShell = async (name) => {
+      await page.locator('[data-shell-part="sessionAddChoice"]').click();
+      await page.getByRole('menuitem', { name: new RegExp(`^${name}\\b`) }).click();
+    };
+    /** The gutter as drawn on the screen that is shown: the states of the marks in view, top to bottom. */
+    const gutter = async () =>
+      page.evaluate(() => {
+        const screen = [...document.querySelectorAll('[data-shell-part="terminalScreen"]')].find((one) => one.getClientRects().length > 0);
+        const box = screen.getBoundingClientRect();
+        return [...screen.querySelectorAll('[data-state]')]
+          .filter((glyph) => glyph.getClientRects().length > 0)
+          .map((glyph) => ({ state: glyph.dataset.state, top: Math.round(glyph.getBoundingClientRect().top) }))
+          .filter((glyph) => glyph.top >= box.top - 1 && glyph.top < box.bottom)
+          .sort((a, b) => a.top - b.top)
+          .map((glyph) => glyph.state);
+      });
+    /** Changes the state of the nth mark in view, as the page draws it, and says what it was. */
+    /** Makes the nth mark in view show `state` (the state it had is the answer) and holds it there: the emulator draws a decoration anew when it renders, which would put the true state back between the fault and the assertion, so an observer of the screen puts the faulted state back until the hold is released. */
+    const setGlyph = async (index, state, { hold = true } = {}) =>
+      page.evaluate(
+        ({ index: at, state: next, hold: keep }) => {
+          const screen = [...document.querySelectorAll('[data-shell-part="terminalScreen"]')].find((one) => one.getClientRects().length > 0);
+          const inView = () => {
+            const box = screen.getBoundingClientRect();
+            return [...screen.querySelectorAll('[data-state]')]
+              .filter((one) => one.getClientRects().length > 0 && one.getBoundingClientRect().top >= box.top - 1 && one.getBoundingClientRect().top < box.bottom)
+              .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+          };
+          window.__seamHeld ??= new Map();
+          if (keep) window.__seamHeld.set(at, next);
+          else window.__seamHeld.delete(at);
+          if (window.__seamObserved !== screen) {
+            window.__seamObserver?.disconnect();
+            window.__seamObserved = screen;
+            window.__seamObserver = new MutationObserver(() => {
+              const shown = inView();
+              for (const [held, wanted] of window.__seamHeld) if (shown[held] !== undefined && shown[held].dataset.state !== wanted) shown[held].dataset.state = wanted;
+            });
+            window.__seamObserver.observe(screen, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-state'] });
+          }
+
+          const glyph = inView()[at];
+          const was = glyph.dataset.state;
+          glyph.dataset.state = next;
+          return was;
+        },
+        { index, state, hold },
+      );
+    /** What the shown terminal says to a person who cannot see the gutter (its polite live region). */
+    const words = async () =>
+      page.evaluate(() => {
+        const screen = [...document.querySelectorAll('[data-shell-part="terminalScreen"]')].find((one) => one.getClientRects().length > 0);
+        return screen.closest('[data-shell-part="terminalBody"]')?.querySelector('[aria-live="polite"]')?.textContent ?? '';
+      });
+
+    await startTerminal(page, base, page.locator('[data-shell-part="panelEmpty"]').getByRole('button', { name: 'New terminal', exact: true }));
+    const shells = await callBound(base, EXEC_SERVICE, 'ListTerminalShells');
+    const chosen = ['zsh', 'bash', 'fish'].filter((one) => shells.some((shell) => shell.name === one));
+    assert.ok(chosen.includes('zsh') && chosen.includes('bash'), `${engine}: scenario r10 needs the real bash and zsh of the machine, and the host lists ${JSON.stringify(shells.map((shell) => shell.name))}: install the missing one (the CI image holds both)`);
+    const fishRan = chosen.includes('fish');
+    note('shells', `the host lists ${JSON.stringify(shells.map((shell) => shell.name))}; r10 ran in ${chosen.join(', ')}${fishRan ? '' : '; fish is not listed on this machine: its pass and the config.fish control are NOT RUN'}`);
+
+    for (const name of chosen) {
+      const before = await ids();
+      await chooseShell(name);
+      const { id, index } = await arrive(before);
+      const own = (text) => `${engine} ${name}: ${text}`;
+      const SH = SHELL_USES[name];
+      // The shell ran the user's files (the premise of the hashes).
+      const ranTry = async () => say(id, `printf 'INTEG_RC|%s|%s|\\n' "$${SH.vars[0]}" "$${SH.vars[1]}"`, /INTEG_RC\|([^|\r\n%]*)\|([^|\r\n%]*)\|/, 'the shell to say which of the user\'s files it ran');
+      const ran = await ranTry();
+      assert.deepEqual([ran[1], ran[2]], ['yes', 'yes'], own(`the shell ran the user's own files (${ran.slice(1).join(' / ')}): the files the check hashes are read by it`));
+
+      // 1. Exit codes, a command with no status, and Ctrl-C at an empty prompt.
+      let w = { from: 0, to: 0 };
+      const commandIn = async (line) => {
+        const marks = inWindow(marksOf(id), w);
+        const start = marks.find((mark) => mark.kind === 'command-start' && mark.command === line);
+        const end = start === undefined ? undefined : marks.find((mark) => mark.kind === 'command-end' && mark.id === start.id);
+        const rec = start === undefined ? undefined : (await recordOf(id)).commands.find((command) => command.id === start.id);
+        return { start, end, rec };
+      };
+      const exitIs = (line, code, said) => async () => {
+        const { start, end, rec } = await commandIn(line);
+        assert.ok(start?.trust === 'nonce' && end?.exit === code && rec?.exit_code === code && rec.ran === true, own(`${said} (the start mark ${JSON.stringify(start)}, the end mark ${JSON.stringify(end)}, the record's exit ${String(rec?.exit_code)})`));
+      };
+      await afterwards(async () => { w = await typeBare(id, 'true'); }, ['integration-exit-true', exitIs('true', 0, 'true ends with exit 0 in the host\'s marks')]);
+      await afterwards(async () => { w = await typeBare(id, 'false'); }, ['integration-exit-false', exitIs('false', 1, 'false ends with exit 1 in the host\'s marks')]);
+      await afterwards(async () => { w = await typeBare(id, SH.exit3); }, ['integration-exit-three', exitIs(SH.exit3, 3, `${SH.exit3} ends with exit 3 in the host's marks`)]);
+      // A command whose end carries no status (what pwsh sends; here a program prints it).
+      const noStatus = "printf '\\033]133;D\\007'";
+      w = await typeBare(id, noStatus);
+      const incomplete = await commandIn(noStatus);
+      assert.ok(incomplete.end !== undefined && incomplete.end.exit === undefined && incomplete.rec?.exit_code === undefined, own(`the end mark of the command with no status carries none (end ${JSON.stringify(incomplete.end)})`));
+      // Ctrl-C at an empty prompt, in a window of its own. The fault is the window of `true`, where a command did run.
+      let ctrlC = { from: 0, to: 0 };
+      let realCtrlC;
+      const ranBefore = (await recordOf(id)).commands.filter((command) => command.ran).length;
+      await afterwards(
+        async () => {
+          const from = outputEnd(id);
+          await page.keyboard.press('Control+c');
+          // fish draws nothing at all for Ctrl-C at an empty prompt (no new prompt, no mark): an empty Enter is what makes it draw the next one, which is the event to wait for.
+          if (name === 'fish') await page.keyboard.press('Enter');
+          await waitUntil('the prompt after Ctrl-C', async () => marksOf(id).some((mark) => mark.kind === 'input-start' && mark.at >= from), 20_000);
+          ctrlC = { from, to: outputEnd(id) };
+        },
+        [
+          'integration-ctrlc-none',
+          async () => {
+            const marks = inWindow(marksOf(id), ctrlC);
+            const record = await recordOf(id);
+            const inside = record.commands.filter((command) => command.ran && command.output_start >= ctrlC.from && command.output_start < ctrlC.to);
+            assert.ok(ctrlC.to > ctrlC.from && marks.every((mark) => mark.kind !== 'command-start' && mark.kind !== 'command-end') && inside.length === 0 && record.commands.filter((command) => command.ran).length === ranBefore, own(`Ctrl-C at an empty prompt makes no command: the marks of its window are ${JSON.stringify(marks.map((mark) => mark.kind))}, the commands that ran in it ${JSON.stringify(inside.map((command) => command.command_line))}`));
+          },
+          async () => {
+            realCtrlC = ctrlC;
+            const start = marksOf(id).find((mark) => mark.kind === 'command-start' && mark.command === 'true');
+            const end = marksOf(id).find((mark) => mark.kind === 'command-end' && mark.id === start.id);
+            ctrlC = { from: start.at - 1, to: end.end + 1 };
+          },
+          async () => {
+            ctrlC = realCtrlC;
+          },
+        ],
+      );
+      note(`${name} marks`, 'true 0, false 1, (exit 3) 3, a mark with no status, and Ctrl-C at an empty prompt (no command): the host\'s marks and record agree');
+
+      // 2. The gutter: success, error and incomplete, and none for Ctrl-C.
+      await waitUntil('the emulator to draw the marks of the five commands', async () => (await gutter()).length === 5, 20_000);
+      const gutterNow = await gutter();
+      const wasGlyph = {};
+      const swapped = async (at, to) => { wasGlyph[at] = await setGlyph(at, to); };
+      const restored = async (at) => { await setGlyph(at, wasGlyph[at], { hold: false }); };
+      // The first mark is the one of the echo that said which files the shell ran.
+      const LEAD = 1;
+      await asserting('integration-gutter-success', async () => swapped(LEAD, 'failure'), async () => restored(LEAD), async () => {
+        const now = await gutter();
+        assert.ok(now.length === LEAD + 4 && now[LEAD] === 'success', own(`the gutter shows success for a command that exited 0: it shows ${JSON.stringify(now)} for the echo, true, false, (exit 3) and the command with no status`));
+      });
+      await asserting('integration-gutter-error', async () => { await swapped(LEAD + 1, 'success'); await swapped(LEAD + 2, 'success'); }, async () => { await restored(LEAD + 1); await restored(LEAD + 2); }, async () => {
+        const now = await gutter();
+        assert.ok(now.length === LEAD + 4 && now[LEAD + 1] === 'failure' && now[LEAD + 2] === 'failure', own(`the gutter shows an error for the commands that exited with a status (1 and 3): it shows ${JSON.stringify(now)}`));
+      });
+      await asserting('integration-gutter-incomplete', async () => swapped(LEAD + 3, 'success'), async () => restored(LEAD + 3), async () => {
+        const now = await gutter();
+        assert.ok(now.length === LEAD + 4 && now[LEAD + 3] === 'incomplete', own(`the gutter shows incomplete for a command that ended with no status: it shows ${JSON.stringify(now)}`));
+      });
+      note(`${name} gutter`, JSON.stringify(gutterNow));
+
+      // 3. A reload: the gutter comes back from the replay.
+      const expectedTabs = await labels();
+      const reloaded = await reloadUntil(page, (state) => state.tabs.length === expectedTabs.length && state.tabs.every((tab, at) => tab === expectedTabs[at]) && state.lane.every((said) => said === ''));
+      assert.equal(reloaded.ok, true, own(`the panel came back with its tabs as they were: ${timelineOf(reloaded.seen)}`));
+      await focusTab(index);
+      await waitUntil('the gutter to be drawn from the replay', async () => (await gutter()).length === gutterNow.length, 30_000);
+      await asserting('integration-reload-gutter', async () => { await swapped(LEAD, 'running'); await swapped(LEAD + 3, 'running'); }, async () => { await restored(LEAD); await restored(LEAD + 3); }, async () => {
+        assert.deepEqual(await gutter(), gutterNow, own('after a reload the gutter shows the commands that are still in the replay, as it showed them'));
+      });
+      note(`${name} reload`, `the gutter ${JSON.stringify(gutterNow)} came back from the replay`);
+
+      // 4. A jump and Select output.
+      const selecting = "printf 'SEL_%s\\n' 1 2 3 4";
+      await typeBare(id, selecting);
+      await typeBare(id, 'seq 1 100');
+      await waitUntil('the emulator to have drawn the 100 lines of seq 1 100', async () => lineIn(await bufferOf(page, mac, 'the buffer after seq 1 100'), '100'), 30_000);
+      const count = (await recordOf(id)).commands.filter((command) => command.ran).length;
+      const viewBefore = await gutter();
+      assert.equal(viewBefore.length, 0, own(`after 100 lines of output no command line is in view (${JSON.stringify(viewBefore)}): the jump has somewhere to go`));
+      /** The row of the view (from its top, in rows of 18 px) that holds the one command mark in view: the emulator's own placement of the marker, where the jump put the line; null when none or more than one is in view. */
+      const glyphAt = async () =>
+        page.evaluate(() => {
+          const screen = [...document.querySelectorAll('[data-shell-part="terminalScreen"]')].find((one) => one.getClientRects().length > 0);
+          const box = (screen.querySelector('.xterm-screen') ?? screen).getBoundingClientRect();
+          const shown = [...screen.querySelectorAll('[data-state]')]
+            .filter((glyph) => glyph.getClientRects().length > 0)
+            .map((glyph) => ({ top: (glyph.parentElement ?? glyph).getBoundingClientRect().top, state: glyph.dataset.state }))
+            .filter((one) => one.top >= box.top - 1 && one.top < box.bottom);
+          return shown.length === 1 ? { row: Math.round((shown[0].top - box.top) / 18), state: shown[0].state } : null;
+        });
+      const glyphRow = async () => (await glyphAt())?.row ?? null;
+      const setWords = async (text) =>
+        page.evaluate((said) => {
+          const screen = [...document.querySelectorAll('[data-shell-part="terminalScreen"]')].find((one) => one.getClientRects().length > 0);
+          screen.closest('[data-shell-part="terminalBody"]').querySelector('[aria-live="polite"]').textContent = said;
+        }, text);
+      let jumpWords = '';
+      await afterwards(
+        async () => {
+          await page.keyboard.press(`${MOD}+ArrowUp`);
+          await waitUntil('the jump to say where it went', async () => /^Command \d+ of/.test(await words()), 15_000);
+          await waitUntil('the emulator to draw the mark of the command the jump went to', async () => (await glyphRow()) !== null, 15_000);
+        },
+        [
+          'integration-jump',
+          async () => {
+            const said = await words();
+            const view = [(await glyphAt())?.state].filter((one) => one !== undefined);
+            assert.ok(new RegExp(`^Command ${String(count)} of ${String(count)}, Succeeded(, took [^:]+)?: seq 1 100$`).test(said) && view.length === 1 && view[0] === 'success', own(`a jump moves the viewport to the previous command's line: it says ${JSON.stringify(said)} and the marks in view are ${JSON.stringify(view)} (none before)`));
+          },
+          async () => {
+            jumpWords = await words();
+            await setWords('Command 1 of 1, Failed: nothing');
+          },
+          async () => {
+            await setWords(jumpWords);
+          },
+        ],
+        [
+          'integration-jump-top',
+          async () => {
+            const row = await glyphRow();
+            assert.equal(row, 0, own(`after a jump the command's line is the top row of the view: it is on row ${String(row)} of the view (counted from 0)`));
+          },
+          async () => {
+            const box = await page.locator('.xterm-screen:visible').boundingBox();
+            await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+            await page.mouse.wheel(0, -54);
+            await waitUntil('the view to scroll up from the command', async () => {
+              const row = await glyphRow();
+              return row !== null && row > 0;
+            }, 10_000);
+          },
+          async () => {
+            // Back to the bottom, where the jump is deterministic (the previous command from the bottom is the last), and the jump again: the amount a wheel scrolls is the engine's own.
+            for (let turn = 0; turn < 12; turn += 1) {
+              const before = await glyphAt();
+              if (before === null) break;
+              await page.mouse.wheel(0, 3000);
+              await waitUntil('the view to move down', async () => (await glyphAt())?.row !== before.row, 10_000);
+            }
+
+            assert.equal(await glyphAt(), null, `${engine}: the view is at the bottom, with no command line in it, before the jump is made again`);
+            await page.keyboard.press(`${MOD}+ArrowUp`);
+            await waitUntil('the emulator to draw the mark of the command the jump went to', async () => (await glyphRow()) !== null, 15_000);
+          },
+        ],
+      );
+      const target = (await recordOf(id)).commands.find((command) => command.command_line === selecting);
+      const expected = ['SEL_1', 'SEL_2', 'SEL_3', 'SEL_4'];
+      await afterwards(
+        async () => {
+          await page.keyboard.press(`${MOD}+Shift+ArrowUp`);
+          await waitUntil('Select output to say it selected', async () => (await words()) === 'Selected the output of the command', 15_000);
+          await page.evaluate(() => { window.__copied.length = 0; });
+          await page.keyboard.press(mac ? 'Meta+c' : 'Control+Shift+C');
+          await waitUntil('the copy of the selection', async () => page.evaluate(() => window.__copied.length > 0), 15_000);
+        },
+        [
+          'integration-select-output',
+          async () => {
+            const copied = (await page.evaluate(() => window.__copied.at(-1))) ?? '';
+            const hostLines = printedLines(outputBetween(id, target.output_start, target.output_end));
+            assert.ok(JSON.stringify(copied.split('\n').map((line) => line.trimEnd())) === JSON.stringify(expected) && JSON.stringify(hostLines) === JSON.stringify(expected), own(`Select output selects exactly the output of the command: the copy is ${JSON.stringify(copied)}, the host's record cuts ${JSON.stringify(hostLines)} out of the output [${String(target.output_start)}, ${String(target.output_end)}), and the command printed ${JSON.stringify(expected)}`));
+          },
+        ],
+      );
+      note(`${name} jump and select`, `the jump went to seq 1 100 (${String(count)} commands) and Select output copied ${JSON.stringify(expected)}, the lines the host's record cuts out`);
+
+      // 5. The nonce, forged marks and the same marks with the nonce.
+      const nonceFile = path.join(dir, `nonce-${name}`);
+      await typeBare(id, `printf '%s' "$__omniview_nonce" > ${nonceFile}`);
+      const nonce = (await readFile(nonceFile, 'utf8')).trim();
+      assert.match(nonce, /^[0-9a-f]{32}$/, own('the check read the session\'s nonce from the shell\'s own variable'));
+      await rm(nonceFile);
+      const END = 'FILE_END';
+      const forgedFile = path.join(dir, `forged-${name}.txt`);
+      const trustedLineFile = path.join(dir, `trusted-line-${name}.txt`);
+      const trustedCwdFile = path.join(dir, `trusted-cwd-${name}.txt`);
+      const wrong = '0'.repeat(32);
+      // A program that prints marks runs inside the command the shell started, and the host takes a command line only for the start of a command at a prompt: so each file first ends the shell's own command (133;D), as a program that knows the protocol would.
+      await writeFile(forgedFile, [OSC('133;D;0'), OSC('133;A'), OSC('133;B'), OSC(`633;E;FORGED_WRONG;${wrong}`), OSC('133;C'), 'forged output\n', OSC(`633;P;Cwd=/forged/wrong;${wrong}`), OSC('133;D;0'), OSC('133;A'), OSC('133;B'), OSC('633;E;FORGED_NONE'), OSC('133;C'), OSC('633;P;Cwd=/forged/none'), OSC('7;file://forged/forged/osc7'), OSC('133;D;0'), `${END}\n`].join(''));
+      await writeFile(trustedLineFile, [OSC('133;D;0'), OSC('133;A'), OSC('133;B'), OSC(`633;E;FORGED_RIGHT;${nonce}`), OSC('133;C'), 'trusted output\n', OSC('133;D;0'), `${END}\n`].join(''));
+      await writeFile(trustedCwdFile, [OSC(`633;P;Cwd=/usr;${nonce}`), `${END}\n`].join(''));
+      // The right nonce, and no end of the shell's own command first: a program running inside a command, which knows the nonce (a reader of the output has it), says a start with a line.
+      const midFile = path.join(dir, `mid-${name}.txt`);
+      await writeFile(midFile, [OSC(`633;E;MID_RIGHT;${nonce}`), OSC('133;C'), 'mid output\n', `${END}\n`].join(''));
+      nonces.push(nonce);
+      await typeBare(id, `cd ${dir}`);
+      const startCwd = (await recordOf(id)).cwd;
+      assert.equal(startCwd, dir, own('the shell\'s own directory mark says where it is'));
+      const catWindow = async (file) => {
+        const from = outputEnd(id);
+        await typeLine(page, `cat ${file}`);
+        await waitUntil('the file to be printed', async () => offsetOf(id, from, END) >= 0, 30_000);
+        const printedAt = offsetOf(id, from, END);
+        await waitUntil('the prompt after the file', async () => marksOf(id).some((mark) => mark.kind === 'input-start' && mark.at >= printedAt), 30_000);
+        return { from, to: outputEnd(id) };
+      };
+      let lineW = { from: 0, to: 0 };
+      await afterwards(
+        async () => { lineW = await catWindow(trustedLineFile); },
+        ['integration-trusted-line', async () => {
+          const marks = inWindow(marksOf(id), lineW);
+          const start = marks.find((mark) => mark.kind === 'command-start' && mark.command === 'FORGED_RIGHT');
+          // (the premise of this assertion is tried before the file is printed)
+          const rec = (await recordOf(id)).commands.find((command) => command.command_line === 'FORGED_RIGHT');
+          assert.ok(start?.trust === 'nonce' && rec?.command_trust === 'nonce', own(`a mark with the session's nonce gives a trusted command line: the start mark is ${JSON.stringify(start)} and the record's command ${JSON.stringify(rec?.command_trust)}`));
+        }],
+      );
+      let cwdW = { from: 0, to: 0 };
+      await afterwards(
+        async () => { cwdW = await catWindow(trustedCwdFile); },
+        ['integration-trusted-cwd', async () => {
+          const cwd = inWindow(marksOf(id), cwdW).find((mark) => mark.kind === 'cwd' && mark.cwd === '/usr');
+          assert.ok(cwd?.trust === 'nonce', own(`a mark with the session's nonce gives a trusted directory: the mark is ${JSON.stringify(cwd)}`));
+        }],
+      );
+      let forgedW = await catWindow(forgedFile);
+      const forgedIn = async (window) => {
+        const marks = inWindow(marksOf(id), window);
+        const record = await recordOf(id);
+        return {
+          lines: marks.filter((mark) => /FORGED_/.test(mark.command ?? '')),
+          inside: record.commands.filter((command) => /FORGED_/.test(command.command_line ?? '') && command.output_start >= window.from && command.output_start < window.to),
+          moved: marks.filter((mark) => mark.kind === 'cwd' && mark.cwd !== startCwd),
+          cwd: record.cwd,
+        };
+      };
+      // The fault of both forged assertions is the window of the file that the shell's own nonce signed: the same marks, trusted.
+      const realForged = forgedW;
+      await asserting('integration-forged-line', async () => { forgedW = lineW; }, async () => { forgedW = realForged; }, async () => {
+        const { lines, inside } = await forgedIn(forgedW);
+        assert.ok(forgedW.to > forgedW.from && lines.length === 0 && inside.length === 0, own(`a forged mark, with a wrong nonce or none, gives no command line: the marks of its window carry ${JSON.stringify(lines.map((mark) => mark.command))} and the record ${JSON.stringify(inside.map((command) => command.command_line))}`));
+      });
+      await asserting('integration-forged-cwd', async () => { forgedW = cwdW; }, async () => { forgedW = realForged; }, async () => {
+        const { moved, cwd } = await forgedIn(forgedW);
+        assert.ok(forgedW.to > forgedW.from && moved.length === 0 && cwd === startCwd, own(`a forged mark, with a wrong nonce or none, changes no directory: the shell is in ${startCwd}, the host's record says ${JSON.stringify(cwd)} and the marks of the window moved it to ${JSON.stringify(moved.map((mark) => mark.cwd))}`));
+      });
+      assert.equal((await callBound(base, EXEC_SERVICE, 'ChannelTerminalCwd', capOf(id))).path, startCwd, own('the host\'s own fact of the directory is the shell\'s'));
+      let midW = await catWindow(midFile);
+      const realMid = midW;
+      const trustedIn = async (window) => {
+        const marks = inWindow(marksOf(id), window);
+        const record = await recordOf(id);
+        const notCat = (line) => !String(line ?? '').startsWith('cat ');
+        return {
+          starts: marks.filter((mark) => mark.kind === 'command-start' && mark.trust === 'nonce' && notCat(mark.command)),
+          inside: record.commands.filter((command) => command.command_trust === 'nonce' && notCat(command.command_line) && command.output_start >= window.from && command.output_start < window.to),
+        };
+      };
+      // The fault is the window of the file the shell's nonce signed at a prompt: the same line, trusted.
+      await asserting('integration-forged-midcommand', async () => { midW = lineW; }, async () => { midW = realMid; }, async () => {
+        const { starts, inside } = await trustedIn(midW);
+        assert.ok(midW.to > midW.from && starts.length === 0 && inside.length === 0, own(`a mark with the session's nonce printed inside a running command gives no trusted command line (633;E is believed only for a command started at a prompt): the marks of its window carry ${JSON.stringify(starts.map((mark) => mark.command))} and the record ${JSON.stringify(inside.map((command) => command.command_line))}`));
+      });
+      for (const file of [forgedFile, trustedLineFile, trustedCwdFile, midFile]) await rm(file, { force: true });
+      note(`${name} forged and trusted`, `cat of a file with 133, 633;E, 633;P and OSC 7 marks (wrong nonce, none): no command line, directory stays ${startCwd}; with the shell's nonce: the line FORGED_RIGHT and the directory /usr are trusted`);
+
+      // 6. The canary: the nonce in every sink but the raw output.
+      const nonceVariants = nonceVariantsOf(nonce);
+      const hasNonce = (text) => nonceVariants.some((variant) => Buffer.from(text).includes(variant));
+      const hostLogText = async () => {
+        let text = host.output() + plantedLog.join('\n');
+        for (const entry of await readdir(stateRoot(work), { recursive: true }).catch(() => [])) {
+          if (/(^|\/)(plugins|node_modules)\//.test(String(entry)) || !/\.(log|txt|jsonl?)$/.test(String(entry))) continue;
+          text += await readFile(path.join(stateRoot(work), String(entry)), 'utf8').catch(() => '');
+        }
+
+        return text;
+      };
+      const asksHost = async () => {
+        const cap = capOf(id);
+        return JSON.stringify([await recordOf(id), await callBound(base, EXEC_SERVICE, 'ChannelTerminalBusy', cap), await callBound(base, EXEC_SERVICE, 'ChannelTerminalCwd', cap), await callBound(base, EXEC_SERVICE, 'ListChannelTerminals', [cap]), wire.calls.map((call) => call.answer)]) + recordsSeen.join('\n');
+      };
+      await asserting('integration-canary-dom', async () => page.evaluate((text) => { const planted = document.createElement('div'); planted.id = 'seam-planted-nonce'; planted.textContent = text; document.body.append(planted); }, nonce), async () => page.evaluate(() => document.getElementById('seam-planted-nonce')?.remove()), async () => {
+        const dom = await page.evaluate(() => `${document.documentElement.outerHTML}\n${document.body.innerText}`);
+        assert.equal(hasNonce(dom), false, own('the session\'s nonce is in no DOM node'));
+      });
+      // (takeOutOf is at module level: the canary after the end uses it too)
+      await asserting('integration-canary-log', async () => { plantedLog.push(nonce); }, async () => { takeOutOf(plantedLog, nonce); }, async () => {
+        assert.equal(hasNonce(await hostLogText()), false, own('the session\'s nonce is in no host log line'));
+      });
+      const plantedFrame = Buffer.from(`{"v":1,"marks":[{"cwd":"${nonce}"}]}`);
+      await asserting('integration-canary-frames', async () => { received.push(plantedFrame); }, async () => { takeOutOf(received, plantedFrame); }, async () => {
+        assert.equal(received.some((frame) => hasNonce(frame)), false, own('the session\'s nonce is in no typed frame the page receives (the output frames, which carry the shell\'s own marks, are the exception)'));
+      });
+      await asserting('integration-canary-records', async () => { recordsSeen.push(nonce); }, async () => { takeOutOf(recordsSeen, nonce); }, async () => {
+        assert.equal(hasNonce(await asksHost()), false, own('the session\'s nonce is in no record or answer the host gives'));
+      });
+      await asserting(
+        'integration-canary-errors',
+        async () => {
+          await page.evaluate((text) => console.error(text), nonce);
+          await waitUntil('the page to log the planted line', async () => consoleLines.some((line) => line.includes(nonce)), 10_000);
+        },
+        async () => {
+          for (let at = consoleLines.length - 1; at >= 0; at -= 1) if (consoleLines[at].includes(nonce)) consoleLines.splice(at, 1);
+        },
+        async () => {
+          assert.equal([...errors, ...consoleLines].some((line) => hasNonce(line)), false, own('the session\'s nonce is in no error or console line of the page'));
+        },
+      );
+      assert.ok(outputSince(id, 0).includes(nonce), own('the nonce is in the raw output the shell wrote (the exception: the shell prints it inside its own marks), so the search above looked for something that is there'));
+      note(`${name} canary`, `the session's nonce is in no DOM node, host log line (${String((await hostLogText()).length)} bytes), typed frame (${String(received.length)}), record or answer, error or console line (${String(consoleLines.length)}); it is in the raw output`);
+
+      // 7. The opt-out: through the host's settings, then a new terminal.
+      let subject = 'off';
+      await callBound(base, SETTINGS_SERVICE, 'Commit', { kind: 'host' }, { 'terminal.shellIntegration': false });
+      integrationOff = true;
+      const beforeOff = await ids();
+      await chooseShell(name);
+      const off = await arrive(beforeOff);
+      await doIt(off.id, 'true');
+      await doIt(off.id, 'false');
+      const subjectOf = () => (subject === 'off' ? off : { id, index });
+      const stateOf = (said) => (typeof said === 'object' && said !== null ? said.state : said);
+      await asserting('integration-optout-fact', async () => { subject = 'on'; }, async () => { subject = 'off'; }, async () => {
+        const { id: subjectId } = subjectOf();
+        const record = await recordOf(subjectId);
+        const readies = streams.of(subjectId).map((socket) => stateOf(socket.ready?.session?.integration));
+        assert.ok(record.integration === 'off' && readies.length > 0 && readies.every((state) => state === 'off'), own(`with the integration off the host says it is off: the record says ${JSON.stringify(record.integration)} and the stream's ready ${JSON.stringify(readies)}`));
+      });
+      await asserting('integration-optout-env', async () => { subject = 'on'; }, async () => { subject = 'off'; }, async () => {
+        const { id: subjectId, index: subjectIndex } = subjectOf();
+        await focusTab(subjectIndex);
+        const found = await say(subjectId, name === 'fish' ? INTEG_ENV_FISH : INTEG_ENV_SH, /INTEG_ENV\|(\d+)\|(\d+)\|([^|\r\n%]*)\|/, 'the shell to count its integration variables');
+        assert.deepEqual([found[1], found[2], found[3]], ['0', '0', ''], own(`with the integration off the shell has none of its variables: the environment has ${found[1]} of them, the shell ${found[2]} functions or parameters of the integration, and the nonce variable is ${JSON.stringify(found[3])}`));
+      });
+      await focusTab(off.index);
+      await asserting('integration-optout-marks', async () => { subject = 'on'; }, async () => { subject = 'off'; }, async () => {
+        const { id: subjectId } = subjectOf();
+        const raw = outputSince(subjectId, 0);
+        const typed = marksOf(subjectId).length;
+        const commands = (await recordOf(subjectId)).commands.length;
+        // fish 4 prints OSC 133 and OSC 7 itself, whatever the host does; what the integration adds is 633, so that is what fish must not print.
+        const marksIn = name === 'fish' ? /\u001b\]633;/ : /\u001b\](133|633|7);/;
+        assert.ok(typed === 0 && !marksIn.test(raw) && commands === 0, own(`with the integration off no mark arrives: ${String(typed)} typed marks, ${marksIn.test(raw) ? 'marks' : 'none'} in the output, ${String(commands)} commands in the record`));
+      });
+      await callBound(base, SETTINGS_SERVICE, 'Commit', { kind: 'host' }, { 'terminal.shellIntegration': true });
+      integrationOff = false;
+      note(`${name} opt-out`, 'with terminal.shellIntegration off a new terminal says off, has none of the integration\'s variables or functions, and received no mark');
+    }
+
+    // 8. After the sessions: the canary again, in what the end of a shell writes to (the host's log, the state root, the temporary directory), and the user's files.
+    await endTerminals(base);
+    const anyNonce = (blob) => nonces.some((one) => nonceVariantsOf(one).some((variant) => Buffer.from(blob).includes(variant)));
+    const lastNonce = nonces.at(-1);
+    const plantedState = path.join(stateRoot(work), 'terminal-planted.state');
+    const plantedTmp = path.join(os.tmpdir(), `seam-r10-planted-${String(process.pid)}.txt`);
+    await asserting('integration-canary-end-log', async () => { plantedEnd.push(lastNonce); }, async () => { takeOutOf(plantedEnd, lastNonce); }, async () => {
+      assert.equal(anyNonce(host.output() + plantedEnd.join('\n')), false, `${engine}: after the terminals ended no host log line holds the session's nonce`);
+    });
+    await asserting('integration-canary-end-state', async () => writeFile(plantedState, `state ${lastNonce}\n`), async () => rm(plantedState, { force: true }), async () => {
+      const files = await filesUnder(stateRoot(work), { depth: 8, skip: (full) => /(^|\/)node_modules(\/|$)/.test(full) });
+      assert.equal(anyNonce(await blobOf(files)), false, `${engine}: after the terminals ended no file of the state root holds the session's nonce (${String(files.length)} files read, of any type)`);
+    });
+    await asserting('integration-canary-end-tmp', async () => writeFile(plantedTmp, `tmp ${lastNonce}\n`), async () => rm(plantedTmp, { force: true }), async () => {
+      const files = await filesUnder(os.tmpdir(), { depth: 3, since: sessionStart, skip: (full) => full.startsWith(stateRoot(work)) });
+      assert.equal(anyNonce(await blobOf(files)), false, `${engine}: after the terminals ended no file of the temporary directory holds the session's nonce (${String(files.length)} files written since the check began, read, of any type)`);
+    });
+    // The host's own integration directory (`<TMPDIR>/omniview-integration-*`, the fish file four levels down) is searched to any depth, a nonce left there is the host's own fault.
+    const plantedShim = path.join(os.tmpdir(), `omniview-integration-seamplanted-${String(process.pid)}`);
+    await asserting('integration-canary-end-shimdir', async () => { await mkdir(path.join(plantedShim, 'data', 'fish', 'vendor_conf.d'), { recursive: true }); await writeFile(path.join(plantedShim, 'data', 'fish', 'vendor_conf.d', 'omniview-integration.fish'), `# ${lastNonce}\n`); }, async () => rm(plantedShim, { recursive: true, force: true }), async () => {
+      const shimDirs = (await readdir(os.tmpdir())).filter((entry) => entry.startsWith('omniview-integration-')).map((entry) => path.join(os.tmpdir(), entry));
+      const files = (await Promise.all(shimDirs.map((one) => filesUnder(one, { depth: 32 })))).flat();
+      assert.equal(anyNonce(await blobOf(files)), false, `${engine}: after the terminals ended no file under the host's integration directories (omniview-integration-*, any depth) holds the session's nonce (${String(shimDirs.length)} directories left, ${String(files.length)} files read)`);
+    });
+    note('canary after the end', `after the terminals ended the nonces of ${String(nonces.length)} sessions are in no host log line, no file of the state root and no file written to the temporary directory since the check began`);
+    for (const file of INTEGRATION_FILES) {
+      const target = path.join(home, file);
+      if (file.endsWith('config.fish') && !fishRan) {
+        console.log(`NEGATIVE CONTROL "${INTEGRATION_FILE_CONTROLS[file]}": NOT RUN in ${engine}: fish is not listed on this machine, so no shell read its config.fish`);
+        continue;
+      }
+
+      await asserting(
+        INTEGRATION_FILE_CONTROLS[file],
+        async () => appendFile(target, '# edited by a fault of the check\n'),
+        async () => writeFile(target, seeds[file]),
+        async () => assert.equal((await hashes())[file], hashesBefore[file], `${engine}: ~/${file} is byte for byte as it was before the session (sha256 ${hashesBefore[file].slice(0, 12)})`),
+      );
+    }
+
+    note('user files', `${INTEGRATION_FILES.filter((file) => fishRan || !file.endsWith('config.fish')).join(', ')} have the same sha256 after the sessions (seeded with content, run by the shells)${fishRan ? '' : '; config.fish NOT RUN (no fish)'}`);
+    assert.deepEqual(errors.filter((message) => !CUT_BY_A_RELOAD.test(message)), [], `${engine}: the page raised no error but the calls a reload cut`);
+    verdict(engine);
+    console.log(`terminal-integration ${engine}:\n${observed.map((line) => `  ${line}`).join('\n')}`);
+  } finally {
+    if (integrationOff) await callBound(base, SETTINGS_SERVICE, 'Commit', { kind: 'host' }, { 'terminal.shellIntegration': true }).catch(() => undefined);
+    for (const file of INTEGRATION_FILES) {
+      if (originals[file] === null) await rm(path.join(home, file), { force: true });
+      else await writeFile(path.join(home, file), originals[file]);
+    }
+
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // w: the Ports tool (PF1). The real host, a plugin whose PROCESS forwards a local port to a TCP server of its own, and clients of the check's own that connect to what the forward listens on.
 
@@ -13899,6 +14654,18 @@ try {
         continue;
       }
 
+      if (CONTROL === INTEGRATION_GROUP || INTEGRATION_CONTROLS[CONTROL] !== undefined) {
+        // Scenario r10 alone with the faults of the controls asked for, saying for each whether its own assertion saw it (`checkTerminalIntegration`). It runs as a phase, so the requests that fail are held to the allow-list as in a full run.
+        try {
+          await phase(INTEGRATION_GROUP, name, async () => onTerminalPage(browser, host.base, (page) => checkTerminalIntegration(page, host, name)));
+        } catch (error) {
+          console.error(String(error?.message ?? error));
+          process.exitCode = 1;
+        }
+
+        continue;
+      }
+
       if (CONTROL === RECONNECT_GROUP || RECONNECT_CONTROLS[CONTROL] !== undefined || CONTROL === ISOLATION_GROUP || ISOLATION_CONTROLS[CONTROL] !== undefined) {
         // Scenario r6 or r7 alone with the perturbations of the controls asked for, saying for each whether its own assertion saw it (`checkTerminalReconnect`, `checkTerminalIsolation`). It runs as a phase, so the requests that fail are held to the allow-list as in a full run.
         const reconnect = CONTROL === RECONNECT_GROUP || RECONNECT_CONTROLS[CONTROL] !== undefined;
@@ -13939,8 +14706,8 @@ try {
       // SEAM_TERMINAL_REPEAT=<n> runs the terminal scenarios (r, r2, r3, r4, r5, r6 the cuts of the page's sockets, r7 the isolation of two pages, r8 find, the menu and the links) alone, n times in a row (once when only SEAM_TERMINAL_ONLY is set), for a developer who works on the Terminal tool (each run starts several shells of this
       // machine and ends them). SEAM_TERMINAL_ONLY=r3,r5 narrows it to the scenarios it names.
       if (process.env.SEAM_TERMINAL_REPEAT !== undefined || process.env.SEAM_TERMINAL_ONLY !== undefined) {
-        const terminalOnly = (process.env.SEAM_TERMINAL_ONLY ?? 'r,r2,r3,r4,r5,r6,r7,r8,r9').split(',');
-        const unknown = terminalOnly.filter((id) => !['r', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8', 'r9'].includes(id));
+        const terminalOnly = (process.env.SEAM_TERMINAL_ONLY ?? 'r,r2,r3,r4,r5,r6,r7,r8,r9,r10').split(',');
+        const unknown = terminalOnly.filter((id) => !['r', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8', 'r9', 'r10'].includes(id));
         if (unknown.length > 0) throw new Error(`SEAM_TERMINAL_ONLY names scenarios that are not terminal scenarios: ${unknown.join(', ')}`);
         const repeats = Number(process.env.SEAM_TERMINAL_REPEAT ?? '1');
         if (!Number.isSafeInteger(repeats) || repeats < 1) {
@@ -13957,6 +14724,7 @@ try {
           if (terminalOnly.includes('r7')) await phase(ISOLATION_GROUP, name, async () => checkTerminalIsolation(browser, () => host, name).finally(() => endTerminals(host.base)));
           if (terminalOnly.includes('r8')) await phase('terminal-find', name, async () => onTerminalPage(browser, host.base, (page) => checkTerminalFindMenu(page, host.base, name)));
           if (terminalOnly.includes('r9')) await phase(WHERE_GROUP, name, async () => onTerminalPage(browser, host.base, (page) => checkTerminalOpenWhere(page, host.base, name)));
+          if (terminalOnly.includes('r10')) await phase(INTEGRATION_GROUP, name, async () => onTerminalPage(browser, host.base, (page) => checkTerminalIntegration(page, host, name)));
           console.log(`terminal ${name} run ${String(run)} ok`);
         }
 
@@ -14047,6 +14815,7 @@ try {
         [ISOLATION_GROUP]: async () => checkTerminalIsolation(browser, () => host, name).finally(() => endTerminals(host.base)),
         'terminal-find': async () => onTerminalPage(browser, host.base, (page) => checkTerminalFindMenu(page, host.base, name)),
         [WHERE_GROUP]: async () => onTerminalPage(browser, host.base, (page) => checkTerminalOpenWhere(page, host.base, name)),
+        [INTEGRATION_GROUP]: async () => onTerminalPage(browser, host.base, (page) => checkTerminalIntegration(page, host, name)),
         session: async () => checkSession(browser, () => host, restart, name),
         process: async () => checkProcess(browser, name, await processFixture(), work),
         'failed-load': async () => checkFailedLoad(browser, name, await processFixture(), work),

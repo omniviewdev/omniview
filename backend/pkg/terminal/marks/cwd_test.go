@@ -74,16 +74,31 @@ func TestAControlByteInADirectoryNeverEndsTheSequenceExceptTheOnesThatDo(t *test
 	}
 }
 
-func TestAControlByteThatIsEncodedIsStrippedToo(t *testing.T) {
+// A directory whose name holds a control byte (a directory CAN be named with an ESC) is a path that no terminal may be made to
+// read and that no stripping can give back: "/tmp/a" + ESC + "b" stripped is "/tmp/ab", which is another directory or none.
+// So the mark is dropped and counted, and what the log knows of the directory becomes unknown: never a wrong path, and
+// never the one from before the `cd`.
+func TestADirectoryWithAControlByteInItsNameMakesTheTrackedDirectoryUnknown(t *testing.T) {
 	for _, body := range []string{
 		"7;file://host/tmp/a%1bb", "7;file://host/tmp/a%07b", "7;file://host/tmp/a%00b",
-		"7;file://host/tmp/a%7fb", "7;file://host/tmp/a%0ab", "7;file://host/tmp/a\x7fb",
+		"7;file://host/tmp/a%7fb", "7;file://host/tmp/a%0ab",
 	} {
 		s := newTestScanner(t, newClock(), 0)
+		sameKinds(t, feedAll(s, osc("7;file://host/tmp/known")), KindCwd)
 		ms := feedAll(s, osc(body))
-		sameKinds(t, ms, KindCwd)
-		if ms[0].Cwd != "/tmp/ab" {
-			t.Fatalf("%q gives the directory %q, want /tmp/ab", body, ms[0].Cwd)
+		if len(ms) != 0 {
+			t.Fatalf("%q gives marks %v, want none", body, ms)
+		}
+		if dir, _ := s.Log().Cwd(); dir != "" {
+			t.Fatalf("%q leaves the tracked directory %q, want unknown", body, dir)
+		}
+		if st := s.Stats(); st.Malformed != 1 {
+			t.Fatalf("%q is not counted as malformed: %+v", body, st)
+		}
+		// The next directory that is sound is believed again.
+		sameKinds(t, feedAll(s, osc("7;file://host/tmp/next")), KindCwd)
+		if dir, _ := s.Log().Cwd(); dir != "/tmp/next" {
+			t.Fatalf("the directory after it is %q", dir)
 		}
 	}
 }

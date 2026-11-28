@@ -10,7 +10,7 @@ const root = document.documentElement;
 function snapshot(revision: number, preferences: Partial<AppearanceSnapshot['preferences']> = {}, material: Partial<AppearanceSnapshot['material']> = {}): AppearanceSnapshot {
   return {
     revision,
-    preferences: { windowMaterial: 'glass', glassStyle: 'clear', chromeOpacity: 62, contentOpacity: 94, menuOpacity: 90, sheetOpacity: 96, theme: 'light', density: 'compact', textSize: '110', ...preferences },
+    preferences: { windowMaterial: 'glass', glassStyle: 'clear', chromeOpacity: 62, contentOpacity: 94, menuOpacity: 90, sheetOpacity: 96, theme: 'light', density: 'compact', textSize: '110', motion: 'system', ...preferences },
     material: { effective: 'in-page', glass: false, translucent: true, forcedOpaque: false, reason: 'unsupported', ...material },
   };
 }
@@ -76,6 +76,27 @@ describe('committed window appearance', () => {
       fx.change(2);
     });
     expect(fx.read).toHaveBeenCalledTimes(2);
+  });
+
+  it('projects committed motion overrides without re-rendering consumers, and restores system mode', async () => {
+    const fx = client();
+    const commits = vi.fn();
+    fx.read.mockResolvedValueOnce(snapshot(1, { motion: 'reduced' }));
+    const mounted = render(<WindowAppearance source={fx.source}><Profiler id="shell" onRender={commits}><Consumer /></Profiler></WindowAppearance>);
+    await screen.findByText('light:no-glass:normal');
+    expect(root).toHaveAttribute('data-ov-motion', 'reduced');
+    const before = commits.mock.calls.length;
+    for (const [revision, motion] of [[2, 'normal'], [3, 'system']] as const) {
+      fx.read.mockResolvedValueOnce(snapshot(revision, { motion }));
+      await act(async () => {
+        fx.change(revision);
+      });
+      expect(root).toHaveAttribute('data-ov-motion', motion);
+    }
+
+    expect(commits).toHaveBeenCalledTimes(before);
+    mounted.unmount();
+    expect(root).not.toHaveAttribute('data-ov-motion');
   });
 
   it('rejects a superseded startup read, keeps committed paint on failure, and accepts a restarted host on reconnect', async () => {

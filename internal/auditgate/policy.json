@@ -79,6 +79,7 @@
     {"fqn": "github.com/omniviewdev/omniview/backend/pkg/plugin/exec.ServiceWrapper.ChannelTerminalCommands", "decision": "deny", "reason": "reads the commands the user typed in a live channel terminal, their exit statuses and directories"},
     {"fqn": "github.com/omniviewdev/omniview/backend/pkg/plugin/exec.ServiceWrapper.ChannelTerminalCwd", "decision": "deny", "reason": "reads the working directory of a live channel terminal's shell: a path the user moved to"},
     {"fqn": "github.com/omniviewdev/omniview/backend/pkg/plugin/exec.ServiceWrapper.CheckResourceShell", "decision": "deny", "reason": "validates private resource terminal provenance for its owning window"},
+    {"fqn": "github.com/omniviewdev/omniview/backend/pkg/plugin/exec.ServiceWrapper.ChannelTerminalResolveLink", "decision": "deny", "reason": "looks on the host's disk, under the directory a live channel terminal's shell is in, for the file that text in its output names: existence and path of files the user can reach"},
     {"fqn": "github.com/omniviewdev/omniview/backend/pkg/plugin/exec.ServiceWrapper.CloseChannelTerminal", "decision": "deny", "reason": "ends a live channel terminal: controls a live terminal session"},
     {"fqn": "github.com/omniviewdev/omniview/backend/pkg/plugin/exec.ServiceWrapper.CloseResourceShell", "decision": "deny", "reason": "closes a resource terminal session"},
     {"fqn": "github.com/omniviewdev/omniview/backend/pkg/plugin/exec.ServiceWrapper.CloseSession", "decision": "deny", "reason": "controls a live terminal session"},

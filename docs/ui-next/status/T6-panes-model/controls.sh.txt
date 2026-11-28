@@ -1,0 +1,129 @@
+#!/bin/bash
+# Negative controls for the panes of the panel model (#697 step 6, first part). Run from the root of the worktree:
+#   bash docs/ui-next/status/T6-panes-model/controls.sh.txt
+# Each fault goes into a SCRATCH copy of the model (ui-next/shell/core/panelctl, deleted at the end); the model itself is never edited. A control is RED when the tests named for it fail with the fault in, and
+# the report lists every test that failed. The same control is then run with the named tests skipped (the assertion removed): what is still red is caught by another test as well, and the report says which.
+# A baseline run of the unmutated copy must be green first, or nothing below means anything. Exit code: 0 when every control was caught by the test named for it, 1 otherwise.
+set -u
+ROOT="$(pwd)"
+SRC=ui-next/shell/core/panel
+DST=ui-next/shell/core/panelctl
+OUT="$(mktemp -d)"
+trap 'rm -rf "$ROOT/$DST" "$OUT"' EXIT
+
+export ROOT SRC DST OUT
+python3 - <<'PY'
+import json, os, re, shutil, subprocess, sys
+
+root, src, dst, out = os.environ['ROOT'], os.environ['SRC'], os.environ['DST'], os.environ['OUT']
+
+# name | file | exact text | replacement | regexp of "file > test title" that must be among the failures
+CONTROLS = [
+  ('split-copies-a-session', 'panes.ts', 'const made = opened.result.id;', 'const made = beside;', r'panes\.test\.ts.*opens a NEW session'),
+  ('ratios-do-not-sum-to-1', 'ratios.ts', 'Array.from({ length: Math.max(0, Math.floor(count)) }, () => 1 / count)', 'Array.from({ length: Math.max(0, Math.floor(count)) }, () => 1 / (count + 1))', r'ratios\.test\.ts.*equal shares'),
+  ('old-saved-state-rejected', 'persist.ts', "  const saved = migrated.value;\n  const problems: string[] = [];", "  const saved = migrated.value;\n  if (saved.layout === undefined) {\n    return { ok: false, reason: 'foreign-version', detail: 'no layout' };\n  }\n\n  const problems: string[] = [];", r'panes\.persist\.test\.ts.*a window saved before panes'),
+  ('pane-below-the-minimum', 'ratios.ts', 'Math.max(min, position - before)', 'Math.max(0.0001, position - before)', r'(ratios|panes)\.test\.ts.*(minimum|80 px)'),
+  ('no-room-check-on-split', 'panes.ts', 'if ((count + 1) * PANE_MIN_PX > options.extent) {', 'if (false as boolean) {', r'panes\.test\.ts.*refused when the panes could not each have 80 px'),
+  ('closing-the-active-pane-keeps-it-active', 'sessions.ts', 'group.panes[at]?.id === group.active ? (panes.slice(at)', 'false ? (panes.slice(at)', r'panes\.test\.ts.*active pane passes the focus'),
+  ('closing-a-session-leaves-its-pane', 'sessions.ts', 'const panes = group.panes.filter((_, index) => index !== at);', 'const panes = group.panes.map((pane, index) => (index === at ? { id: pane.id, session: group.panes[at === 0 ? 1 : 0].session } : pane));', r'panes\.test\.ts.*closing'),
+  ('a-group-of-one-is-kept', 'sessions.ts', 'panes.length < 2 ? otherGroups', 'panes.length < 1 ? otherGroups', r'panes\.test\.ts.*dissolves the group'),
+  ('the-active-session-is-not-kept-in-the-active-pane', 'state.ts', '  return panes === undefined ? state : patch(state, { panes: Object.freeze(panes) });', '  return state;', r'panes\.test\.ts.*(takes a session that is in no pane|follows the session a tab chooses)'),
+  ('saved-shares-not-renormalised', 'persist.ts', 'whole ? one.ratio : one.ratio / total', 'one.ratio', r'panes\.persist\.test\.ts.*shares the space of a dropped pane'),
+  ('a-panel-with-no-group-saves-a-layout', 'persist.ts', 'return tools.length === 0 ? undefined :', 'return tools.length === -1 ? undefined :', r'panes\.persist\.test\.ts.*nothing for a panel with no group'),
+  ('the-panel-version-moves', 'types.ts', 'export const PANEL_VERSION = 1;', 'export const PANEL_VERSION = 2;', r'(store|persist)\.test\.ts'),
+  ('equalise-leaves-shares', 'panes.ts', 'withShares(state, tool, found.group, equalRatios(found.group.panes.length))', 'withShares(state, tool, found.group, found.group.ratios)', r'panes\.test\.ts.*equalisePanes'),
+  ('a-hidden-pane-keeps-its-share-in-the-drawing', 'selectors.ts', 'visible.map((index) => group.ratios[index] / total)', 'visible.map((index) => group.ratios[index])', r'panes\.test\.ts.*hidden'),
+  ('focus-on-a-hidden-pane', 'panes.ts', "|| session === undefined || !sessionVisible(state, session)) {\n    return refuse(state, 'missing', `There is no pane", "|| session === undefined) {\n    return refuse(state, 'missing', `There is no pane", r'panes\.test\.ts.*cannot be a pane whose session is hidden'),
+  ('axis-silently-ignored', 'panes.ts', 'options.axis !== group.axis', 'false', r'panes\.test\.ts.*ONE axis'),
+  ('unknown-layout-version-read', 'persist.ts', 'if (!migrated.ok) {\n    problems.push(`the layout is dropped', 'if (false as boolean) {\n    problems.push(`the layout is dropped', r'panes\.persist\.test\.ts.*unknown version is dropped'),
+  ('a-hidden-group-is-an-absent-group', 'panes.ts', 'if (beside === null && group === undefined) {', 'if (beside === null) {', r'panes\.test\.ts.*is still a group'),
+  ('closing-the-active-pane-chooses-a-hidden-pane', 'sessions.ts', 'panes.slice(at).find(shows) ?? panes.slice(0, at).reverse().find(shows) ?? ', '', r'panes\.test\.ts.*VISIBLE pane'),
+  ('a-proto-tool-loses-its-active-entry', 'persist.ts', 'active: Object.fromEntries(chosen)', 'active: Object.assign({}, Object.fromEntries(active), Object.fromEntries(chosen))', r'panes\.persist\.test\.ts.*named like a member'),
+  ('active-of-a-cut-group-left-in-the-document', 'persist.ts', 'chosen.set(tool, one.sessions[one.active]);', 'void one;', r'panes\.fuzz\.test\.ts'),
+]
+
+# The controls whose fault is guarded by the named tests ALONE: with those tests skipped the model passes. Every other control must stay red with them skipped (another test, usually the fuzz, catches it as well).
+# The second half is ENFORCED: a control whose second run disagrees with this list counts as not caught, so a guard cannot silently become the only one, or stop being one.
+SOLE = {
+  'focus-on-a-hidden-pane',
+  'a-hidden-group-is-an-absent-group', 'closing-the-active-pane-chooses-a-hidden-pane',
+}
+
+TITLES = {}  # 'file > full name' -> the test's own title: vitest matches a name pattern against the title and its describes joined in a way a full name is not, so a skip uses the title alone
+
+def tests(directory, only=None, skip=None):
+    """Runs the tests of `directory`; returns (exit code, set of 'file > title' that failed)."""
+    report = os.path.join(out, 'report.json')
+    if os.path.exists(report):
+        os.remove(report)
+    cmd = ['pnpm', 'exec', 'vitest', 'run', directory, '--reporter=json', f'--outputFile={report}']
+    if skip:
+        escaped = [re.sub(r'[.*+?^${}()|\[\]\\/]', lambda m: '\\' + m.group(0), s) for s in skip]
+        cmd += ['--testNamePattern=^(?!.*(?:' + '|'.join(escaped) + ')).*$']
+    code = subprocess.run(cmd, cwd=root, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
+    failed = set()
+    try:
+        data = json.load(open(report))
+        for file in data['testResults']:
+            name = os.path.basename(file['name'])
+            for t in file['assertionResults']:
+                if t['status'] == 'failed':
+                    failed.add(f"{name} > {t['fullName']}")
+                    TITLES[f"{name} > {t['fullName']}"] = t['title']
+            if file['status'] == 'failed' and not any(t['status'] == 'failed' for t in file['assertionResults']):
+                failed.add(f'{name} > (the file did not run)')
+    except Exception as error:  # noqa: BLE001
+        failed.add(f'(no report: {error})')
+    return code, failed
+
+def fresh():
+    shutil.rmtree(os.path.join(root, dst), ignore_errors=True)
+    shutil.copytree(os.path.join(root, src), os.path.join(root, dst))
+    # The older 150-seed fuzz takes 6 s alone and trips vitest's 5 s limit on a loaded machine; it is not what these controls are about and runs in the full suite.
+    os.remove(os.path.join(root, dst, 'fuzz.test.ts'))
+
+fresh()
+code, failed = tests(dst)
+print(f'BASELINE the unmutated copy: exit {code}, {len(failed)} failed')
+if code != 0:
+    print('  baseline is not green: ' + '; '.join(sorted(failed))[:600])
+    sys.exit(2)
+
+bad = 0
+for name, file, old, new, expect in CONTROLS:
+    fresh()
+    path = os.path.join(root, dst, file)
+    text = open(path).read()
+    if text.count(old) != 1:
+        print(f'CONTROL {name}: FAULT NOT APPLIED ({file}: the text occurs {text.count(old)} times)')
+        bad += 1
+        continue
+    open(path, 'w').write(text.replace(old, new))
+    code, failed = tests(dst)
+    named = sorted(t for t in failed if re.search(expect, t))
+    if code == 0 or not failed:
+        print(f'CONTROL {name}: UNDETECTED (the tests passed)')
+        bad += 1
+        continue
+    status = 'RED' if named else 'RED, BUT NOT BY THE TEST NAMED FOR IT'
+    if not named:
+        bad += 1
+    print(f'CONTROL {name}: {status}: {len(failed)} test(s) fail, {len(named)} of them named for it')
+    for t in (named or sorted(failed))[:3]:
+        print(f'    {t}')
+    # The assertion removed: the tests named for it skipped. What is left red is caught by another test too.
+    if named:
+        titles = [TITLES[t] for t in named]
+        code2, rest = tests(dst, skip=titles)
+        alone = code2 == 0 and not rest
+        print(f'    with the named tests skipped: exit {code2}, {len(rest)} other test(s) still fail' + (f' (e.g. {sorted(rest)[0]})' if rest else ' (the fault goes undetected: that assertion alone guards it)'))
+        if alone != (name in SOLE):
+            print(f'    MISMATCH: expected {"the named tests alone to guard it" if name in SOLE else "another test to catch it as well"}')
+            bad += 1
+
+print('ALL CONTROLS CAUGHT BY THEIR TEST' if bad == 0 else f'{bad} CONTROL(S) NOT CAUGHT')
+sys.exit(1 if bad else 0)
+PY
+code=$?
+rm -rf "$ROOT/$DST" "$OUT"
+exit $code

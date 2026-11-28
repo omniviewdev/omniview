@@ -1,0 +1,149 @@
+#!/bin/bash
+# Negative controls for the panes layout and Split terminal (#697 step 6, the layout). Run from the root of the worktree:
+#   bash docs/ui-next/status/T6-panes-layout/controls.sh.txt
+# Each fault goes into the real file, which is put back after each control (in a `finally`, and on a signal, from a copy kept in memory): the page tests render the shell's own tree, so a scratch copy of the panel would not be the code
+# they draw. A control is RED when the tests named for it fail with the fault in. The same control is then run with the named tests skipped (the assertion removed): what is still red is caught by another test as well. The second half
+# is ENFORCED: SOLE lists the controls whose named tests alone guard them, and a control whose second run disagrees counts as not caught. A baseline run of the untouched files must be green first. Exit code: 0 when every control was
+# caught by the tests named for it and agreed with SOLE, 1 otherwise. The faults of the page in a real engine (a pane under 80 px after a drag, a sash that is not a Tab stop, a context for each showing) are the probe's own table:
+# `terminal-controls-panes` (terminal-panes.mjs). Do not run it while someone else edits these files.
+set -u
+ROOT="$(pwd)"
+OUT="$(mktemp -d)"
+trap 'rm -rf "$OUT"' EXIT
+export ROOT OUT
+python3 - <<'PY'
+import atexit, json, os, re, signal, subprocess, sys
+
+root, out = os.environ['ROOT'], os.environ['OUT']
+PANEL, CORE = 'ui-next/shell/panel', 'ui-next/shell/core/panel'
+# The tests of the layout: the panes' page tests, the split's, the registry's and the model's panes.
+FILES = [
+  f'{PANEL}/panes/Panes.test.tsx', f'{PANEL}/panes/PaneEmulators.test.tsx', f'{PANEL}/terminal/TerminalSplit.test.tsx', f'{PANEL}/terminal/TerminalSessions.test.ts', f'{PANEL}/terminal/terminals.test.ts',
+  f'{CORE}/panes.test.ts', f'{CORE}/panes.fuzz.test.ts',
+]
+
+# name | where ('panel' or 'core') | file | exact text | replacement | regexp of "file > test title" that must be among the failures
+CONTROLS = [
+  ('split-copies-a-session', 'panel', 'terminal/TerminalSessions.ts', 'opening.split === undefined ? store.openSession', 'true ? store.openSession', r'TerminalSessions\.test\.ts.*opens its session in a pane beside'),
+  ('split-asks-the-host-before-the-room', 'panel', 'terminal/terminals.ts', 'if (!roomForPane(store.getSnapshot(), TERMINAL_TOOL_ID, extent)) {', 'if (false as boolean) {', r'terminals\.test\.ts.*opens nothing when the panel has no room'),
+  ('split-starts-in-home-not-where-the-host-said', 'panel', 'terminal/terminals.ts', 'options.here?.(where) ?? localHereTarget(where)', 'options.here?.(where) ?? localShellTarget()', r'terminals\.test\.ts.*starts a NEW terminal'),
+  ('split-button-enabled-with-no-directory', 'panel', 'terminal/TerminalBody.tsx', 'onSplit === undefined || room === null || !room.fits || !canSplit', 'onSplit === undefined || room === null || !room.fits', r'TerminalSplit\.test\.tsx.*cannot apply outside a deck'),
+  ('split-button-enabled-with-no-room', 'panel', 'terminal/TerminalBody.tsx', 'onSplit === undefined || room === null || !room.fits || !canSplit', 'onSplit === undefined || room === null || !canSplit', r'TerminalSplit\.test\.tsx.*cannot apply when no other pane fits'),
+  ('sash-minimum-lost', 'panel', 'panes/sash.ts', 'const min = minRatio(extent, ratios.length);', 'const min = 0.0001;', r'Panes\.test\.tsx.*(80 px|minimum)'),
+  ('sash-double-click-does-nothing', 'panel', 'panes/PaneSash.tsx', '      onDoubleClick={sash.reset}\n', '', r'Panes\.test\.tsx.*Enter and on a double click'),
+  ('sash-commits-on-every-move', 'panel', 'panes/sash.ts', '      session.raw = coordinate(event, session.axis);\n', '      session.raw = coordinate(event, session.axis);\n      store.moveSash(session.tool, session.boundary, positionOf(session.raw, session.geometry, session.boundary), session.geometry.extent);\n', r'Panes\.test\.tsx.*tells the model once'),
+  ('sash-escape-keeps-the-drag', 'panel', 'panes/sash.ts', "if (event.key === 'Escape' && drag !== null) {", 'if (false as boolean) {', r'Panes\.test\.tsx.*Escape'),
+  ('sash-keys-ignore-the-axis', 'panel', 'panes/sash.ts', "const forward = axis === 'row' ? 'ArrowRight' : 'ArrowDown';", "const forward = 'ArrowRight';", r'Panes\.test\.tsx.*up and down arrows'),
+  ('sash-measured-at-the-press-only', 'panel', 'panes/sash.ts', 'const now = geometry() ?? session.geometry;', 'const now = session.geometry;', r'Panes\.test\.tsx.*reads the deck again'),
+  ('sash-orientation-always-vertical', 'panel', 'panes/PaneSash.tsx', "aria-orientation={axis === 'column' ? 'horizontal' : 'vertical'}", "aria-orientation=\"vertical\"", r'Panes\.test\.tsx.*(stacked|column)'),
+  ('bodies-take-no-share', 'panel', 'PanelBody.tsx', "'--_share': placed ? String(share) : undefined", "'--_share': undefined", r'Panes\.test\.tsx.*group\'s order'),
+  ('the-active-pane-is-not-marked', 'panel', 'PanelBody.tsx', "data-pane-active={placed && active ? '' : undefined}", 'data-pane-active={undefined}', r'Panes\.test\.tsx.*which pane is the active one'),
+  ('a-split-remounts-every-body', 'panel', 'PanelBody.tsx', '<BodySlot key={item.session} id={item.session} prefix={prefix} />', '<BodySlot key={`${item.session}:${String(mounted.length)}`} id={item.session} prefix={prefix} />', r'PaneEmulators\.test\.tsx.*constructs one for each pane'),
+  ('the-sashes-come-after-the-bodies', 'panel', 'panes/order.ts', "items.push({ kind: 'sash', session: next, boundary: group.indexOf(next) - 1 });", "items.push({ kind: 'body', session: next });", r'Panes\.test\.tsx.*document\'s order'),
+  ('a-sash-keeps-the-place-it-was-made-in', 'panel', 'panes/PaneSash.tsx', "place: () => ({ tool: live.get().tool, boundary: live.get().boundary, axis: live.get().axis }),", "place: () => ({ tool, boundary, axis }),", r'Panes\.test\.tsx.*a sash follows its place'),
+  ('a-split-ignores-the-pane-it-was-pressed-in', 'panel', 'terminal/terminals.ts', 'await openHere(session, { extent, beside: session });', 'await openHere(session, { extent, beside: undefined as never });', r'terminals\.test\.ts.*beside the pane the split was pressed in'),
+  ('a-drag-survives-a-close-before-its-sash', 'panel', 'panes/PaneSash.tsx', '      sash.cancel();\n    }\n\n    live.set', '    }\n\n    live.set', r'Panes\.test\.tsx.*cancels the drag when a pane before the sash closes'),
+  ('a-drag-keeps-the-length-it-began-in', 'panel', 'panes/sash.ts', '      if (session === null || now === null || now.extent === session.geometry.extent) {', '      if (true as boolean) {', r'Panes\.test\.tsx.*gets shorter during the drag'),
+  ('a-click-in-a-pane-does-not-focus-it', 'panel', 'PanelBody.tsx', '      onPointerDownCapture={\n        placed\n', '      onPointerDownCapture={\n        false as boolean\n', r'Panes\.test\.tsx.*makes a pane the active one'),
+  ('the-resize-of-the-deck-is-not-fitted', 'panel', 'panes/usePaneDeck.ts', '        store.fitPanes(id, extent);\n      }\n    };', '        void id;\n      }\n    };', r'Panes\.test\.tsx.*resize of the panel'),
+  ('the-room-for-one-more-is-always-yes', 'panel', 'panes/usePaneDeck.ts', 'fits: (count + 1) * PANE_MIN_PX <= length - count * SASH_PX,', 'fits: true,', r'Panes\.test\.tsx.*room for one more'),
+  ('the-split-length-forgets-the-new-sash', 'panel', 'panes/usePaneDeck.ts', 'extentOf(deck.current, axis, count + 1))', 'extentOf(deck.current, axis, count))', r'Panes\.test\.tsx.*room for one more'),
+  ('a-pane-of-the-group-is-not-shown', 'core', 'selectors.ts', "own(state.panes, shown.tool)?.panes.some((pane) => pane.session === id) === true && sessionVisible(state, session)", "false", r'panes\.test\.ts.*which bodies are on screen'),
+]
+
+# The controls whose fault the named tests alone catch: with those tests skipped the copy passes. Every other control stays red with them skipped (another test catches it as well).
+SOLE = {
+  'split-asks-the-host-before-the-room', 'split-button-enabled-with-no-directory', 'split-button-enabled-with-no-room', 'sash-minimum-lost', 'sash-double-click-does-nothing', 'sash-escape-keeps-the-drag',
+  'sash-keys-ignore-the-axis', 'sash-measured-at-the-press-only', 'sash-orientation-always-vertical', 'the-resize-of-the-deck-is-not-fitted',
+  'the-room-for-one-more-is-always-yes', 'the-split-length-forgets-the-new-sash', 'the-active-pane-is-not-marked', 'a-sash-keeps-the-place-it-was-made-in', 'a-split-ignores-the-pane-it-was-pressed-in', 'a-drag-survives-a-close-before-its-sash', 'a-drag-keeps-the-length-it-began-in',
+}
+
+TITLES = {}  # 'file > full name' -> the test's own title: vitest matches a name pattern against the title and its describes joined in a way a full name is not, so a skip uses the title alone
+
+def tests(skip=None):
+    """Runs the tests of the copy; returns (exit code, set of 'file > title' that failed)."""
+    report = os.path.join(out, 'report.json')
+    if os.path.exists(report):
+        os.remove(report)
+    cmd = ['./node_modules/.bin/vitest', 'run', *FILES, '--reporter=json', f'--outputFile={report}']
+    if skip:
+        escaped = [re.sub(r'[.*+?^${}()|\[\]\\/]', lambda m: '\\' + m.group(0), s) for s in skip]
+        cmd += ['--testNamePattern=^(?!.*(?:' + '|'.join(escaped) + ')).*$']
+    code = subprocess.run(cmd, cwd=root, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
+    failed = set()
+    try:
+        data = json.load(open(report))
+        for file in data['testResults']:
+            name = os.path.basename(file['name'])
+            for t in file['assertionResults']:
+                if t['status'] == 'failed':
+                    failed.add(f"{name} > {t['fullName']}")
+                    TITLES[f"{name} > {t['fullName']}"] = t['title']
+            if file['status'] == 'failed' and not any(t['status'] == 'failed' for t in file['assertionResults']):
+                failed.add(f'{name} > (the file did not run)')
+    except Exception as error:  # noqa: BLE001
+        failed.add(f'(no report: {error})')
+    return code, failed
+
+ORIGINAL = {}  # path -> its text before a fault was put in
+
+def restore():
+    for path, text in ORIGINAL.items():
+        open(path, 'w').write(text)
+    ORIGINAL.clear()
+
+def plant(path, old, new):
+    """Puts the fault in; False when the text it replaces is not there exactly once."""
+    text = open(path).read()
+    if text.count(old) != 1:
+        return False
+    ORIGINAL[path] = text
+    open(path, 'w').write(text.replace(old, new))
+    return True
+
+atexit.register(restore)
+for signum in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+    signal.signal(signum, lambda *_: sys.exit(130))
+
+code, failed = tests()
+print(f'BASELINE the untouched files: exit {code}, {len(failed)} failed')
+if code != 0:
+    print('  baseline is not green: ' + '; '.join(sorted(failed))[:600])
+    sys.exit(2)
+
+bad = 0
+for name, where, file, old, new, expect in CONTROLS:
+    path = os.path.join(root, PANEL if where == 'panel' else CORE, file)
+    if not plant(path, old, new):
+        print(f'CONTROL {name}: FAULT NOT APPLIED ({file}: the text does not occur exactly once)')
+        bad += 1
+        continue
+    code, failed = tests()
+    named = sorted(t for t in failed if re.search(expect, t))
+    if code == 0 or not failed:
+        restore()
+        print(f'CONTROL {name}: UNDETECTED (the tests passed)')
+        bad += 1
+        continue
+    status = 'RED' if named else 'RED, BUT NOT BY THE TEST NAMED FOR IT'
+    if not named:
+        bad += 1
+    print(f'CONTROL {name}: {status}: {len(failed)} test(s) fail, {len(named)} of them named for it')
+    for t in (named or sorted(failed))[:3]:
+        print(f'    {t}')
+    if named:
+        titles = [TITLES[t] for t in named]
+        code2, rest = tests(skip=titles)
+        alone = code2 == 0 and not rest
+        print(f'    with the named tests skipped: exit {code2}, {len(rest)} other test(s) still fail' + (f' (e.g. {sorted(rest)[0]})' if rest else ' (the fault goes undetected: those tests alone guard it)'))
+        if alone != (name in SOLE):
+            print(f'    MISMATCH: expected {"the named tests alone to guard it" if name in SOLE else "another test to catch it as well"}')
+            bad += 1
+    restore()
+
+print('ALL CONTROLS CAUGHT BY THEIR TEST' if bad == 0 else f'{bad} CONTROL(S) NOT CAUGHT')
+sys.exit(1 if bad else 0)
+PY
+code=$?
+rm -rf "$OUT"
+exit $code

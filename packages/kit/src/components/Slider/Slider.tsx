@@ -19,6 +19,8 @@ export type SliderProps = {
   readonly step?: number | undefined;
   /** Unit for the visible and accessible readout, such as "%", "px" or "×". */
   readonly unit?: string | undefined;
+  /** Labels for a discrete scale, one per step from min to max. Each appears under its stop and replaces its numeric readout. */
+  readonly stopLabels?: readonly string[] | undefined;
   /** Accessible name when not wrapped in a Field. */
   readonly label?: string | undefined;
   readonly invalid?: boolean | undefined;
@@ -43,7 +45,7 @@ type Gesture = {
 type GestureEnd = 'commit' | 'cancel' | 'suppress';
 
 /** A native horizontal range with a live numeric readout. No focus, document listeners or persistence work while idle. */
-export function Slider({ value, onValueChange, onCommit, min = 0, max = 100, step = 1, unit, label, invalid, readOnly, disabledReason, ...rest }: SliderProps) {
+export function Slider({ value, onValueChange, onCommit, min = 0, max = 100, step = 1, unit, stopLabels, label, invalid, readOnly, disabledReason, ...rest }: SliderProps) {
   const control = useFieldControl({ label, invalid, readOnly, disabledReason });
   const accepted = Math.max(min, Math.min(max, value));
   const [draft, setDraft] = useState<number | null>(null);
@@ -149,9 +151,10 @@ export function Slider({ value, onValueChange, onCommit, min = 0, max = 100, ste
 
   const shown = control.locked ? accepted : draft ?? accepted;
   const position = max > min ? 100 * (shown - min) / (max - min) : 0;
-  const text = unit ? `${shown}${/^\p{L}/u.test(unit) ? ' ' : ''}${unit}` : String(shown);
+  const stopLabel = stopLabels?.[Math.round((shown - min) / step)];
+  const text = stopLabel ?? (unit ? `${shown}${/^\p{L}/u.test(unit) ? ' ' : ''}${unit}` : String(shown));
   return (
-    <span {...dataAttributes(rest)} className={styles.root} data-ov-part="slider" data-ov-disabled={control.reason === undefined ? undefined : 'true'}>
+    <span {...dataAttributes(rest)} className={styles.root} data-ov-part="slider" data-ov-marked={stopLabels ? 'true' : undefined} data-ov-disabled={control.reason === undefined ? undefined : 'true'}>
       <span className={styles.rail} style={{ '--_position': `${position}%` }}>
         <input
           id={control.id}
@@ -167,7 +170,7 @@ export function Slider({ value, onValueChange, onCommit, min = 0, max = 100, ste
           aria-invalid={control.invalid || undefined}
           aria-disabled={control.reason === undefined ? undefined : true}
           aria-readonly={control.readOnly || undefined}
-          aria-valuetext={unit ? text : undefined}
+          aria-valuetext={stopLabel ?? (unit ? text : undefined)}
           onPointerDown={event => {
             if (event.button !== 0) {
               return;
@@ -215,6 +218,11 @@ export function Slider({ value, onValueChange, onCommit, min = 0, max = 100, ste
         />
       </span>
       <span className={styles.value} aria-hidden="true">{text}</span>
+      {stopLabels ? (
+        <span className={styles.stops} data-ov-part="stops" aria-hidden="true">
+          {stopLabels.map((stop, index) => <span key={min + index * step}>{stop}</span>)}
+        </span>
+      ) : null}
       {control.reasonId === undefined ? null : <span id={control.reasonId} hidden>{control.reason}</span>}
     </span>
   );

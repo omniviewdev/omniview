@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fakeHost, fakeWindows } from './model/testing';
 import { mount, settle, teardown } from './testing';
@@ -15,6 +15,173 @@ afterEach(() => {
 const range = (name: string) => screen.getByRole<HTMLInputElement>('slider', { name });
 const drag = { pointerId: 4, isPrimary: true, pointerType: 'mouse', button: 0 };
 const move = (input: HTMLInputElement, value: number) => fireEvent.input(input, { target: { value: String(value) } });
+
+describe('Colors', () => {
+  it('shows a preview from each built-in palette and checks only the saved ID', async () => {
+    const m = await mount({ values: { 'appearance.theme': 'solarized-light' } });
+    const group = screen.getByRole('radiogroup', { name: 'Theme' });
+    expect(group).toHaveAccessibleDescription(/The color theme for the application UI/);
+    const radios = within(group).getAllByRole<HTMLInputElement>('radio');
+    expect(radios.map(radio => radio.value)).toEqual([
+      'void', 'dark', 'light', 'obsidian', 'carbon', 'solarized-dark', 'solarized-light', 'high-contrast-dark', 'high-contrast-light',
+    ]);
+    for (const radio of radios) {
+      expect(radio.closest('label')?.querySelector('[data-ov-theme]')).toHaveAttribute('data-ov-theme', radio.value);
+    }
+
+    const saved = within(group).getByRole('radio', { name: 'Solarized Light' });
+    expect(saved).toHaveAccessibleDescription('Light');
+    expect(within(group).getAllByRole('radio', { checked: true })).toEqual([saved]);
+    expect(radios.filter(radio => radio.tabIndex === 0)).toEqual([saved]);
+    expect(m.host.calls.commit).toEqual([]);
+  });
+
+  it('writes the chosen ID, supports keyboard selection, and returns focus to the host default on reset', async () => {
+    const m = await mount();
+    const group = within(screen.getByRole('radiogroup', { name: 'Theme' }));
+    await m.user.click(group.getByRole('radio', { name: 'Carbon' }));
+    await m.user.keyboard('{End}');
+    await settle(m.clock);
+    const last = group.getByRole('radio', { name: 'High Contrast Light' });
+    expect(last).toBeChecked();
+    expect(last).toHaveFocus();
+    await m.user.click(last);
+    await m.user.click(screen.getByRole('button', { name: 'Reset Theme to default' }));
+    await settle(m.clock);
+    const first = group.getByRole('radio', { name: 'Void' });
+    expect(first).toBeChecked();
+    expect(first).toHaveFocus();
+    expect(screen.queryByRole('button', { name: 'Reset Theme to default' })).toBeNull();
+    expect(m.host.calls.validate).toEqual([]);
+    expect(m.host.calls.commit).toEqual([{ 'appearance.theme': 'carbon' }, { 'appearance.theme': 'high-contrast-light' }, { 'appearance.theme': 'void' }]);
+  });
+
+  it('keeps an unavailable saved theme visible until the host changes it or the user replaces it', async () => {
+    const m = await mount({ values: { 'appearance.theme': 'extension/example' } });
+    const group = within(screen.getByRole('radiogroup', { name: 'Theme' }));
+    const unavailable = group.getByRole('radio', { name: 'Unavailable: extension/example' });
+    expect(unavailable).toBeChecked();
+    expect(unavailable).toBeDisabled();
+    expect(group.getByRole('radio', { name: 'Void' })).not.toBeChecked();
+    act(() => {
+      m.host.change('appearance.theme', 'light');
+    });
+    await settle(m.clock);
+    expect(group.getByRole('radio', { name: 'Light' })).toBeChecked();
+    expect(group.queryByRole('radio', { name: /Unavailable/ })).toBeNull();
+    expect(m.host.calls.commit).toEqual([]);
+  });
+
+  it('restores the applied theme after a refused save and describes the error on the group', async () => {
+    const m = await mount({ values: { 'appearance.theme': 'obsidian' } });
+    m.host.next.commit = () => {
+      throw new Error('disk unavailable');
+    };
+
+    const group = screen.getByRole('radiogroup', { name: 'Theme' });
+    await m.user.click(within(group).getByRole('radio', { name: 'Dark' }));
+    await settle(m.clock);
+    expect(within(group).getByRole('radio', { name: 'Obsidian' })).toBeChecked();
+    expect(group).toHaveAttribute('aria-invalid', 'true');
+    expect(group).toHaveAccessibleDescription(/error/i);
+    await m.user.click(within(group).getByRole('radio', { name: 'Solarized Dark' }));
+    await settle(m.clock);
+    expect(group).not.toHaveAttribute('aria-invalid');
+    expect(m.host.values.get('appearance.theme')).toBe('solarized-dark');
+  });
+
+  it('keeps the saved theme when its reset is refused, and a later policy lock prevents any choice', async () => {
+    const m = await mount({ values: { 'appearance.theme': 'light' } });
+    m.host.next.commit = () => {
+      throw new Error('disk unavailable');
+    };
+
+    await m.user.click(screen.getByRole('button', { name: 'Reset Theme to default' }));
+    await settle(m.clock);
+    const group = screen.getByRole('radiogroup', { name: 'Theme' });
+    expect(within(group).getByRole('radio', { name: 'Light' })).toBeChecked();
+    expect(group).toHaveAttribute('aria-invalid', 'true');
+    const ready = m.session.getState();
+    if (ready.phase !== 'ready') {
+      throw new Error('Settings not ready');
+    }
+
+    act(() => {
+      ready.form.setFieldLock('appearance.theme', { source: 'managed', readonly: false, reason: 'Managed by policy.' });
+    });
+    expect(group).toHaveAttribute('aria-disabled', 'true');
+    expect(group).toHaveAccessibleDescription(/Managed by policy/);
+    await m.user.click(within(group).getByRole('radio', { name: 'Void' }));
+    expect(m.host.calls.commit).toEqual([{ 'appearance.theme': 'void' }]);
+  });
+});
+
+describe('Layout and text', () => {
+  it('uses the host options and labels for both segmented choices and sends just the changed value', async () => {
+    const m = await mount();
+    const density = within(screen.getByRole('radiogroup', { name: 'UI Density' }));
+    const motion = within(screen.getByRole('radiogroup', { name: 'Motion' }));
+    expect(density.getByRole('radio', { name: 'Comfortable' })).toBeChecked();
+    expect(motion.getByRole('radio', { name: 'Follow System' })).toBeChecked();
+    await m.user.click(density.getByRole('radio', { name: 'Compact' }));
+    await m.user.click(motion.getByRole('radio', { name: 'Normal' }));
+    await m.user.keyboard('{End}');
+    await settle(m.clock);
+    expect(motion.getByRole('radio', { name: 'Reduced' })).toBeChecked();
+    await m.user.click(screen.getByRole('button', { name: 'Reset Motion to default' }));
+    await settle(m.clock);
+    expect(motion.getByRole('radio', { name: 'Follow System' })).toHaveFocus();
+    expect(m.host.calls.commit).toEqual([
+      { 'appearance.density': 'compact' }, { 'appearance.motion': 'normal' }, { 'appearance.motion': 'reduced' }, { 'appearance.motion': 'system' },
+    ]);
+  });
+
+  it('shows all five percentage stops, submits the selected host string on release, and resets independently', async () => {
+    const m = await mount({ values: { 'appearance.textSize': '90' } });
+    const input = range('UI Text Size');
+    expect([input.min, input.max, input.step, input.valueAsNumber]).toEqual(['0', '4', '1', 1]);
+    expect(input).toHaveAttribute('aria-valuetext', '90%');
+    expect(input).toHaveAccessibleDescription(/Terminal and code editor fonts stay unchanged/);
+    expect([...input.closest('[data-ov-part=\"slider\"]')!.querySelectorAll('[data-ov-part=\"stops\"] > span')].map(mark => mark.textContent)).toEqual(['80%', '90%', '100%', '110%', '125%']);
+    fireEvent.pointerDown(input, drag);
+    move(input, 0);
+    move(input, 3);
+    move(input, 4);
+    expect(input).toHaveAttribute('aria-valuetext', '125%');
+    expect(m.host.calls.commit).toEqual([]);
+    fireEvent.pointerUp(input, drag);
+    await settle(m.clock);
+    expect(m.host.values.get('appearance.textSize')).toBe('125');
+    await m.user.click(screen.getByRole('button', { name: 'Reset UI Text Size to default' }));
+    await settle(m.clock);
+    expect(input).toHaveFocus();
+    expect(input).toHaveAttribute('aria-valuetext', '100%');
+    expect(m.host.calls.commit).toEqual([{ 'appearance.textSize': '125' }, { 'appearance.textSize': '100' }]);
+  });
+
+  it('does not change the saved size on a rejected adjustment or after a cancelled drag', async () => {
+    const m = await mount();
+    const input = range('UI Text Size');
+    m.host.next.commit = () => {
+      throw new Error('disk unavailable');
+    };
+
+    move(input, 4);
+    await settle(m.clock);
+    expect(input).toHaveAttribute('aria-valuetext', '100%');
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+    fireEvent.pointerDown(input, drag);
+    move(input, 0);
+    act(() => {
+      m.host.change('appearance.textSize', '110');
+    });
+    await settle(m.clock);
+    fireEvent.keyDown(input, { key: 'Escape' });
+    fireEvent.pointerUp(input, drag);
+    expect(input).toHaveAttribute('aria-valuetext', '110%');
+    expect(m.host.calls.commit).toEqual([{ 'appearance.textSize': '125' }]);
+  });
+});
 
 describe('Window material', () => {
   it('keeps unavailable saved choices visible without relabelling the requested material', async () => {
@@ -34,8 +201,9 @@ describe('Window material', () => {
     const m = await mount();
     const material = screen.getByRole('combobox', { name: 'Material' });
     const style = screen.getByRole('combobox', { name: 'Glass style' });
-    const percentages = () => screen.getAllByRole<HTMLInputElement>('slider').map((input) => input.valueAsNumber);
-    expect(screen.getAllByRole('slider').every((input) => input.getAttribute('aria-disabled') === 'true')).toBe(true);
+    const surfaces = within(screen.getByRole('region', { name: 'Surface opacity' }));
+    const percentages = () => surfaces.getAllByRole<HTMLInputElement>('slider').map((input) => input.valueAsNumber);
+    expect(surfaces.getAllByRole('slider').every((input) => input.getAttribute('aria-disabled') === 'true')).toBe(true);
     expect(percentages()).toEqual([62, 94, 90, 96]);
     await m.user.selectOptions(material, 'glass');
     await settle(m.clock);
@@ -138,7 +306,7 @@ describe('Window material', () => {
     expect(input).not.toHaveAttribute('aria-invalid');
   });
 
-  it('resets the six material preferences in one write, including inactive sliders, without resetting Interface', async () => {
+  it('resets the six material preferences in one write, including inactive sliders, without resetting layout', async () => {
     const m = await mount({ values: { 'appearance.contentOpacity': 48, 'appearance.glassStyle': 'clear', 'appearance.density': 'compact' } });
     const reset = screen.getByRole('button', { name: 'Reset material settings' });
     expect(range('Content')).toHaveAttribute('aria-disabled', 'true');
@@ -149,7 +317,7 @@ describe('Window material', () => {
       'appearance.contentOpacity': 94, 'appearance.menuOpacity': 90, 'appearance.sheetOpacity': 96,
     }]);
     expect(range('Content').valueAsNumber).toBe(94);
-    expect(screen.getByRole('combobox', { name: 'UI Density' })).toHaveValue('compact');
+    expect(screen.getByRole('radio', { name: 'Compact' })).toBeChecked();
     expect(reset).toHaveAttribute('aria-disabled', 'true');
   });
 });

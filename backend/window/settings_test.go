@@ -61,8 +61,6 @@ func TestSettingsConcurrentOpenCreatesOneNativeWindow(t *testing.T) {
 	}
 	require.Len(t, h.host.specs, 1)
 	assert.Equal(t, KindSettings, h.host.specs[0].Kind)
-	assert.Equal(t, 1060, h.host.specs[0].Width)
-	assert.Equal(t, 640, h.host.specs[0].Height)
 	assert.Equal(t, uint64(1), h.service.GetSettingsState().RequestID)
 	assert.Equal(t, requests, h.native(SettingsWindowName).activations)
 }
@@ -209,6 +207,20 @@ func TestSettingsGeometryClampsToWorkArea(t *testing.T) {
 	assert.Equal(t, 900, h.host.specs[0].Width)
 	assert.Equal(t, 550, h.host.specs[0].Height)
 	assert.Equal(t, &screenPosition{X: 100, Y: 50}, h.host.specs[0].Position)
+}
+
+func assertSettingsPreferredSize(t *testing.T, width, height int) {
+	t.Helper()
+	h := newTestHarness(t, "", time.Second)
+	area := Bounds{X: 100, Y: 50, Width: 1600, Height: 1000}
+	h.host.workArea = &area
+	_, err := h.service.OpenSettings("")
+	require.NoError(t, err)
+	require.Len(t, h.host.specs, 1)
+	spec := h.host.specs[0]
+	assert.Equal(t, width, spec.Width)
+	assert.Equal(t, height, spec.Height)
+	assert.Equal(t, &screenPosition{X: area.X + (area.Width-width)/2, Y: area.Y + (area.Height-height)/2}, spec.Position)
 }
 
 func TestSettingsIgnoresDelayedVisibilityEventsAfterReopen(t *testing.T) {

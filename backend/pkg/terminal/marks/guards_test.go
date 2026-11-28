@@ -111,12 +111,21 @@ func TestAMarkOfADirectoryPrintsNoDirectory(t *testing.T) {
 	}
 }
 
-func TestATrustedDirectoryHasItsEscapedControlBytesStripped(t *testing.T) {
+func TestATrustedDirectoryWithAnEscapedControlByteIsUnknownAndNeverAStrippedPath(t *testing.T) {
 	s := newTestScanner(t, newClock(), 0)
-	ms := feedAll(s, osc(`633;P;Cwd=/tmp/a\x1bb\x07c\x00d;`+testNonce))
-	sameKinds(t, ms, KindCwd)
-	if ms[0].Cwd != "/tmp/abcd" {
-		t.Fatalf("the directory is %q, want /tmp/abcd", ms[0].Cwd)
+	sameKinds(t, feedAll(s, osc(`633;P;Cwd=/tmp/known;`+testNonce)), KindCwd)
+	for _, body := range []string{`633;P;Cwd=/tmp/a\x1bb;`, `633;P;Cwd=/tmp/a\x07c;`, `633;P;Cwd=/tmp/a\x00d;`, `633;P;Cwd=/tmp/a\x7fd;`} {
+		if ms := feedAll(s, osc(body+testNonce)); len(ms) != 0 {
+			t.Fatalf("%q gives marks %v, want none", body, ms)
+		}
+		if dir, trust := s.Log().Cwd(); dir != "" || trust != TrustUnverified {
+			t.Fatalf("%q leaves the tracked directory %q (%v), want unknown", body, dir, trust)
+		}
+		// A later nonce'd directory that is sound sets it again: clearing hides no later proof.
+		sameKinds(t, feedAll(s, osc(`633;P;Cwd=/tmp/known;`+testNonce)), KindCwd)
+		if dir, trust := s.Log().Cwd(); dir != "/tmp/known" || trust != TrustNonce {
+			t.Fatalf("the next sound directory is %q (%v)", dir, trust)
+		}
 	}
 }
 
@@ -200,5 +209,27 @@ func TestAVerifiedLineBeforeAnyPromptBelongsToTheNextCommand(t *testing.T) {
 	feedAll(s, osc("133;A")+osc("133;C")+osc("633;E;rm;"+testNonce)+osc("133;D;0")+osc("133;A")+osc("133;C"))
 	if recs := s.Log().Records(); len(recs) != 2 || recs[0].CommandLine != "" || recs[1].CommandLine != "" {
 		t.Fatalf("a line in a running command was kept: %v", recs)
+	}
+}
+
+// Any program can print an OSC 7 whose path holds a control byte. It must not take away the directory the shell proved with the
+// nonce: an OSC 7 touches only the directory it could have set.
+func TestAForgedOSC7WithAControlByteLeavesTheDirectoryTheShellProved(t *testing.T) {
+	s := newTestScanner(t, newClock(), 0)
+	sameKinds(t, feedAll(s, osc(`633;P;Cwd=/tmp/proved;`+testNonce)), KindCwd)
+	for _, body := range []string{"7;file://h/a%1bb", "7;file://h/a%07b", "7;file://h/a%00b"} {
+		if ms := feedAll(s, osc(body)); len(ms) != 0 {
+			t.Fatalf("%q gives marks %v", body, ms)
+		}
+		if dir, trust := s.Log().Cwd(); dir != "/tmp/proved" || trust != TrustNonce {
+			t.Fatalf("%q takes the proved directory away: %q (%v)", body, dir, trust)
+		}
+	}
+	// And it does clear what OSC 7 itself said: no stale loose path.
+	s = newTestScanner(t, newClock(), 0)
+	sameKinds(t, feedAll(s, osc("7;file://h/tmp/loose")), KindCwd)
+	feedAll(s, osc("7;file://h/a%1bb"))
+	if dir, _ := s.Log().Cwd(); dir != "" {
+		t.Fatalf("the loose directory is %q after an OSC 7 that could not be read, want unknown", dir)
 	}
 }

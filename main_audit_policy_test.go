@@ -234,6 +234,7 @@ func TestDangerousMethodsStayDenied(t *testing.T) {
 		plugin + "/exec.ServiceWrapper.ChannelTerminalBusy",
 		plugin + "/exec.ServiceWrapper.ChannelTerminalCwd",
 		plugin + "/exec.ServiceWrapper.ChannelTerminalCommands",
+		plugin + "/exec.ServiceWrapper.ChannelTerminalResolveLink",
 		plugin + "/exec.ServiceWrapper.ListChannelTerminals",
 		plugin + "/exec.ServiceWrapper.DismissChannelTerminal",
 		// Arbitrary file write and native dialogs on the host.

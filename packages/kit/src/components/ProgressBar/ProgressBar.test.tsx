@@ -136,7 +136,7 @@ const css = await readFile(path.join(import.meta.dirname, 'ProgressBar.module.cs
 const stripe = '.root[data-ov-motion=\'stripe\']:not([data-ov-paused]) > .fill';
 const sweep = '.root[data-ov-motion=\'sweep\']:not([data-ov-paused]) > .fill';
 const rule = (selector: string) => declarationsOf(css, selector);
-const animatedRule = (selector: string) => declarationsOf(css, selector, 'prefers-reduced-motion: no-preference');
+const animatedRule = (selector: string) => rule(`:where(:root:not([data-ov-motion='reduced'])) ${selector}`);
 
 describe('the ProgressBar stylesheet', () => {
   it('uses a 4 px, rounded track and paints measured or paused progress with tokens', () => {
@@ -169,7 +169,7 @@ describe('the ProgressBar stylesheet', () => {
   });
 
   it('mirrors the off-track sweep endpoints in RTL', () => {
-    expect(animatedRule('.root[data-ov-motion=\'sweep\']:not([data-ov-paused]):dir(rtl) > .fill')).toMatchObject({
+    expect(rule('.root[data-ov-motion=\'sweep\']:dir(rtl) > .fill')).toMatchObject({
       '--_sweep-from': '100%',
       '--_sweep-to': '-250%',
     });
@@ -179,13 +179,12 @@ describe('the ProgressBar stylesheet', () => {
   it('draws static track-colour bands when paused or under reduced motion', () => {
     expect(rule('.root[data-ov-indeterminate=\'true\'] > .fill')).toMatchObject({
       'inline-size': '100%',
-      'background-image': 'repeating-linear-gradient(90deg, var(--_fill) 0 8px, var(--ov-progress-track) 8px 16px)',
+      '--_bands': 'repeating-linear-gradient(90deg, var(--_fill) 0 8px, var(--ov-progress-track) 8px 16px)',
+      'background-image': 'var(--_bands)',
     });
-    const motionRules = cssRules(css).filter((entry) => entry.declarations.animation !== undefined);
-    expect(motionRules).toHaveLength(2);
-    for (const entry of motionRules) {
-      expect(entry.selector).toContain(':not([data-ov-paused])');
-      expect(entry.context).toContain('@media (prefers-reduced-motion: no-preference)');
-    }
+    const reduced = declarationsOf(css, ':where(:root:not([data-ov-motion=\'normal\'])) .root[data-ov-indeterminate=\'true\']:not([data-ov-paused]) > .fill', 'prefers-reduced-motion: reduce');
+    expect(reduced).toMatchObject({ 'inline-size': '100%', 'background-image': 'var(--_bands)', 'background-size': 'auto', animation: 'none' });
+    const motionRules = cssRules(css).filter((entry) => entry.declarations.animation !== undefined && entry.declarations.animation !== 'none');
+    expect(motionRules.map((entry) => entry.selector)).toEqual([stripe, sweep].map((selector) => `:where(:root:not([data-ov-motion='reduced'])) ${selector}`));
   });
 });
