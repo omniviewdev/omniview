@@ -10,6 +10,7 @@
 package opener
 
 import (
+	"encoding/binary"
 	"errors"
 	"net"
 	"net/netip"
@@ -25,6 +26,19 @@ import (
 
 // MaxURL is the longest address that is opened, in bytes.
 const MaxURL = 2083
+
+const (
+	defaultHTTPPort  = 80
+	defaultHTTPSPort = 443
+	maxPort          = 65535
+	maxIPv4Labels    = 4
+	maxOctet         = 255
+	byteBits         = 8
+	ipv4Bits         = 32
+	decimalBase      = 10
+	hexBase          = 16
+	octalBase        = 8
+)
 
 // Reason says why an address was refused.
 type Reason string
@@ -97,8 +111,40 @@ func (o *Opener) OpenExternalURL(raw string) (Result, error) {
 	return Result{Opened: true, Reason: ""}, nil
 }
 
-// check is what the page had: the platform validator and nothing else.
+// check says why an address is refused, or gives the address to open.
 func (o *Opener) check(raw string) (string, Reason) {
+	if len(raw) > MaxURL {
+		return "", ReasonTooLong
+	}
+	lower := strings.ToLower(raw)
+	if !strings.HasPrefix(lower, "http://") && !strings.HasPrefix(lower, "https://") {
+		return "", ReasonScheme
+	}
+	if !utf8.ValidString(raw) || strings.ContainsAny(raw, "\\ ") || hasControl(raw) {
+		return "", ReasonMalformed
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Host == "" || parsed.Hostname() == "" {
+		return "", ReasonMalformed
+	}
+	if parsed.User != nil || strings.Contains(authority(raw), "@") {
+		return "", ReasonUserinfo
+	}
+	port, ok := portOf(parsed)
+	if !ok {
+		return "", ReasonMalformed
+	}
+	host, ok := normalHost(parsed.Hostname())
+	if !ok {
+		return "", ReasonMalformed
+	}
+	local, ip, ok := classify(host)
+	if !ok {
+		return "", ReasonMalformed
+	}
+	if o.isOwn(local, ip, port) {
+		return "", ReasonOwnServer
+	}
 	sanitized, err := application.ValidateAndSanitizeURL(raw)
 	if err != nil {
 		return "", ReasonMalformed
@@ -130,12 +176,12 @@ func portOf(u *url.URL) (int, bool) {
 	text := u.Port()
 	if text == "" {
 		if strings.EqualFold(u.Scheme, "https") {
-			return 443, true
+			return defaultHTTPSPort, true
 		}
-		return 80, true
+		return defaultHTTPPort, true
 	}
 	port, err := strconv.Atoi(text)
-	if err != nil || port < 0 || port > 65535 {
+	if err != nil || port < 0 || port > maxPort {
 		return 0, false
 	}
 	return port, true
@@ -169,7 +215,7 @@ func isASCII(s string) bool {
 
 // classify says whether a host is this machine (`localhost`, `*.localhost`, a loopback or unspecified address in any spelling of its numbers) and which address it is
 // when it is one. It is not ok when the host cannot be read: a name whose last label is a number that is not an address is the browser's error too.
-func classify(host string) (local bool, ip netip.Addr, ok bool) {
+func classify(host string) (bool, netip.Addr, bool) {
 	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
 		return true, netip.Addr{}, true
 	}
@@ -225,7 +271,7 @@ func looksNumeric(label string) bool {
 
 // parseIPv4 reads 1 to 4 labels as the URL standard does: decimal, `0x` hex or a leading `0` octal, the last label filling the bytes that are left.
 func parseIPv4(labels []string) (netip.Addr, bool) {
-	if len(labels) > 4 {
+	if len(labels) > maxIPv4Labels {
 		return netip.Addr{}, false
 	}
 	var value uint64
@@ -235,32 +281,34 @@ func parseIPv4(labels []string) (netip.Addr, bool) {
 			return netip.Addr{}, false
 		}
 		if i < len(labels)-1 {
-			if n > 255 {
+			if n > maxOctet {
 				return netip.Addr{}, false
 			}
-			value |= n << (8 * (3 - uint(i)))
+			value |= n << (byteBits * uint(maxIPv4Labels-1-i))
 			continue
 		}
-		if n >= 1<<(8*(5-uint(len(labels)))) {
+		if n >= 1<<(byteBits*uint(maxIPv4Labels+1-len(labels))) {
 			return netip.Addr{}, false
 		}
 		value |= n
 	}
-	return netip.AddrFrom4([4]byte{byte(value >> 24), byte(value >> 16), byte(value >> 8), byte(value)}), true
+	var octets [maxIPv4Labels]byte
+	binary.BigEndian.PutUint32(octets[:], uint32(value))
+	return netip.AddrFrom4(octets), true
 }
 
 func number(label string) (uint64, bool) {
-	base, digits := 10, label
+	base, digits := decimalBase, label
 	switch {
 	case strings.HasPrefix(label, "0x"):
-		base, digits = 16, label[2:]
+		base, digits = hexBase, label[2:]
 		if digits == "" {
 			return 0, true
 		}
 	case len(label) > 1 && label[0] == '0':
-		base, digits = 8, label[1:]
+		base, digits = octalBase, label[1:]
 	}
-	n, err := strconv.ParseUint(digits, base, 32)
+	n, err := strconv.ParseUint(digits, base, ipv4Bits)
 	return n, err == nil
 }
 
@@ -271,14 +319,14 @@ func (o *Opener) isOwn(local bool, ip netip.Addr, port int) bool {
 		if err != nil {
 			continue
 		}
-		ownPort, err := strconv.Atoi(text)
-		if err != nil || ownPort != port {
+		ownPort, convErr := strconv.Atoi(text)
+		if convErr != nil || ownPort != port {
 			continue
 		}
 		if local {
 			return true
 		}
-		if addr, err := netip.ParseAddr(host); err == nil && ip.IsValid() && addr.Unmap() == ip {
+		if addr, parseErr := netip.ParseAddr(host); parseErr == nil && ip.IsValid() && addr.Unmap() == ip {
 			return true
 		}
 	}

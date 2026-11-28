@@ -374,6 +374,16 @@ func (r *Relay) restartListener() {
 	r.emit(EventStatus, status)
 }
 
+// ListenAddress is where the relay listens, or would listen when it is enabled, as host:port.
+func (r *Relay) ListenAddress() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.listener == nil {
+		return net.JoinHostPort(listenHost, strconv.Itoa(r.cfg.Port))
+	}
+	return r.listener.Addr().String()
+}
+
 func (r *Relay) endpointLocked() string {
 	if r.listener == nil {
 		return "http://" + net.JoinHostPort(listenHost, strconv.Itoa(r.cfg.Port)) + mcpPath

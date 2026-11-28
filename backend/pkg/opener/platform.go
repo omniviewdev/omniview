@@ -1,6 +1,7 @@
 package opener
 
 import (
+	"context"
 	"os/exec"
 	"runtime"
 )
@@ -10,11 +11,11 @@ import (
 func command(target string) *exec.Cmd {
 	switch runtime.GOOS {
 	case "darwin":
-		return exec.Command("open", target)
+		return exec.CommandContext(context.Background(), "open", target)
 	case "windows":
-		return exec.Command("rundll32", "url.dll,FileProtocolHandler", target)
+		return exec.CommandContext(context.Background(), "rundll32", "url.dll,FileProtocolHandler", target)
 	default:
-		return exec.Command("xdg-open", target)
+		return exec.CommandContext(context.Background(), "xdg-open", target)
 	}
 }
 

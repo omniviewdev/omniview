@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"sync"
 
+	"github.com/omniviewdev/omniview/backend/pkg/opener"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/instance"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -16,11 +17,12 @@ import (
 type AppService struct {
 	descriptorMu sync.RWMutex
 	descriptor   devcontract.InstanceDescriptor
+	opener       *opener.Opener
 }
 
 // NewAppService retains a safe detached snapshot of the selected instance.
 func NewAppService(descriptor devcontract.InstanceDescriptor) *AppService {
-	return &AppService{descriptor: instance.Snapshot(descriptor)}
+	return &AppService{descriptorMu: sync.RWMutex{}, descriptor: instance.Snapshot(descriptor), opener: opener.New()}
 }
 
 // GetInstanceInfo returns authoritative runtime identity without credentials.
@@ -77,6 +79,16 @@ type FileDialogOptions struct {
 type FileFilter struct {
 	DisplayName string `json:"displayName"` // Filter information EG: "Image Files (*.jpg, *.png)"
 	Pattern     string `json:"pattern"`     // semicolon separated list of extensions, EG: "*.jpg;*.png"
+}
+
+// setOwnServers says where the host's own servers listen (host:port each), asked when an address is checked: the opener refuses an address of any of them.
+func (a *AppService) setOwnServers(addresses func() []string) { a.opener.SetOwn(addresses) }
+
+// OpenExternalURL opens an address in the system's browser after the host's checks: http and https only, no user information, not one of the host's own
+// servers, at most 2,083 bytes (backend/pkg/opener). A refusal is the answer `{ opened: false, reason }` with the reason `scheme`, `userinfo`,
+// `own-server`, `malformed` or `too-long`; the call fails only when the system's browser could not be started. Nothing here is a shell command.
+func (a *AppService) OpenExternalURL(address string) (opener.Result, error) {
+	return a.opener.OpenExternalURL(address)
 }
 
 // OpenFileSelectionDialog opens a native file selection dialog using the v3 Dialog API.

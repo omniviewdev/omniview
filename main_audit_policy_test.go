@@ -240,6 +240,7 @@ func TestDangerousMethodsStayDenied(t *testing.T) {
 		// Arbitrary file write and native dialogs on the host.
 		"main.AppService.WriteFileContent",
 		"main.AppService.OpenFileSelectionDialog",
+		"main.AppService.OpenExternalURL",
 		"main.AppService.SaveFileDialog",
 		// Installing, linking and starting plugin executables.
 		plugin + ".ServiceWrapper.InstallPluginFromPath",
