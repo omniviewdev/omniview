@@ -24,3 +24,19 @@ func TestTheVitePortsOfTheInstancesAreListenAddresses(t *testing.T) {
 	manager.mu.Unlock()
 	assert.Equal(t, []string{"127.0.0.1:45173"}, manager.ListenAddresses())
 }
+
+// An instance that is being stopped is not in the instances any more, and its Vite server may still answer: its address is listed until the stop ends.
+func TestTheViteAddressOfAnInstanceThatIsBeingStoppedIsStillListed(t *testing.T) {
+	manager := newTestManager(t)
+	inst := NewDevServerInstance(context.Background(), logging.NewNop(), "stopping", t.TempDir(), 45174, BuildOpts{},
+		&mockPluginReloader{}, manager.pluginsRoot, func(string, DevServerState) {},
+		func(string, []LogEntry) {}, func(string, []BuildError) {})
+	manager.mu.Lock()
+	manager.stopping["stopping"] = inst
+	manager.mu.Unlock()
+	assert.Equal(t, []string{"127.0.0.1:45174"}, manager.ListenAddresses())
+	manager.mu.Lock()
+	delete(manager.stopping, "stopping")
+	manager.mu.Unlock()
+	assert.Empty(t, manager.ListenAddresses())
+}

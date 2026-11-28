@@ -101,18 +101,19 @@ func TestTheHostsOwnServerIsRefusedInEverySpellingAndOnlyOnItsPort(t *testing.T)
 		"http://a.b.localhost:34115/", "http://127.1:34115/", "http://127.0.1:34115/", "http://0x7f.1:34115/", "http://0x7f000001:34115/", "http://2130706433:34115/",
 		"http://0177.0.0.1:34115/", "http://0177.1:34115/", "http://127.0.0.1.:34115/", "http://127.255.255.254:34115/", "http://0.0.0.0:34115/", "http://0:34115/", "http://[::]:34115/",
 		"http://[::1]:34115/", "http://[0:0:0:0:0:0:0:1]:34115/", "http://[::ffff:127.0.0.1]:34115/", "http://[::ffff:7f00:1]:34115/", "http://[::127.0.0.1]:34115/",
-		"http://１２７.０.０.１:34115/", "http://%ef%bc%91%ef%bc%92%ef%bc%97.0.0.1:34115/", "http://127。0。0。1:34115/", "http://①②⑦.0.0.1:34115/",
+		"http://１２７.０.０.１:34115/", "http://%ef%bc%91%ef%bc%92%ef%bc%97.0.0.1:34115/", "http://127。0。0。1:34115/",
 		"http://127.0.0.1:40000/", "http://localhost:41000/", "https://[::1]:40000/",
 	} {
+		refusal(t, o, rec, raw, ReasonOwnServer)
+	}
+	// spellings a browser may read differently: refused either way, and the reason may be the host or the own server
+	for _, raw := range []string{"http://①②⑦.0.0.1:34115/"} {
 		before := len(rec.opened)
 		got, err := o.OpenExternalURL(raw)
 		require.NoError(t, err)
 		assert.False(t, got.Opened, raw)
 		assert.Contains(t, []Reason{ReasonOwnServer, ReasonMalformed}, got.Reason, raw)
 		assert.Len(t, rec.opened, before, raw)
-	}
-	for _, raw := range []string{"http://127.1:34115/", "http://0x7f.1:34115/", "http://2130706433:34115/", "http://[::ffff:127.0.0.1]:34115/", "http://localhost.:34115/", "http://[::]:34115/", "http://0.0.0.0:34115/", "http://app.localhost:34115/"} {
-		refusal(t, o, rec, raw, ReasonOwnServer)
 	}
 	// the controls: other servers of this machine are the user's own (the Ports tool opens a forward), and other hosts on the host's port are not the host
 	for _, raw := range []string{
@@ -121,6 +122,25 @@ func TestTheHostsOwnServerIsRefusedInEverySpellingAndOnlyOnItsPort(t *testing.T)
 	} {
 		opens(t, o, rec, raw)
 	}
+}
+
+func TestAnAddressThatExpandsPastTheCapWhenSanitizedIsRefused(t *testing.T) {
+	o, rec := newTest()
+	head := "https://a.example/"
+	refusal(t, o, rec, head+strings.Repeat("é", 1000), ReasonTooLong) // 2,000 bytes in, 6,000 bytes once escaped
+	opens(t, o, rec, head+strings.Repeat("é", 10))                    // the control: a short one with the same characters
+	for _, given := range rec.opened {
+		assert.LessOrEqual(t, len(given), MaxURL)
+	}
+}
+
+func TestALabelThatStartsWithZeroXIsANameUnlessItIsAHexadecimalNumber(t *testing.T) {
+	o, rec := newTest()
+	opens(t, o, rec, "https://0xgarden/")
+	opens(t, o, rec, "https://0xg.example/")
+	opens(t, o, rec, "https://0x-site.example/")
+	opens(t, o, rec, "https://1.2.3.0xzz/")                // a last label that is not a number makes the host a name
+	refusal(t, o, rec, "https://0x1g.1/", ReasonMalformed) // while a number in the first position that cannot be one, with a number last, is an error
 }
 
 func TestTheDefaultPortOfTheSchemeIsAPort(t *testing.T) {

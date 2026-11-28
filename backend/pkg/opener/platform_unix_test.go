@@ -16,7 +16,7 @@ import (
 func TestTheAddressIsOneArgumentOfTheProgramAndNoShellReadsIt(t *testing.T) {
 	dir := t.TempDir()
 	out := filepath.Join(dir, "args")
-	script := "#!/bin/sh\nprintf '%s\\n' \"$#\" \"$@\" > \"$0.tmp\" && mv \"$0.tmp\" " + out + "\n"
+	script := "#!/bin/sh\nprintf '%s\\n' \"$#\" \"$@\" > \"${0%/*}/args.tmp\" && mv \"${0%/*}/args.tmp\" \"${0%/*}/args\"\n"
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "xdg-open"), []byte(script), 0o755))
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 

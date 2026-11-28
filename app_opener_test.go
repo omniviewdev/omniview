@@ -30,6 +30,8 @@ func TestTheBoundOpenerRefusesTheHostsOwnServersAndTheOtherSchemes(t *testing.T)
 // The application server is where Wails binds it: WAILS_SERVER_HOST and WAILS_SERVER_PORT override the configured host and port (the e2e harness and the
 // docs run on 34215), and a port that is not one is ignored as Wails ignores it.
 func TestTheApplicationServerIsWhereWailsBindsIt(t *testing.T) {
+	t.Setenv("WAILS_SERVER_HOST", "") // what the environment holds is not the test's
+	t.Setenv("WAILS_SERVER_PORT", "")
 	assert.Equal(t, "localhost:34115", wailsServerAddress(), "the control: the configured address")
 	t.Setenv("WAILS_SERVER_PORT", "34215")
 	assert.Equal(t, "localhost:34215", wailsServerAddress())
@@ -42,11 +44,25 @@ func TestTheApplicationServerIsWhereWailsBindsIt(t *testing.T) {
 
 	t.Setenv("WAILS_SERVER_HOST", "")
 	t.Setenv("WAILS_SERVER_PORT", "34215")
-	service := NewAppService(devcontract.InstanceDescriptor{})
-	service.setOwnServers(func() []string { return hostServers() })
-	got, err := service.OpenExternalURL("http://127.0.0.1:34215/")
-	require.NoError(t, err)
-	assert.Equal(t, opener.Result{Opened: false, Reason: opener.ReasonOwnServer}, got)
+	if serverBuild {
+		service := NewAppService(devcontract.InstanceDescriptor{})
+		service.setOwnServers(func() []string { return hostServers() })
+		got, err := service.OpenExternalURL("http://127.0.0.1:34215/")
+		require.NoError(t, err)
+		assert.Equal(t, opener.Result{Opened: false, Reason: opener.ReasonOwnServer}, got)
+	}
+}
+
+// Wails listens on the application server's address in the server build only: in the native build a user's service on that port is not the host's.
+func TestTheApplicationServerIsAnOwnServerInTheServerBuildOnly(t *testing.T) {
+	t.Setenv("WAILS_SERVER_HOST", "")
+	t.Setenv("WAILS_SERVER_PORT", "")
+	if serverBuild {
+		assert.Contains(t, hostServers(), "localhost:34115")
+		return
+	}
+	assert.NotContains(t, hostServers(), "localhost:34115")
+	assert.NotContains(t, hostServers(), wailsServerAddress())
 }
 
 func TestEveryListenerThatRegisteredItselfIsAnOwnServer(t *testing.T) {

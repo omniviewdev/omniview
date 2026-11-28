@@ -44,6 +44,7 @@ type DevServerManager struct {
 	logger                    logging.Logger
 	mu                        sync.RWMutex
 	instances                 map[string]*DevServerInstance // pluginID -> instance
+	stopping                  map[string]*DevServerInstance // pluginID -> an instance that StopDevServer is stopping: not in instances, its servers may still answer
 	ports                     *PortAllocator
 	pluginRef                 PluginRef
 	pluginReloader            PluginReloader
@@ -74,6 +75,7 @@ func NewDevServerManager(
 		logger:           logger.Named("DevServerManager"),
 		mu:               sync.RWMutex{},
 		instances:        make(map[string]*DevServerInstance),
+		stopping:         make(map[string]*DevServerInstance),
 		ports:            NewPortAllocator(stateRoot),
 		pluginRef:        pluginRef,
 		pluginReloader:   pluginReloader,
