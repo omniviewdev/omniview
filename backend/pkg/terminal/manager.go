@@ -26,6 +26,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	"github.com/omniviewdev/omniview/backend/pkg/terminal/linkresolve"
 	"github.com/omniviewdev/omniview/backend/pkg/terminal/marks"
 	"github.com/omniviewdev/omniview/internal/instance"
 	"github.com/omniviewdev/omniview/internal/shellenv"
@@ -99,6 +100,8 @@ type Manager struct {
 	// anything else of the host has seen them, the bytes of every read of a pty master with the id of the session: what the kernel gave
 	// the host, which a test can hold the host's delivery to. It must not keep the slice it is given. It is nil in the host.
 	tee func(id string, data []byte)
+	// links resolves the candidate links of the channel terminals' output (links.go): one cache for the host, bounded.
+	links *linkresolve.Resolver
 	// offsets is the sink as an OffsetSink when it is one: a terminal with a page key is delivered through it.
 	offsets OffsetSink
 	// detachments is the sink as a DetachmentSink when it is one: it is told when a page lost its terminal.
@@ -146,7 +149,7 @@ func NewManager(ctx context.Context, log logging.Logger, sink Sink) *Manager {
 	m := &Manager{
 		base: shellenv.LaunchEnvironment, resolve: shellenv.Resolve, probe: shellenv.Probe, integrationOn: func() (bool, error) { return true, nil }, bashVersion: probeBashVersion,
 		ctx: ctx, log: log.Named("TerminalManager"), sink: sink, reported: reported, closing: atomic.Bool{}, launching: sync.WaitGroup{}, flowStall: FlowStall, closeWait: closeWait,
-		replayBytes: ReplayBytes, channel: defaultChannelLimits(), offsets: offsets, detachments: detachments,
+		replayBytes: ReplayBytes, channel: defaultChannelLimits(), links: linkresolve.New(linkresolve.Config{}), offsets: offsets, detachments: detachments,
 		mu: sync.RWMutex{}, sessions: make(map[string]*session), starting: make(map[string]struct{}), ended: nil, tombs: nil, tombTimer: nil, clock: wallClock{},
 	}
 	go m.forwardSignals()

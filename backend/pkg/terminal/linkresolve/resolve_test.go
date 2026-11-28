@@ -62,7 +62,9 @@ func TestTheRowDirectoryComesFirstAndTheRootsAfterIt(t *testing.T) {
 	row := tree(t, "both.go", "only-row.go")
 	root := tree(t, "both.go", "only-root.go")
 	r, _ := resolver(t, linkresolve.Config{})
-	in := func(text string) linkresolve.Input { return linkresolve.Input{Dir: row, Roots: []string{root}, Text: text} }
+	in := func(text string) linkresolve.Input {
+		return linkresolve.Input{Dir: row, Roots: []string{root}, Text: text}
+	}
 	assert.Equal(t, found(row, "both.go", 0, 0), r.Resolve(in("both.go")), "the row's directory first")
 	assert.Equal(t, found(root, "only-root.go", 0, 0), r.Resolve(in("only-root.go")), "then the roots")
 	assert.Equal(t, found(row, "only-row.go", 0, 0), r.Resolve(in("only-row.go")))
@@ -182,7 +184,6 @@ func TestAFileSystemThatHangsCostsTheBudgetAndNeverMore(t *testing.T) {
 	}
 	assert.LessOrEqual(t, runtime.NumGoroutine(), before+1, "stuck calls do not pile up goroutines")
 	close(gate)
-	seen.done.Wait()
 	assert.Eventually(t, func() bool { return r.InFlight() == 0 }, 10*time.Second, time.Millisecond)
 	assert.Equal(t, found(ws, "hang/x.go", 0, 0), r.Resolve(linkresolve.Input{Dir: ws, Text: "hang/x.go"}), "the control: released, it resolves")
 }
@@ -348,7 +349,11 @@ func TestAThousandResolvesLeaveNoGoroutineDescriptorOrCacheGrowth(t *testing.T) 
 	}
 	assert.Equal(t, 0, r.InFlight())
 	assert.LessOrEqual(t, r.CacheLen(), 16)
-	assert.Eventually(t, func() bool { return settle() <= goroutines }, 10*time.Second, time.Millisecond, "goroutines: %d before", goroutines)
+	deadline := time.Now().Add(3 * time.Second)
+	for settle() > goroutines && time.Now().Before(deadline) {
+		runtime.Gosched()
+	}
+	assert.LessOrEqual(t, settle(), goroutines, "goroutines")
 	if descriptors >= 0 {
 		assert.Equal(t, descriptors, fds(), "descriptors")
 	}

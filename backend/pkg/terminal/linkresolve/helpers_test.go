@@ -22,7 +22,6 @@ type seenFS struct {
 	seen    []string
 	entries int
 	hold    func(path string) <-chan struct{}
-	done    sync.WaitGroup
 }
 
 func (f *seenFS) note(p string) {
@@ -36,8 +35,6 @@ func (f *seenFS) wait(p string) {
 		return
 	}
 	if gate := f.hold(p); gate != nil {
-		f.done.Add(1)
-		defer f.done.Done()
 		<-gate
 	}
 }

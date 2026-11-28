@@ -125,6 +125,12 @@ func (m *Manager) ChannelCommands(_ string) (Commands, error) {
 	return none, unsupportedError()
 }
 
+// ChannelResolveLink is not supported.
+func (m *Manager) ChannelResolveLink(_, _, _ string) (LinkResolution, error) {
+	var none LinkResolution
+	return none, unsupportedError()
+}
+
 // ChannelCwd is not supported.
 func (m *Manager) ChannelCwd(_ string) (Directory, error) {
 	var none Directory
