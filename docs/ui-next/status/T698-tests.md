@@ -47,3 +47,15 @@ git show d91a8d70f:<file> > <file>   # the old test
 - No macOS run: the symlink is reproduced on linux only, as the issue gives it.
 - No negative control for the new close test that makes the product hang (the product was not changed): what detects a close that returns with the session alive is `Empty(ListSessions())`, whose negative half is the sibling test's.
 - A first full-folder shuffle run showed `flow.test.ts` "does NOT stall the shell when the panel is hidden" at 5086 ms against vitest's 5 s timeout while Go suites ran on the same machine; it was green in the three final seeds. It is a load-sensitive test, not touched here.
+
+## The children count of `TestHundredTerminalsAcrossTwentyRetiredPagesLeaveNoShellAlive` (CI of #807)
+
+CI ran `go test -short ./...` (no `-race`, no `-shuffle`), failed with `[19838 20275 20276] should have 2 item(s)`: the two kept shells and one older child. The test before it,
+`TestCreateTerminalRefusesAWindowThatIsAlreadyRetired`, waited for `len(ListSessions()) == 0`, which leaves out a session as soon as it is ending, not when its shell is reaped, and ended with the shell still dying.
+`children(t)` counts every child of the test process, so the next test that counts them saw it.
+
+- Red: a scratch delay of 3 s in the first `hangup()` of the process (a `atomic.Bool` compare-and-swap, not committed), the test files of origin/main: `"[2093681 2094370 2094379]" should have 2 item(s), but has 3` in 0.27 s.
+  Green: the same delay, the fixed tests: ok (3.6 s, the retired-page test waits for its own shell).
+  `go test -count=1 -short -run '^(TestCreateTerminalRefusesAWindowThatIsAlreadyRetired|TestCreateTerminalRefusesWhatIsNotATerminalBeforeAnythingStarts|TestHundredTerminalsAcrossTwentyRetiredPagesLeaveNoShellAlive)$' ./backend/pkg/plugin/exec/`
+- Fix: that test waits for `gone(info.PID)` of the shell it opened. `TestAWindowRetiredBetweenTheStartAndTheAnswerOfACreateEndsItsKeyedTerminal` (no pid: the create failed) waits for the system's own list of children to be empty instead of asserting it at once; it did not fail under the delay (its end goes by another path), so it is the same kind of weak wait, not a seen red.
+- Swept: the other `ListSessions()`/`running()` waits in `backend/pkg/terminal` and `backend/pkg/plugin/exec` are not followed by a count of the children of the process, or are followed by `allGone(pids)` and a wait on the children, as they should be.
