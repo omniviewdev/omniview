@@ -45,7 +45,7 @@ CONTROLS = [
   ('resize-pane-takes-the-wrong-sash', 'panel/focus.ts', 'String(at < layout.panes.length - 1 ? at : at - 1)', 'String(at)', r'Panes\.test\.tsx.*puts the keyboard on the sash after the active pane'),
   ('equalise-does-nothing', 'panel/focus.ts', 'return extent > 0 && store.equalisePanes(tool, extent).status !== \'refused\';', 'return extent > 0;', r'Panes\.test\.tsx.*shares the room equally again'),
   ('pane-commands-listed-with-one-terminal', '../plugins/host/palette.ts', '    if (several) {', '    if (true as boolean) {', r'palette\.test\.ts.*are not listed while the Terminal shows one terminal'),
-  ('pane-commands-move-nothing', '../plugins/host/palette.ts', "later(() => void moveToPane(panel, 'previous', TERMINAL_TOOL_ID))", "later(() => undefined)", r'palette\.test\.ts.*move the keyboard to the next and the previous pane'),
+  ('pane-commands-move-nothing', '../plugins/host/palette.ts', "moveToPane(panel, 'previous', TERMINAL_TOOL_ID);", "void 0;", r'palette\.test\.ts.*move the keyboard to the next and the previous pane'),
 ]
 
 # The controls whose fault the named tests alone catch: with those tests skipped the copy passes. Every other control stays red with them skipped (another test catches it as well).
