@@ -310,6 +310,7 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
   /** The attributes the host asked the emulator's input to have, and the handler it asked its links to have: kept for an emulator that is not made yet, and given to the one that is. */
   let inputAttributes: Readonly<Record<string, string>> | undefined;
   let linkHandler: LinkHandler | undefined;
+  let fileHandler: FileLinkHandler | undefined;
   /** The command gutter of the emulator: made with it. */
   let gutter: CommandGutter | undefined;
   /**
@@ -1075,6 +1076,10 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
       made.setLinks(linkHandler);
     }
 
+    if (fileHandler !== undefined) {
+      made.setFileLinks(fileHandler);
+    }
+
     stops.push(
       made.onData((data, user) => {
         // What the emulator says by itself while a replay is applied is not for the shell: it answers the queries in the bytes, and the program that asked them is long past (switching on focus events makes it report focus, too).
@@ -1387,11 +1392,14 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
 
     viewLinks: () => engine?.viewLinks() ?? [],
 
-    setFileLinks: () => undefined,
+    setFileLinks: (handler) => {
+      fileHandler = handler;
+      engine?.setFileLinks(handler);
+    },
 
-    fileCandidatesInView: () => [],
+    fileCandidatesInView: () => engine?.fileCandidatesInView() ?? [],
 
-    directoryAt: () => undefined,
+    directoryAt: (row) => gutter?.directoryAt(row),
 
     copy,
 

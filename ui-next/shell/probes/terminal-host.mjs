@@ -669,7 +669,7 @@ const defaultDefer = (task) => {
 // ---- the host ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 /**
- * @param {{ leaseMs?: number, ringBytes?: number, shell?: string, fail?: 'shell-unavailable' | 'start', busy?: 'unknown' | 'hang', defer?: (task: () => void) => void, faults?: Record<string, boolean> }} [options]
+ * @param {{ tree?: Record<string, string[]>, leaseMs?: number, ringBytes?: number, shell?: string, fail?: 'shell-unavailable' | 'start', busy?: 'unknown' | 'hang', defer?: (task: () => void) => void, faults?: Record<string, boolean> }} [options]
  *   `leaseMs` is the lease a terminal gets when its page does not say (the probe makes it short where it waits for one to run out); `ringBytes` is `channel_ring_bytes`; `fail` makes the create call fail as the host does (`shell-unavailable` is its
  *   typed 422, `start` its plain start failure); `busy` is what `ChannelTerminalBusy` answers while the shell runs (`unknown`, or no answer at all); `defer` is how a flood yields between two batches.
  */
@@ -691,6 +691,8 @@ export function createHost(options = {}) {
     created: [],
     /** The terminals whose directory the page asked for (`ChannelTerminalCwd`), in order: where a split begins. */
     cwds: [],
+    /** Every `ChannelTerminalResolveLink` call, in order: the directory the page named (empty: where the shell is now) and the text. The probe counts what the page asks. */
+    resolves: [],
     refused: [],
     closed: [],
     dismissed: [],
@@ -737,7 +739,7 @@ export function createHost(options = {}) {
       const ended = pty.ranCommand ? `\u001b]133;D;${String(pty.status)}\u0007` : '';
       pty.ranCommand = false;
       pty.status = 0;
-      text = `${text.slice(0, -PROMPT.length)}${ended}\u001b]633;P;Cwd=/home/user;${pty.nonce}\u0007\u001b]133;A\u0007${PROMPT}\u001b]133;B\u0007`;
+      text = `${text.slice(0, -PROMPT.length)}${ended}\u001b]633;P;Cwd=${pty.cwd};${pty.nonce}\u0007\u001b]133;A\u0007${PROMPT}\u001b]133;B\u0007`;
     }
 
     if (typeof written === 'string' && written.endsWith(PROMPT)) log.prompts += 1;
@@ -1048,6 +1050,42 @@ export function createHost(options = {}) {
             pty.job = undefined;
             out(pty, PROMPT);
           }, seconds * 1000),
+        };
+        return;
+      }
+
+      case 'cd':
+        // The shell moves: the next prompt says where it is, with the nonce.
+        if (args[0] !== undefined && args[0].startsWith('/')) pty.cwd = args[0].replace(/\/+$/, '') || '/';
+        break;
+      case 'files':
+        // What a compiler prints: a path that is in the fixture tree of the directory the shell is in, one that is not, and one in another directory (#696 step 4).
+        out(pty, `${['build: src/a.go:12:3: error: undefined: x', 'miss: src/missing.go:7:1: warning', 'twin: src/b.go:4', 'quoted: "src/a.go", line 9', 'url: https://example.com/src/a.go:12 end'].join('\r\n')}\r\n`);
+        break;
+      case 'many': {
+        // Thirty candidates on one line (more than the ten a line is asked about) and forty lines of one candidate each: only the line the pointer is on may be asked about.
+        out(pty, `${Array.from({ length: 30 }, (_, index) => `f${String(index)}.go:1`).join(' ')}\r\n`);
+        out(pty, `${Array.from({ length: 12 }, (_, index) => `g${String(index)}.go:${String(index + 1)}`).join('\r\n')}\r\n`);
+        break;
+      }
+
+      case 'bigline': {
+        // A megabyte of `a:1` repeated with no line break: it wraps over thousands of rows, and none of it is a file link (#696 step 4: a line over 2,000 characters has none).
+        const chunk = 'a:1 '.repeat(1024);
+        for (let sent = 0; sent < 256; sent += 1) out(pty, chunk);
+        out(pty, '\r\n');
+        break;
+      }
+
+      case 'hold': {
+        // A program that holds the foreground and prints a path (ssh, a container exec): the host's busy fact says a program runs.
+        out(pty, 'remote: src/a.go:12:3 held\r\n');
+        pty.job = {
+          name: 'ssh',
+          timer: setTimeout(() => {
+            pty.job = undefined;
+            out(pty, PROMPT);
+          }, Number(args[0] ?? 60) * 1000),
         };
         return;
       }
@@ -1866,6 +1904,8 @@ export function createHost(options = {}) {
       room: [],
       empty: [],
       line: '',
+      /** Where the shell is: `cd` moves it, the prompt says it with the nonce, and `ChannelTerminalCwd` and `ChannelTerminalResolveLink` read it. */
+      cwd: '/home/user',
       loop: false,
       ranCommand: false,
       job: undefined,
@@ -1886,7 +1926,26 @@ export function createHost(options = {}) {
     return { ...infoOf(pty), cap };
   };
 
+  /**
+   * `ChannelTerminalResolveLink` as the host answers it (docs/ui-next/status/T1-go.md 2.9), over a fixture tree: `options.tree` maps a directory to the files in it (relative paths). The row's directory is vouched for only when it is where the
+   * shell is now or one of the directories of the record of its commands (`cwd_trust` nonce); empty is where the shell is now. The page's text is parsed as the host's parser does for the shapes the probe prints: `path:line:col`, `"path", line N`.
+   */
+  const resolveLink = (pty, rowDirectory, text) => {
+    log.resolves.push({ rowDirectory, text });
+    if (pty === undefined) throw gone();
+    const known = new Set([pty.cwd, ...(pty.ring.markScanner?.commands ?? []).filter((record) => record.cwdTrust === 'nonce' && record.cwd !== '').map((record) => record.cwd)]);
+    if (rowDirectory !== '' && !known.has(rowDirectory) && !faults.rowDirectoryIgnored) return { kind: 'unknown', reason: 'unvouched' };
+    const dir = rowDirectory === '' || faults.rowDirectoryIgnored ? pty.cwd : rowDirectory;
+    const shape = /^"?(.*?)"?(?:,? line (\d+)|:(\d+)(?::(\d+))?)?$/.exec(text);
+    const path = shape?.[1] ?? text;
+    const line = shape?.[2] ?? shape?.[3];
+    const col = shape?.[4];
+    if (text.includes('://') || (!faults.resolveAny && !(options.tree?.[dir] ?? []).includes(path))) return { kind: 'unknown', reason: 'not-found' };
+    return { kind: 'file', path: `${dir}/${path}`, ...(line === undefined ? {} : { line: Number(line) }), ...(col === undefined ? {} : { col: Number(col) }) };
+  };
+
   const busyOf = (pty) => {
+    if (faults.busyIdle) return { state: 'idle' };
     if (busyMode === 'unknown') return faults.unknownIdle ? { state: 'idle' } : { state: 'unknown', reason: 'query-failed' };
     if (faults.busyAlways) return { state: 'busy', pgid: 4242, name: 'sleep' };
     if (pty.program !== undefined) return { state: 'busy', pgid: 4242, name: pty.program.name };
@@ -2008,8 +2067,11 @@ export function createHost(options = {}) {
         const pty = find(args[0]);
         log.cwds.push(pty?.id ?? null);
         if (pty === undefined) throw gone();
-        return { path: '/home/user' };
+        return { path: pty.cwd };
       }
+
+      case 'ChannelTerminalResolveLink':
+        return resolveLink(find(args[0]), String(args[1]), String(args[2]));
 
       case 'ListChannelTerminals': {
         const answer = list(args[0]);

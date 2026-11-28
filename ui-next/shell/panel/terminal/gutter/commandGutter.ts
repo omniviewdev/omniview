@@ -506,7 +506,20 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
     hasOutput,
     rerun,
     busy: () => running !== undefined,
-    directoryAt: () => undefined,
+    directoryAt: (row) => {
+      // The command whose line is the last at or above the row: its output runs down to the line of the next. A command whose directory the shell did not prove has none, and does not borrow an earlier one's.
+      let owner: Entry | undefined;
+      let at = -1;
+      for (const entry of entries) {
+        const line = home(entry).marker.line();
+        if (line >= 0 && line <= row && line >= at) {
+          owner = entry;
+          at = line;
+        }
+      }
+
+      return owner?.cwd;
+    },
     onEvent: (listener) => {
       listeners.add(listener);
       return () => {

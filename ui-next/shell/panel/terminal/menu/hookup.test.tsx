@@ -372,6 +372,21 @@ describe('the file links in the body', () => {
     expect(vi.mocked(navigator.clipboard.writeText)).toHaveBeenCalledExactlyOnceWith('/work/src/a.go:12:3');
   });
 
+  it('asks the host about the file links of the lines in view when the keyboard comes into the body, and lists what it found in Open link', async () => {
+    const resolveLink = vi.fn(async (_directory: string, _text: string) => Promise.resolve<TerminalLink>({ kind: 'file', path: '/work/src/a.go', line: 12, col: 3 }));
+    const { loader, screen } = mount({ platform: OTHER, resolveLink });
+    await flush();
+    loader.engines[0]?.filesInView([{ row: 3, texts: ['src/a.go:12:3'] }]);
+    act(() => {
+      fireEvent.focus(screen());
+    });
+    await flush();
+    expect(resolveLink).toHaveBeenCalledExactlyOnceWith('', 'src/a.go:12:3');
+    rightClick(screen());
+    fireEvent.keyDown(item('Open link'), { key: 'ArrowRight' });
+    expect(page.getAllByRole('menuitem').map((entry) => entry.getAttribute('aria-label'))).toContain('Copy path /work/src/a.go:12:3');
+  });
+
   it('makes no file links for a session whose feed has no disk to look at', async () => {
     const { loader } = mount({ platform: OTHER });
     await flush();

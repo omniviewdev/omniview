@@ -439,10 +439,37 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader, pr
       },
       available: feed.directory !== undefined,
     };
-  // "Open link": the keyboard's way to the links in view, only where the window can open an address (a link that does nothing is not drawn).
-  const menuLinks = useMemo(() => (sessions.canOpenExternal() ? { open: sessions.openExternal, follows: sessions.canFollow } : undefined), [sessions]);
+  // The file links (#696 step 4): the session's feed resolves a candidate on the host's disk (a terminal of a plugin has no such feed: no file links) and, until an editor opens files, a click copies the path.
+  const fileLinks = useMemo(() => ({ feed, copyPath: copyToClipboard }), [feed]);
+  const links = useTerminalLinks({ screen, sessions, platform, files: fileLinks });
+  // "Open link": the keyboard's way to the links in view (web addresses where the window can open one, files where the feed can resolve them: a link that does nothing is not drawn).
+  const viewFiles = links.files;
+  const menuLinks = useMemo(() => {
+    const web = sessions.canOpenExternal();
+    if (!web && viewFiles === undefined) {
+      return undefined;
+    }
+
+    return {
+      open: sessions.openExternal,
+      follows: web ? sessions.canFollow : () => false,
+      ...(viewFiles === undefined
+        ? {}
+        : {
+          files: {
+            ...viewFiles,
+            copy: (text: string) => {
+              void copyToClipboard(text).then((done) => {
+                if (!done) {
+                  console.warn('[terminal] the path could not be copied: the clipboard is not available');
+                }
+              });
+            },
+          },
+        }),
+    };
+  }, [sessions, viewFiles]);
   const menu = useTerminalMenu({ sessionId: session.id, screen, status, openFind: find.open, copy, here, links: menuLinks });
-  const links = useTerminalLinks({ screen, sessions, platform });
   // The marks of the shell's integration: the tooltip of a command's mark, and what a jump or a selection did said in the live region.
   const gutter = useCommandGutter({ screen, say });
 
@@ -451,7 +478,14 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader, pr
   const hint = `Escape and Tab go to the shell. Press F6 to move to the next part of the window${platform === 'mac' ? `, or ${toggleChordText(platform)} to hide the panel` : ''}. ${screenReaderWords(reading, platform)}${tier === undefined ? '' : ` Shell integration. ${tier.text}`}`;
 
   return (
-    <div className={styles.terminal} data-shell-part="terminalBody">
+    // The keyboard comes in: the file links of the lines in view are asked about now, so that the first Open link of a person who never touches the pointer already lists them (the host answers from its cache of 10 s).
+    <div
+      className={styles.terminal}
+      data-shell-part="terminalBody"
+      onFocus={() => {
+        void viewFiles?.warm();
+      }}
+    >
       <div className={styles.tools} data-shell-part="terminalTools">
         <TerminalToolbar
           selected={view.selected}

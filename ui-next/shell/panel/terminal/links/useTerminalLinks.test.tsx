@@ -5,7 +5,7 @@ import type { Platform } from '../../../core/chords';
 import type { FileCandidates, FileLinkHandler, FileLinkHover, LinkHandler, LinkHover } from '../engine';
 import type { TerminalBusy, TerminalLink } from '../feed';
 import { isWebAddress } from './links';
-import { useTerminalLinks, type TerminalLinksOptions, type TerminalLinksScreen } from './useTerminalLinks';
+import { useTerminalLinks, type TerminalLinks, type TerminalLinksOptions, type TerminalLinksScreen } from './useTerminalLinks';
 
 // The links in a terminal's output: made only where the window can open an address, followed only by the platform's click and only when the address is a web address, with a tooltip that is in the document only while the
 // pointer is on a link. The screen and the registry are fakes with the members the hook uses (`hookup.test.tsx` has the real screen and a fake emulator).
@@ -596,7 +596,7 @@ describe('the file links', () => {
     readonly hover: (hover: FileLinkHover | undefined) => void;
     readonly rerender: (more?: Partial<TerminalLinksOptions>) => void;
     readonly unmount: () => void;
-    readonly links: () => ReturnType<typeof useTerminalLinks>;
+    readonly links: () => TerminalLinks;
   };
 
   function mountFiles(
@@ -609,7 +609,7 @@ describe('the file links', () => {
     const directoryAt = vi.fn<(row: number) => string | undefined>(() => options.directory);
     const screen: TerminalLinksScreen = { setLinks: vi.fn(), setFileLinks, directoryAt, fileCandidatesInView: () => options.candidates ?? [] };
     const sessions = { canOpenExternal: () => true, canFollow: isWebAddress, openExternal: vi.fn() };
-    let latest: ReturnType<typeof useTerminalLinks> | undefined;
+    let latest: TerminalLinks | undefined;
     function Probe(props: TerminalLinksOptions): ReactElement {
       latest = useTerminalLinks(props);
       return <div data-testid="body">{latest.element}</div>;
@@ -695,8 +695,8 @@ describe('the file links', () => {
     });
 
     it.each([
-      ['a program holds the foreground (ssh, a container exec)', { state: 'busy', name: 'ssh' } as TerminalBusy],
-      ['the host cannot say what runs', { state: 'unknown' } as TerminalBusy],
+      ['a program holds the foreground (ssh, a container exec)', { state: 'busy', name: 'ssh' }],
+      ['the host cannot say what runs', { state: 'unknown' }],
     ])('asks the host nothing while %s: the answer would be about this machine\'s disk, and there are no links', async (_what, state) => {
       const rig = mountFiles({ state, table: { 'a.go:1': SRC } });
       expect(await rig.handler().resolve(0, ['a.go:1'])).toEqual([]);

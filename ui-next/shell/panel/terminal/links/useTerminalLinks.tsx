@@ -1,10 +1,10 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Platform } from '../../../core/chords';
-import type { LinkHover, ResolvedFile } from '../engine';
+import type { FileCandidates, FileLinkHandler, FileLinkHover, LinkHover, ResolvedFile } from '../engine';
 import type { TerminalFeedHandle } from '../feed';
 import type { TerminalScreen } from '../screen';
 import type { TerminalSessions } from '../TerminalSessions';
-import { followsWith, followWords, hostOf } from './links';
+import { copiedText, copyWords, followsWith, followWords, hostOf, positionWords } from './links';
 import styles from './LinkTip.module.css';
 
 // The links in a terminal's output (T3a): a web address the emulator finds is a link the pointer can hover and click, and the host decides what a click does. VS Code and JetBrains ask for Command (Control elsewhere) with
@@ -44,9 +44,14 @@ type LinkTipProps = {
   readonly x: number;
   readonly y: number;
   readonly words: string;
-  /** Where the click goes: the address the link opens, whatever the words on the screen say (a hyperlink's text and target may differ). */
-  readonly target: string;
+  /** The first line after the words, whole: the host a web link goes to (as the browser reads it) or the path of a file link. */
+  readonly primary: string;
+  /** What follows it, clamped in the picture and whole in the document: the target of a web link or where in a file a link goes. Absent: nothing follows. */
+  readonly secondary?: string | undefined;
 };
+
+/** What a tooltip is shown for: a link as the emulator reports it, and for a file link what the host resolved (its `uri` is then a key of the link and no address). */
+type Shown = LinkHover & { readonly file?: FileLinkHover | undefined };
 
 /** Whether two reports are of one link: the emulator reports a link by its address and where its first cell is, so a pointer that moves along a link, or comes back to it, is on the same one. */
 function sameLink(a: LinkHover | undefined, b: LinkHover | undefined): boolean {
@@ -63,11 +68,66 @@ type Dismissed = {
   left: boolean;
 };
 
+/** The most candidates of a line the host is asked about: the matcher gives at most this many, and the page holds the cap itself. */
+const MAX_ASKED = 10;
+
+/** What the file links in view need of the body: the candidates of the lines in view, and how the host is asked about them. */
+type ViewSource = {
+  readonly candidates: () => readonly FileCandidates[];
+  readonly resolve: (row: number, texts: readonly string[]) => Promise<ReadonlyArray<ResolvedFile | undefined>>;
+};
+
+type ViewedFiles = {
+  readonly api: NonNullable<TerminalLinks['files']>;
+  readonly bind: (source: ViewSource | undefined) => void;
+};
+
+/**
+ * The file links in view, kept between a `warm` and a menu that is opened: made once for a body, with its own state in closures (the menu reads it when it opens and asks again for the next time). `bind` says what to ask while the body has a
+ * screen that can resolve links, and `undefined` forgets both the source and what was found.
+ */
+function viewedFiles(): ViewedFiles {
+  let kept: readonly ResolvedFile[] = [];
+  let source: ViewSource | undefined;
+  return {
+    api: {
+      inView: () => kept,
+      warm: async () => {
+        const asked = source;
+        const lines = asked?.candidates() ?? [];
+        const found: ResolvedFile[] = [];
+        const keys = new Set<string>();
+        // One line after another, in the order of the lines (newest first).
+        const answers = await Promise.all(lines.map(async (line) => asked?.resolve(line.row, line.texts) ?? []));
+        for (const line of answers) {
+          for (const one of line) {
+            if (one !== undefined && !keys.has(keyOf(one))) {
+              keys.add(keyOf(one));
+              found.push(one);
+            }
+          }
+        }
+
+        if (source === asked) {
+          kept = found;
+        }
+      },
+    },
+    bind: (next) => {
+      source = next;
+      kept = [];
+    },
+  };
+}
+
+/** The key of a file link: what two reports of the same link share (the emulator reports a link by this and where its first cell is). */
+const keyOf = (link: ResolvedFile): string => `file:${link.path}:${String(link.line ?? '')}:${String(link.col ?? '')}`;
+
 /**
  * The tooltip: in the top layer, at the link's first cell, in the one polite live region that exists only while it is shown, so that what a hover says to the eye is said to a person who cannot see it, once, as it comes. It is mounted
  * when the pointer reaches a link and unmounted when it leaves or Escape puts it away, so there is one for the whole time and nothing in the document otherwise; a move from one link to another moves it.
  */
-function LinkTip({ x, y, words, target }: LinkTipProps) {
+function LinkTip({ x, y, words, primary, secondary }: LinkTipProps) {
   const element = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     try {
@@ -88,23 +148,51 @@ function LinkTip({ x, y, words, target }: LinkTipProps) {
       style={{ '--_x': `${String(x)}px`, '--_y': `${String(y)}px` }}
     >
       <span className={styles.words}>{words}</span>
-      <span className={styles.host}>{hostOf(target)}</span>
-      <span className={styles.target}>{target}</span>
+      <span className={styles.host}>{primary}</span>
+      {secondary === undefined ? null : <span className={styles.target}>{secondary}</span>}
     </div>
   );
 }
 
-export function useTerminalLinks({ screen, sessions, platform }: TerminalLinksOptions): TerminalLinks {
-  // Links are made only where the window can open an address. The answer is the same every time.
+export function useTerminalLinks({ screen, sessions, platform, files }: TerminalLinksOptions): TerminalLinks {
+  // Web links are made only where the window can open an address. The answer is the same every time.
   const linkable = sessions.canOpenExternal();
-  const [hovered, setHovered] = useState<LinkHover | undefined>(undefined);
+  // File links are made only for a terminal whose feed can ask the host what a candidate names (a terminal of a plugin runs somewhere else: no disk of this machine to look at).
+  const filable = files?.feed.resolveLink !== undefined && screen?.setFileLinks !== undefined;
+  const [hovered, setHovered] = useState<Shown | undefined>(undefined);
   // The tooltip that Escape put away: it does not come back for that link while the pointer stays on it.
   const dismissed = useRef<Dismissed | undefined>(undefined);
   // A click is read when it comes, from what the body holds then: the screen keeps one handler for as long as it is the same screen and the window can open addresses.
-  const latest = useRef({ sessions, platform });
+  const latest = useRef({ sessions, platform, files, screen });
   useLayoutEffect(() => {
-    latest.current = { sessions, platform };
-  }, [sessions, platform]);
+    latest.current = { sessions, platform, files, screen };
+  }, [sessions, platform, files, screen]);
+  // What the host found in the lines in view the last time they were asked (`files.warm`).
+  const [viewed] = useState(viewedFiles);
+
+  /** Tells what the emulator says of the link the pointer is on (`undefined`: none) to the tooltip, with Escape's dismissal kept: web links and file links are one tooltip at a time. */
+  const report = useCallback((next: Shown | undefined) => {
+    const away = dismissed.current;
+    if (next === undefined) {
+      setHovered(undefined);
+      if (away !== undefined) {
+        // The pointer left the link, unless the emulator says the link again before this task ends: it reports the two together when it reads the row again with the pointer where it was.
+        away.left = true;
+        queueMicrotask(() => {
+          if (dismissed.current === away && away.left) {
+            dismissed.current = undefined;
+          }
+        });
+      }
+    } else if (away !== undefined && sameLink(away.link, next)) {
+      // The link that was put away, still under the pointer: it stays away.
+      away.left = false;
+    } else {
+      dismissed.current = undefined;
+      // The same link again keeps the tooltip it has: nothing is drawn again for it.
+      setHovered((last) => (sameLink(last, next) ? last : next));
+    }
+  }, []);
 
   useEffect(() => {
     if (screen === undefined || !linkable) {
@@ -121,27 +209,7 @@ export function useTerminalLinks({ screen, sessions, platform }: TerminalLinksOp
       },
       hover: (reported) => {
         // Only an address a click follows has a tooltip, which says that a click follows the link: a hyperlink the program writes (OSC 8) can name any scheme, where a printed address is a web address, and the host's own server is no link. Any other is no link here, as `activate` sees it.
-        const next = reported !== undefined && latest.current.sessions.canFollow(reported.uri) ? reported : undefined;
-        const away = dismissed.current;
-        if (next === undefined) {
-          setHovered(undefined);
-          if (away !== undefined) {
-            // The pointer left the link, unless the emulator says the link again before this task ends: it reports the two together when it reads the row again with the pointer where it was.
-            away.left = true;
-            queueMicrotask(() => {
-              if (dismissed.current === away && away.left) {
-                dismissed.current = undefined;
-              }
-            });
-          }
-        } else if (away !== undefined && sameLink(away.link, next)) {
-          // The link that was put away, still under the pointer: it stays away.
-          away.left = false;
-        } else {
-          dismissed.current = undefined;
-          // The same link again keeps the tooltip it has: nothing is drawn again for it.
-          setHovered((last) => (sameLink(last, next) ? last : next));
-        }
+        report(reported !== undefined && latest.current.sessions.canFollow(reported.uri) ? reported : undefined);
       },
     });
     return () => {
@@ -149,9 +217,83 @@ export function useTerminalLinks({ screen, sessions, platform }: TerminalLinksOp
       dismissed.current = undefined;
       setHovered(undefined);
     };
-  }, [screen, linkable]);
+  }, [screen, linkable, report]);
 
-  // Escape puts the tooltip away: a listener on the window, in the capture phase (the first place the key reaches the page), and only while a tooltip is shown. It neither stops the key nor cancels it.
+  /** Asks the host about candidates of one line: nothing while a program holds the foreground (the answer would be about this machine's disk and the row is about another), and at most `MAX_ASKED` of them. */
+  const resolve = useCallback(async (row: number, texts: readonly string[]): Promise<ReadonlyArray<ResolvedFile | undefined>> => {
+    const { files: current, screen: where } = latest.current;
+    const feed = current?.feed;
+    if (feed?.resolveLink === undefined || feed.busy === undefined) {
+      return [];
+    }
+
+    try {
+      // The host's own fact: the shell at its prompt. A program (ssh, a container exec) or a host that cannot say is no place to look for a path.
+      if ((await feed.busy()).state !== 'idle') {
+        return [];
+      }
+    } catch {
+      return [];
+    }
+
+    const directory = where?.directoryAt?.(row) ?? '';
+    const ask = feed.resolveLink.bind(feed);
+    return Promise.all(
+      texts.slice(0, MAX_ASKED).map(async (text): Promise<ResolvedFile | undefined> => {
+        try {
+          const answer = await ask(directory, text);
+          if ((answer.kind === 'file' || answer.kind === 'dir') && answer.path !== undefined && answer.path !== '') {
+            return { path: answer.path, kind: answer.kind, ...(answer.line === undefined ? {} : { line: answer.line }), ...(answer.col === undefined ? {} : { col: answer.col }) };
+          }
+        } catch {
+          // A question that failed is a question not answered: no link.
+        }
+
+        return undefined;
+      }),
+    );
+  }, []);
+
+  useEffect(() => {
+    if (screen?.setFileLinks === undefined || !filable) {
+      return undefined;
+    }
+
+    const handler: FileLinkHandler = {
+      held: (event) => followsWith(event, latest.current.platform),
+      resolve,
+      hover: (reported) => {
+        report(reported === undefined ? undefined : { uri: keyOf(reported), x: reported.x, y: reported.y, file: reported });
+      },
+      activate: (link, event) => {
+        const { platform: now, files: current } = latest.current;
+        if (!followsWith(event, now) || current === undefined) {
+          return;
+        }
+
+        // Until an editor registers `openFile` (#696 step 5) the action of a file link is Copy path: the path, with its line and column.
+        const refused = () => {
+          console.warn('[terminal] the path could not be copied: the clipboard is not available');
+        };
+
+        void current.copyPath(copiedText(link)).then((done) => {
+          if (!done) {
+            refused();
+          }
+        }, refused);
+      },
+    };
+    screen.setFileLinks(handler);
+    viewed.bind({ candidates: () => screen.fileCandidatesInView?.() ?? [], resolve });
+    return () => {
+      screen.setFileLinks?.(undefined);
+      viewed.bind(undefined);
+      dismissed.current = undefined;
+      setHovered(undefined);
+    };
+  }, [screen, filable, report, resolve, viewed]);
+
+  // Escape puts the tooltip away: a listener on the window, in the capture phase (the first place the key reaches the page), and only while a tooltip is shown. It neither stops the key nor cancels it: the terminal and the window get it as they always did.
   useEffect(() => {
     if (hovered === undefined) {
       return undefined;
@@ -170,5 +312,12 @@ export function useTerminalLinks({ screen, sessions, platform }: TerminalLinksOp
     };
   }, [hovered]);
 
-  return { element: hovered === undefined ? null : <LinkTip x={hovered.x} y={hovered.y} words={followWords(platform)} target={hovered.uri} /> };
+  let element: ReactNode = null;
+  if (hovered?.file !== undefined) {
+    element = <LinkTip x={hovered.x} y={hovered.y} words={copyWords(platform)} primary={hovered.file.path} secondary={positionWords(hovered.file)} />;
+  } else if (hovered !== undefined) {
+    element = <LinkTip x={hovered.x} y={hovered.y} words={followWords(platform)} primary={hostOf(hovered.uri)} secondary={hovered.uri} />;
+  }
+
+  return { element, ...(filable ? { files: viewed.api } : {}) };
 }

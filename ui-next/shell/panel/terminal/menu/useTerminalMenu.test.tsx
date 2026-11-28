@@ -691,7 +691,7 @@ describe('Open link', () => {
 // cache of 10 s): the menu is a snapshot, and the list is as of the last time the lines were asked.
 describe('Open link with file links', () => {
   const FILE = { path: '/work/src/a.go', kind: 'file', line: 12, col: 3 } as const;
-  const mountFiles = (files: readonly (typeof FILE)[]) => {
+  const mountFiles = (files: ReadonlyArray<typeof FILE>) => {
     const rig = mount();
     const copy = vi.fn<(text: string) => void>();
     const warm = vi.fn(async () => Promise.resolve());

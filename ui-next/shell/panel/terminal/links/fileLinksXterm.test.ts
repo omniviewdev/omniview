@@ -1,11 +1,12 @@
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { Terminal } from '@xterm/xterm';
 import { describe, expect, it } from 'vitest';
+import { logicalLine as readLine } from './cells';
 import { findFileLinks } from './fileLinks';
 
 // The matcher's contract with the link provider, over a REAL xterm buffer (`@xterm/xterm` 6.0.0 with the Unicode 11 addon, as `xtermEngine.ts` loads it; no fake): the matcher gives UTF-16 offsets into the text and knows no
 // cells, because its own width table would disagree with the emulator's (`✅` is 2 cells in xterm, an Arabic mark 0). The provider (step 4) reads the logical line (the wrapped rows joined, from the first row of the chain)
-// and maps each offset to the buffer cell that holds it. `logicalLine` below is that mapping; it lives here until step 4 writes the provider, and the tests prove that mapping and the offsets together select the path's cells.
+// and maps each offset to the buffer cell that holds it. `logicalLine` is that mapping (`cells.ts`, the provider's own); the tests prove that mapping and the offsets together select the path's cells.
 
 async function make(cols: number): Promise<Terminal> {
   const terminal = new Terminal({ allowProposedApi: true, cols, rows: 10 });
@@ -18,60 +19,16 @@ const write = async (terminal: Terminal, data: string): Promise<void> => new Pro
   terminal.write(data, resolve); 
 });
 
-type Cell = { readonly row: number; readonly x: number; readonly chars: string };
+type Cell = { readonly row: number; readonly x: number; readonly chars: string; readonly width: number };
 
-/**
- * The logical line that holds buffer row `y`: walks UP to the first row of the wrapped chain (`provideLinks(y)` is given any one row), then DOWN to its last, and gives the joined text with, for each UTF-16 offset, the
- * cell that holds it (one more entry at the end). A width-0 cell is the second half of a wide character and gives no text; the blank padding cell that a wide character leaves at the end of a row it did not fit on gives none
- * either. A cell's characters (a base and its combining marks, a ZWJ cluster) all map to that cell.
- */
-function logicalLine(terminal: Terminal, y: number): { text: string; cells: Cell[] } {
-  const buffer = terminal.buffer.active;
-  let first = y;
-  while (buffer.getLine(first)?.isWrapped === true) {
-    first -= 1;
-  }
-
-  let text = '';
-  const cells: Cell[] = [];
-  let row = first;
-  for (;;) {
-    const line = buffer.getLine(row);
-    if (!line) {
-      break;
-    }
-
-    const wrapsOn = buffer.getLine(row + 1)?.isWrapped === true;
-    for (let x = 0; x < terminal.cols; x += 1) {
-      const cell = line.getCell(x);
-      if (cell?.getWidth() === 0) {
-        continue;
-      }
-
-      const chars = cell?.getChars() ?? '';
-      if (chars === '' && x === terminal.cols - 1 && wrapsOn) {
-        continue;
-      }
-
-      const s = chars === '' ? ' ' : chars;
-      const at = { row, x, chars: s };
-      cells.push(...Array.from({ length: s.length }, () => at));
-      text += s;
-    }
-
-    if (!wrapsOn) {
-      break;
-    }
-
-    row += 1;
-  }
-
-  cells.push({ row, x: terminal.cols, chars: '' });
+/** The provider's own mapping (`cells.ts`), over this terminal's buffer, with no length cap. */
+function logicalLine(terminal: Terminal, y: number): { text: string; cells: readonly Cell[] } {
+  const { text, cells } = readLine(terminal.buffer.active, terminal.cols, y, Number.MAX_SAFE_INTEGER);
   return { text, cells };
 }
 
 /** The cell that holds the first character of a candidate and the one that holds its last: what the provider turns into a buffer range. */
-function span(cells: Cell[], start: number, end: number): { first: Cell; last: Cell } {
+function span(cells: readonly Cell[], start: number, end: number): { first: Cell; last: Cell } {
   return { first: cells[start], last: cells[end - 1] };
 }
 

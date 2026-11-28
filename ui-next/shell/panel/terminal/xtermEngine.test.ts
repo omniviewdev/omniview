@@ -2611,7 +2611,9 @@ describe('the file links of a real emulator (#696 step 4)', () => {
     expect(asked).toEqual([{ row: 0, texts: ['src/a.go:12:3'] }]);
     expect(pointer.pointing()).toBe(true);
     // The path starts at the fifth cell of the first row: four cells of 10 pixels in, from the screen's corner at 100, 50.
-    expect(hovers).toEqual([{ ...SRC, x: 140, y: 50 }]);
+    // The emulator draws the row again after the hover and asks again: it is the same link, from the answer the provider kept, and the host is asked once.
+    expect(hovers.at(-1)).toEqual({ ...SRC, x: 140, y: 50 });
+    expect(hovers.filter((one) => one !== undefined && (one.x !== 140 || one.y !== 50))).toEqual([]);
     close();
   });
 
@@ -2641,7 +2643,7 @@ describe('the file links of a real emulator (#696 step 4)', () => {
     press('Meta');
     await settle();
     expect(asked).toHaveLength(1);
-    expect(hovers).toHaveLength(1);
+    expect(hovers.at(-1)).toEqual({ ...SRC, x: 140, y: 50 });
     close();
   });
 
@@ -2717,8 +2719,8 @@ describe('the file links of a real emulator (#696 step 4)', () => {
     pointer.over(3, 2, CMD);
     await settle();
     expect(asked).toEqual([{ row: 0, texts: [`${'d'.repeat(70)}/src/a.go:12:3`] }]);
-    expect(hovers).toHaveLength(1);
-    expect(hovers[0]?.y).toBe(50);
+    expect(asked).toHaveLength(1);
+    expect(hovers.at(-1)?.y).toBe(50);
     close();
   });
 
@@ -2729,7 +2731,7 @@ describe('the file links of a real emulator (#696 step 4)', () => {
     pointer.over(10, 1, CMD);
     await settle();
     // Two wide characters are four cells, a space the fifth: the path starts at the sixth cell (five cells of 10 pixels in).
-    expect(hovers).toEqual([{ ...SRC, x: 150, y: 50 }]);
+    expect(hovers.at(-1)).toEqual({ ...SRC, x: 150, y: 50 });
     close();
   });
 

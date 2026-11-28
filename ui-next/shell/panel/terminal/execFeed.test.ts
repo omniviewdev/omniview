@@ -3583,9 +3583,13 @@ describe('what a candidate link names (`resolveLink`)', () => {
   });
 
   it('says unknown, and never throws, when the question fails or the host says the terminal is gone', async () => {
-    const failed = await running({}, { channels: { resolveLink: () => { throw new Error('the host is not there'); } } });
+    const failed = await running({}, { channels: { resolveLink: () => {
+      throw new Error('the host is not there'); 
+    } } });
     expect(await failed.feed.resolveLink?.('', 'a.go')).toEqual({ kind: 'unknown', reason: 'unanswered' });
-    const gone = await running({}, { channels: { resolveLink: () => { throw goneError(); } } });
+    const gone = await running({}, { channels: { resolveLink: () => {
+      throw goneError(); 
+    } } });
     expect(await gone.feed.resolveLink?.('', 'a.go')).toEqual({ kind: 'unknown', reason: 'gone' });
   });
 

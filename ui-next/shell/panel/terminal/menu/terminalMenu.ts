@@ -1,6 +1,6 @@
 import type { MenuItem } from '@omniviewdev/kit';
 import type { ResolvedFile } from '../engine';
-import { linkLabel } from '../links/links';
+import { copiedText, linkLabel } from '../links/links';
 import { NO_COMMANDS, NO_OUTPUT } from '../gutter/words';
 import { NO_SELECTION } from '../TerminalToolbar';
 
@@ -62,7 +62,7 @@ export type TerminalMenuState = {
  * does Paste when the terminal takes no input, and New terminal here when the terminal cannot say where it is. Paste and Select all have no glyph yet: the kit has none for either, and an item with none keeps its label on the same track
  * as the ones that have.
  */
-export function terminalMenu(actions: TerminalMenuActions, { selected, input, here, commands, links }: TerminalMenuState): readonly MenuItem[] {
+export function terminalMenu(actions: TerminalMenuActions, { selected, input, here, commands, links, files }: TerminalMenuState): readonly MenuItem[] {
   // No item passes a `shortcut`, the hint the kit draws at the end of a row, though the terminal takes the chords (`keys.ts`). The kit's `MenuPanel` (packages/kit/src/components/Menu/MenuPanel.tsx) names an item with
   // `aria-label={entry.label}` and leaves the drawn shortcut out of that name, so an item that draws one fails Label in Name (WCAG 2.5.3, axe `label-content-name-mismatch`): the terminal's probe measured it, and found that hiding the
   // shortcut from the accessibility tree does not help where not drawing it does. Add the hints back, written with `chordText` as the Find button's tip is, when the kit names an item together with its shortcut.
@@ -78,19 +78,32 @@ export function terminalMenu(actions: TerminalMenuActions, { selected, input, he
   if (openLink !== undefined) {
     // VS Code's "Open Detected Link", as the keyboard's way to a link (#696 step 1): the menu opens from the keyboard and the submenu with its arrow. Each item is named by the TARGET (what it opens), never by the text on the screen.
     const targets = links ?? [];
+    // The file links the host resolved, after the web addresses: until an editor registers `openFile` (#696 step 5) the action is Copy path, and the item says so, and names what it copies.
+    const copy = actions.copyPath;
+    const resolved = copy === undefined ? [] : (files ?? []);
     items.push({
       kind: 'submenu',
       id: 'open-link',
       label: 'Open link',
-      disabled: targets.length === 0 ? NO_LINKS : undefined,
-      items: targets.map((target, index) => ({
-        kind: 'action',
-        id: `link-${String(index)}`,
-        label: linkLabel(target),
-        onSelect: () => {
-          openLink(target);
-        },
-      })),
+      disabled: targets.length + resolved.length === 0 ? NO_LINKS : undefined,
+      items: [
+        ...targets.map((target, index): MenuItem => ({
+          kind: 'action',
+          id: `link-${String(index)}`,
+          label: linkLabel(target),
+          onSelect: () => {
+            openLink(target);
+          },
+        })),
+        ...resolved.map((file, index): MenuItem => ({
+          kind: 'action',
+          id: `file-${String(index)}`,
+          label: `Copy path ${copiedText(file)}`,
+          onSelect: () => {
+            copy?.(copiedText(file));
+          },
+        })),
+      ],
     });
   }
 

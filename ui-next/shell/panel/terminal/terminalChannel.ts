@@ -315,7 +315,7 @@ function createCore(deps: ChannelDeps): Core {
 
     busy: async (id) => named(id, async (cap) => client.ChannelTerminalBusy(cap)),
     cwd: async (id) => named(id, async (cap) => client.ChannelTerminalCwd(cap)),
-    resolveLink: async () => ({ kind: 'unknown', reason: 'stub' }),
+    resolveLink: async (id, rowDirectory, text) => named(id, async (cap) => client.ChannelTerminalResolveLink(cap, rowDirectory, text)),
 
     list: async () => {
       const held = [...caps];

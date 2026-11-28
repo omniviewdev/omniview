@@ -8,6 +8,7 @@ import xtermCss from '@xterm/xterm/css/xterm.css?inline';
 import { PALETTE_ROLES } from './appearance';
 import { FIND_LIMIT, type Engine, type EngineAppearance, type EngineMarker, type EngineOptions, type EngineRenderer, type Finder, type FindOptions, type FindState, type LinkHandler, type LinkHover } from './engine';
 import { findDecorations } from './findColours';
+import { createFileLinkProvider, fileCandidatesInView, type FileLinkProvider } from './links/fileProvider';
 import { isListedTarget, MAX_LINE, MAX_TARGET, webAddressesIn } from './links/scan';
 
 // The emulator: xterm.js behind the host's `Engine` (docs/ui-next/status/T1.md, "The renderer"). This is the ONLY file that imports `@xterm/*`, and it is reached only through `loadEngine.ts`'s dynamic import, so
@@ -161,6 +162,7 @@ export function createXtermEngine(options: EngineOptions): Engine {
   /** The links the host asked for: the handler it gave (`setLinks`), kept as an object of its own, so that a setting is told from the next by what it is and not by the handler (the same handler can be set again). */
   let linking: { readonly handler: LinkHandler } | undefined;
   let links: WebLinksAddon | undefined;
+  let fileLinks: FileLinkProvider | undefined;
   /** The attributes the host asked the input to have, and the names of those set on it: a call replaces what the one before set. */
   let wantedAttributes: Readonly<Record<string, string>> = {};
   let appliedAttributes: readonly string[] = [];
@@ -749,9 +751,25 @@ export function createXtermEngine(options: EngineOptions): Engine {
       applyAttributes();
     },
 
-    setFileLinks: () => undefined,
+    setFileLinks: (handler) => {
+      fileLinks?.dispose();
+      fileLinks = undefined;
+      if (handler === undefined || disposed) {
+        return;
+      }
 
-    fileCandidatesInView: () => [],
+      // Only the handler that is set when the pointer acts hears it: a handler that was replaced hears nothing more.
+      fileLinks = createFileLinkProvider(
+        terminal,
+        handler,
+        (event, path, range) => {
+          const place = hoverOf(event, path, range);
+          return { path, kind: 'file', x: place.x, y: place.y };
+        },
+      );
+    },
+
+    fileCandidatesInView: () => (disposed ? [] : fileCandidatesInView(terminal)),
 
     viewLinks: () => {
       if (disposed) {
@@ -982,6 +1000,8 @@ export function createXtermEngine(options: EngineOptions): Engine {
       links?.dispose();
       links = undefined;
       linking = undefined;
+      fileLinks?.dispose();
+      fileLinks = undefined;
       gpu?.dispose();
       gpu = undefined;
       for (const mark of marks) {

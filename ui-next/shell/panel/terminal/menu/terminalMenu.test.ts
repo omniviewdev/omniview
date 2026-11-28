@@ -288,7 +288,7 @@ describe('Open link names the address as the browser reads it', () => {
 // (step 5) the action is Copy path, and the item says so.
 describe('Open link lists the file links in view', () => {
   const FILE = { path: '/work/src/a.go', kind: 'file', line: 12, col: 3 } as const;
-  const withFiles = (files: readonly (typeof FILE | { readonly path: string; readonly kind: 'dir' | 'file'; readonly line?: number })[], links: readonly string[] = []) => {
+  const withFiles = (files: ReadonlyArray<typeof FILE | { readonly path: string; readonly kind: 'dir' | 'file'; readonly line?: number }>, links: readonly string[] = []) => {
     const actions = { ...fakes(), openLink: vi.fn(), copyPath: vi.fn() };
     const items = terminalMenu(actions, { selected: true, input: true, links, files });
     const found = items.find((item) => item.id === 'open-link');

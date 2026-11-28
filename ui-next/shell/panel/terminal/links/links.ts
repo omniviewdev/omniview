@@ -11,6 +11,29 @@ export function followWords(platform: Platform): string {
   return `Follow link (${platform === 'mac' ? 'cmd' : 'ctrl'} + click)`;
 }
 
+/** What a file link copies: its path, with the line and the column when the text gave them (`/work/src/a.go:12:3`). */
+export function copiedText(link: { readonly path: string; readonly line?: number | undefined; readonly col?: number | undefined }): string {
+  if (link.line === undefined) {
+    return link.path;
+  }
+
+  return link.col === undefined ? `${link.path}:${String(link.line)}` : `${link.path}:${String(link.line)}:${String(link.col)}`;
+}
+
+/** What a hover on a file link says: the click copies the path until an editor opens files (#696 step 5), and the words name that click as `followWords` names the web link's. */
+export function copyWords(platform: Platform): string {
+  return `Copy path (${platform === 'mac' ? 'cmd' : 'ctrl'} + click)`;
+}
+
+/** Where in a file a link goes, as a hover says it: `line 12, column 3`, `line 12`, or nothing when the text gave no line. */
+export function positionWords(link: { readonly line?: number | undefined; readonly col?: number | undefined }): string | undefined {
+  if (link.line === undefined) {
+    return undefined;
+  }
+
+  return link.col === undefined ? `line ${String(link.line)}` : `line ${String(link.line)}, column ${String(link.col)}`;
+}
+
 /**
  * Whether a click follows the link it is on. The emulator gives a click on a link to the host as it came, whatever keys were held: the host asks for Command on a Mac and Control elsewhere (VS Code's test, `isMacintosh ?
  * event.metaKey : event.ctrlKey`). Control with a click on a Mac is the secondary click, so it is not the modifier there.

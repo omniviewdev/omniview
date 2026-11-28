@@ -93,6 +93,17 @@ async function pasteInto(screen: TerminalMenuScreen | undefined, canPaste: () =>
   screen?.paste(text);
 }
 
+/** The file links in view for the menu being opened: what the page has resolved so far, and the lines are asked again so that the next opening is as of now (the host answers from its cache of 10 s). A menu is a snapshot of its opening. */
+function openedFiles(links: TerminalMenuLinks | undefined): readonly ResolvedFile[] | undefined {
+  const files = links?.files;
+  if (files === undefined) {
+    return undefined;
+  }
+
+  void files.warm();
+  return files.inView();
+}
+
 export function useTerminalMenu({ sessionId, screen, status, openFind, copy, here, links }: TerminalMenuOptions): TerminalMenu {
   const extendMenu = useMaybePanel()?.terminalMenu;
   // The terminal takes what is typed or pasted while it is starting or running (the screen's own rule).
@@ -143,6 +154,13 @@ export function useTerminalMenu({ sessionId, screen, status, openFind, copy, her
             openLink: (uri: string) => {
               latest.current.links?.open(uri);
             },
+            ...(links.files === undefined
+              ? {}
+              : {
+                copyPath: (text: string) => {
+                  latest.current.links?.files?.copy(text);
+                },
+              }),
           }),
         ...(here === undefined
           ? {}
@@ -174,7 +192,7 @@ export function useTerminalMenu({ sessionId, screen, status, openFind, copy, her
             },
           }),
       },
-      { selected: screen.getSnapshot().selected, input, here: here?.available, commands: screen.commands?.state(), links: links === undefined ? undefined : (screen.viewLinks?.() ?? []).filter(links.follows) },
+      { selected: screen.getSnapshot().selected, input, here: here?.available, commands: screen.commands?.state(), links: links === undefined ? undefined : (screen.viewLinks?.() ?? []).filter(links.follows), files: openedFiles(links) },
     );
     return sessionId === undefined ? items : extendMenu?.(sessionId, 'terminal-body', items) ?? items;
   }, `${selected ? 'selected' : 'nothing selected'}, ${commandState}, ${input ? 'input' : 'no input'}, ${here === undefined ? 'no new terminal' : here.available ? 'new terminal here' : 'no directory'}`);

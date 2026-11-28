@@ -229,6 +229,26 @@ function directoryOf(answer: unknown): TerminalDirectory {
   return { state: 'unknown', reason: 'unreadable' };
 }
 
+/** The host's answer to "what does this candidate link name" (`terminal.LinkResolution`): a file or a directory with a real path, and the line and column when they are numbers; anything else is unknown, and nothing is made up. */
+function linkOf(answer: unknown): TerminalLink {
+  if (typeof answer === 'object' && answer !== null) {
+    const kind: unknown = Reflect.get(answer, 'kind');
+    const path: unknown = Reflect.get(answer, 'path');
+    if ((kind === 'file' || kind === 'dir') && typeof path === 'string' && path !== '') {
+      const line: unknown = Reflect.get(answer, 'line');
+      const col: unknown = Reflect.get(answer, 'col');
+      return { kind, path, ...(typeof line === 'number' ? { line } : {}), ...(typeof col === 'number' ? { col } : {}) };
+    }
+
+    const reason: unknown = Reflect.get(answer, 'reason');
+    if (kind === 'unknown' && typeof reason === 'string' && reason !== '') {
+      return { kind: 'unknown', reason };
+    }
+  }
+
+  return { kind: 'unknown', reason: 'unreadable' };
+}
+
 /**
  * How a process ended, from the typed CLOSE payload (`terminal.End`, docs/ui-next/status/T1-go.md 2.2): the members of `exit` that it says, and nothing when it says none. Only an exit the page recognises says anything,
  * a capped drain included: a reason it does not know is a plain end, since the notice about what the host dropped belongs to a process whose end the page can state.
@@ -1722,7 +1742,19 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       }
     },
 
-    resolveLink: async (): Promise<TerminalLink> => ({ kind: 'unknown', reason: 'stub' }),
+    resolveLink: async (rowDirectory, text): Promise<TerminalLink> => {
+      // Only a shell that runs and that this page holds has a disk to look at that the row is about; an ended, lost or leaving terminal is asked nothing.
+      if (closed() || left || status.state !== 'running') {
+        return { kind: 'unknown', reason: 'ended' };
+      }
+
+      try {
+        return linkOf(await channels.resolveLink(id, rowDirectory, text));
+      } catch (error) {
+        // A terminal the host says is gone ended since the page last heard; a question that failed is a question not answered.
+        return { kind: 'unknown', reason: channels.isGone(error) ? 'gone' : 'unanswered' };
+      }
+    },
 
     launch: () => {
       const asked = options.launch ?? attachTo?.launch;
