@@ -18,6 +18,9 @@ type Harness = {
   readonly target: (patch?: Partial<TerminalTarget>) => { readonly target: TerminalTarget; readonly feed: FakeTerminalFeed };
 };
 
+/** Where the page that the registry runs in is served from, in the tests: the host's server on its usual port. */
+const OWN_ORIGIN = { protocol: 'http:', hostname: 'localhost', port: '34115' } as const;
+
 let clock = 1_000;
 let counter = 0;
 
@@ -28,6 +31,8 @@ function harness(
     readonly reattach?: ((id: string) => TerminalTarget) | undefined;
     readonly restart?: ((restart: TerminalRestart, session: string) => TerminalTarget) | undefined;
     readonly openExternal?: ((url: string) => void | Promise<void>) | undefined;
+    /** The page's own address, which a link must not point at (`TerminalSessionsOptions.origin`). Default: the host's server on its usual port. */
+    readonly origin?: { readonly protocol: string; readonly hostname: string; readonly port: string } | undefined;
   } = {},
 ): Harness {
   clock = 1_000;
@@ -36,7 +41,7 @@ function harness(
   store.registerTool(TERMINAL_TOOL);
   store.syncPlugins((options.plugins ?? []).map((id) => ({ id, tools: [] })));
   const warn = vi.fn<(message: string, error?: unknown) => void>();
-  const sessions = createTerminalSessions(store, { newId: () => `term-${String(++counter)}`, warn, reattach: options.reattach, restart: options.restart, openExternal: options.openExternal });
+  const sessions = createTerminalSessions(store, { newId: () => `term-${String(++counter)}`, warn, reattach: options.reattach, restart: options.restart, openExternal: options.openExternal, origin: options.origin ?? OWN_ORIGIN });
   const detach = sessions.attach();
   return {
     store,
@@ -2276,6 +2281,40 @@ describe('opening an address outside the app (T3a: what a person follows from a 
     expect(open).not.toHaveBeenCalled();
     expect(r.warn).toHaveBeenCalledTimes(1);
     expect(r.warn.mock.calls[0]?.[0]).toBe('[terminal] the link could not be opened: only http and https addresses are opened');
+  });
+
+  // The host's own server (#696 step 1): a link that points back at the page's own port is an open redirect to the host's loopback API, so the registry does not open it, and says so once. Any other loopback port is a dev server.
+  describe('the host\'s own server', () => {
+    it.each(['http://localhost:34115/', 'http://127.0.0.1:34115/api/x', 'http://[::1]:34115/', 'http://0.0.0.0:34115/'])('does not open %s, and says why, once', (address) => {
+      const open = vi.fn();
+      const r = harness({ openExternal: open });
+      r.sessions.openExternal(address);
+      expect(open).not.toHaveBeenCalled();
+      expect(r.warn).toHaveBeenCalledTimes(1);
+      expect(r.warn.mock.calls[0]?.[0]).toBe('[terminal] the link could not be opened: it points at this app\'s own server');
+    });
+
+    it('opens a dev server on another loopback port, and the same host on the port of another page', () => {
+      const open = vi.fn();
+      const r = harness({ openExternal: open, origin: { protocol: 'http:', hostname: 'localhost', port: '9999' } });
+      r.sessions.openExternal('http://localhost:3000/');
+      r.sessions.openExternal('http://localhost:34115/');
+      expect(open.mock.calls).toEqual([['http://localhost:3000/'], ['http://localhost:34115/']]);
+      expect(r.warn).not.toHaveBeenCalled();
+    });
+
+    it('says whether an address is followed, for the tooltip: a web address is, the host\'s own server and any other scheme are not', () => {
+      const r = harness({ openExternal: vi.fn() });
+      expect(r.sessions.canFollow('https://example.com/')).toBe(true);
+      expect(r.sessions.canFollow('http://localhost:3000/')).toBe(true);
+      expect(r.sessions.canFollow('http://localhost:34115/')).toBe(false);
+      expect(r.sessions.canFollow('file:///etc/passwd')).toBe(false);
+      expect(r.sessions.canFollow('javascript:alert(1)')).toBe(false);
+    });
+
+    it('follows nothing when the window gave no way to open one', () => {
+      expect(harness().sessions.canFollow('https://example.com/')).toBe(false);
+    });
   });
 
   it('takes each press as its own: an address that was refused is no reason to refuse the next, and each good one is one call, in order', () => {

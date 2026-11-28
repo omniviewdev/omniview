@@ -309,6 +309,8 @@ export type FakeEngine = Engine & {
   readonly inputAttributes: () => Readonly<Record<string, string>>;
   /** The handler the screen gave the links (`undefined`: it asked for none). */
   readonly links: () => LinkHandler | undefined;
+  /** The targets `viewLinks` says are in view now. */
+  readonly linksInView: (targets: readonly string[]) => void;
   /** The pointer is on a link, or leaves it (`undefined`): tells the handler, as the emulator does. */
   readonly linkHover: (hover: LinkHover | undefined) => void;
   /** A link is clicked: tells the handler, as the emulator does, with the event as it came. */
@@ -382,6 +384,7 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
   let mouse = false;
   let attributes: Readonly<Record<string, string>> = {};
   let linkHandler: LinkHandler | undefined;
+  let inView: readonly string[] = [];
   // The plain buffer of the marker tests: the lines parsed so far (the last is the one the cursor is on), the markers made, the decorations drawn.
   let buffer: string[] = [''];
   let atTop: number | undefined;
@@ -732,6 +735,7 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
     setLinks: (handler) => {
       linkHandler = handler;
     },
+    viewLinks: () => inView,
     finds,
     findClears: () => findClears,
     findAsks: () => findAsks,
@@ -747,6 +751,9 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
     pastes,
     inputAttributes: () => attributes,
     links: () => linkHandler,
+    linksInView: (targets) => {
+      inView = targets;
+    },
     linkHover: (hover) => {
       linkHandler?.hover(hover);
     },

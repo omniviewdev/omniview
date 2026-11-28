@@ -658,6 +658,8 @@ export function createXtermEngine(options: EngineOptions): Engine {
       applyAttributes();
     },
 
+    viewLinks: () => [],
+
     setLinks: (handler) => {
       links?.dispose();
       links = undefined;

@@ -11,6 +11,9 @@ export const NO_INPUT = 'Input is off';
 /** Why "New terminal here" is unavailable: the terminal's producer cannot say where it is (a terminal of a plugin runs on another machine), so there is no directory to open in. */
 export const NO_DIRECTORY = 'This terminal cannot say where it is';
 
+/** Why Open link is unavailable: no link is in view to open. */
+export const NO_LINKS = 'No links in view';
+
 /** What each item does. The menu does not bind a key and does not know how any of it is done. */
 export type TerminalMenuActions = {
   readonly copy: () => void;
@@ -18,6 +21,8 @@ export type TerminalMenuActions = {
   readonly selectAll: () => void;
   readonly clear: () => void;
   readonly find: () => void;
+  /** Opens the link of this target, outside the app. Absent: the menu has no Open link item (a window that cannot open an address). */
+  readonly openLink?: ((uri: string) => void) | undefined;
   /** Opens a new terminal in the directory of this one, as the host says it is. Absent: the menu has no such item (a window that cannot open a terminal). */
   readonly newHere?: (() => void) | undefined;
   /** What the commands of the shell's marks offer (issue #694 step 5): go to the previous and the next command, select and copy a command's output, type a command again. Absent: the menu has no such items. */
@@ -40,6 +45,8 @@ export type TerminalMenuState = {
   readonly input: boolean;
   /** The terminal can say where it is (its feed has a `directory`): "New terminal here" has a directory to start in. Read only when the menu has a `newHere` action. */
   readonly here?: boolean | undefined;
+  /** The targets of the links in view, read only when the menu has an `openLink` action. */
+  readonly links?: readonly string[] | undefined;
   /** What the screen holds of commands now, read only when the menu has `commands` actions: how many there are, whether the one the actions are for printed output, and why it cannot be typed again (`undefined`: it can). */
   readonly commands?: { readonly count: number; readonly output: boolean; readonly rerun: string | undefined } | undefined;
 };

@@ -3,6 +3,7 @@ import { StrictMode, type ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { Platform } from '../../../core/chords';
 import type { LinkHandler, LinkHover } from '../engine';
+import { isWebAddress } from './links';
 import { useTerminalLinks, type TerminalLinksOptions, type TerminalLinksScreen } from './useTerminalLinks';
 
 // The links in a terminal's output: made only where the window can open an address, followed only by the platform's click and only when the address is a web address, with a tooltip that is in the document only while the
@@ -14,6 +15,7 @@ type Rig = {
   readonly setLinks: Mock<TerminalLinksScreen['setLinks']>;
   readonly openExternal: Mock<(uri: string) => void>;
   readonly canOpenExternal: Mock<() => boolean>;
+  readonly canFollow: Mock<(uri: string) => boolean>;
   /** The handler the screen was given last (it fails the test when it was given none). */
   readonly handler: () => LinkHandler;
   readonly hover: (hover: LinkHover | undefined) => void;
@@ -29,13 +31,15 @@ function Body(options: TerminalLinksOptions): ReactElement {
   return <div data-testid="body">{element}</div>;
 }
 
-function mount(options: { readonly platform?: Platform; readonly canOpen?: boolean; readonly strict?: boolean } = {}): Rig {
+function mount(options: { readonly platform?: Platform; readonly canOpen?: boolean; readonly strict?: boolean; readonly follows?: (uri: string) => boolean } = {}): Rig {
   const setLinks = vi.fn<TerminalLinksScreen['setLinks']>();
   const openExternal = vi.fn<(uri: string) => void>();
   const canOpenExternal = vi.fn(() => options.canOpen ?? true);
   // The screen and the registry are one object each for as long as the body lives, as they are in the body.
   const screen: TerminalLinksScreen = { setLinks };
-  const sessions = { canOpenExternal, openExternal };
+  // The registry's answer for an address (`TerminalSessions.canFollow`): the scheme, and the host's own server. The default is the scheme alone.
+  const canFollow = vi.fn<(uri: string) => boolean>(options.follows ?? isWebAddress);
+  const sessions = { canOpenExternal, canFollow, openExternal };
   const props = (more: Partial<TerminalLinksOptions> = {}): TerminalLinksOptions => ({ screen, sessions, platform: options.platform ?? 'mac', ...more });
   const ui = (more: Partial<TerminalLinksOptions> = {}): ReactElement => (options.strict === true ? <StrictMode><Body {...props(more)} /></StrictMode> : <Body {...props(more)} />);
   const view = render(ui());
@@ -52,6 +56,7 @@ function mount(options: { readonly platform?: Platform; readonly canOpen?: boole
     setLinks,
     openExternal,
     canOpenExternal,
+    canFollow,
     handler,
     hover: (hover) => {
       act(() => {
@@ -473,5 +478,76 @@ describe('dismissing the tooltip with Escape', () => {
     expect(page.queryByRole('tooltip')).toBeNull();
     rig.hover({ ...LINK, y: 100 });
     expect(page.getByRole('tooltip').style.getPropertyValue('--_y')).toBe('100px');
+  });
+});
+
+// The target is shown before it opens (#696 step 1). A hyperlink the program writes (OSC 8) has text and a target that may differ: `https://a.example` on the screen can be a link to `https://b.example`. The tooltip says where the
+// click goes, in the words of the target itself, whatever the text is, and the click opens that target and no other.
+describe('the target', () => {
+  const TEXT = 'https://a.example';
+  const TARGET = 'https://b.example/login';
+
+  it('is in the tooltip, beside the words that say how to follow the link', () => {
+    const rig = mount({ platform: 'other' });
+    rig.hover({ uri: TARGET, x: 120, y: 80 });
+    const tip = page.getByRole('tooltip');
+    expect(tip).toHaveTextContent('Follow link (ctrl + click)');
+    expect(tip).toHaveTextContent(TARGET);
+    expect(tip).not.toHaveTextContent(TEXT);
+  });
+
+  it('is what the click opens, and is in the tooltip when the link is the same one the click is on', () => {
+    const rig = mount({ platform: 'other' });
+    rig.hover({ uri: TARGET, x: 120, y: 80 });
+    rig.follow(TARGET, { ctrlKey: true });
+    expect(rig.openExternal).toHaveBeenCalledExactlyOnceWith(TARGET);
+    expect(page.getByRole('tooltip')).toHaveTextContent(TARGET);
+  });
+
+  it('is the one of the link the pointer is on now: it changes when the pointer moves to another link', () => {
+    const rig = mount();
+    rig.hover({ uri: TARGET, x: 120, y: 80 });
+    rig.hover({ uri: 'https://c.example/', x: 300, y: 200 });
+    const tip = page.getByRole('tooltip');
+    expect(tip).toHaveTextContent('https://c.example/');
+    expect(tip).not.toHaveTextContent(TARGET);
+  });
+
+  it('is in the one live region, so that it is said to a person who cannot see it, with the words', () => {
+    const rig = mount();
+    rig.hover({ uri: TARGET, x: 120, y: 80 });
+    expect(document.querySelectorAll('[aria-live]')).toHaveLength(1);
+    expect(document.querySelector('[aria-live]')).toHaveTextContent(TARGET);
+  });
+
+  it('is kept whole, however long: the host name is at the front, and a tooltip that cut the address would show the front only', () => {
+    const rig = mount();
+    const long = `https://b.example/${'a'.repeat(1900)}`;
+    rig.hover({ uri: long, x: 120, y: 80 });
+    expect(page.getByRole('tooltip')).toHaveTextContent(long);
+  });
+});
+
+// The host's own server (#696 step 1): the registry says whether an address is followed, and a link to the host's own port is not one: no tooltip says it is, no click opens it.
+describe('an address the registry will not follow', () => {
+  const OWN = 'http://localhost:34115/api';
+
+  it('has no tooltip, though it is a web address: a click would open nothing, so the tooltip must not say it follows', () => {
+    const rig = mount({ follows: (uri) => uri !== OWN });
+    rig.hover({ uri: OWN, x: 120, y: 80 });
+    expect(page.queryByRole('tooltip')).toBeNull();
+    expect(rig.canFollow).toHaveBeenCalledWith(OWN);
+  });
+
+  it('is not handed to the registry to open, with the right click', () => {
+    const rig = mount({ platform: 'mac', follows: (uri) => uri !== OWN });
+    rig.follow(OWN, { metaKey: true });
+    expect(rig.openExternal).not.toHaveBeenCalled();
+  });
+
+  it('leaves the others alone: the same hook follows an address the registry does', () => {
+    const rig = mount({ platform: 'mac', follows: (uri) => uri !== OWN });
+    rig.follow('http://localhost:3000/', { metaKey: true });
+    expect(rig.openExternal).toHaveBeenCalledExactlyOnceWith('http://localhost:3000/');
   });
 });

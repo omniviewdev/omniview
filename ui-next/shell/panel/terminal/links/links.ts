@@ -35,3 +35,11 @@ export function isWebAddress(uri: string): boolean {
     return false;
   }
 }
+
+/** The address of the page the terminal runs in: the parts of `location` the host's own server is told by. */
+export type Origin = Pick<Location, 'protocol' | 'hostname' | 'port'>;
+
+/** Whether an address points at the host's own server (the page's own origin, or a loopback address on its port). */
+export function isOwnServer(_uri: string, _own: Origin): boolean {
+  return false;
+}
