@@ -8,9 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	logging "github.com/omniviewdev/plugin-sdk/log"
-
 	"github.com/omniviewdev/omniview/internal/ownservers"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
 func newOwnRelay(t *testing.T, address string) (*Relay, *ServiceWrapper) {

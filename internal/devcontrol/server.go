@@ -8,7 +8,6 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
-	"github.com/omniviewdev/omniview/internal/ownservers"
 	"io"
 	"net"
 	"net/http"
@@ -16,6 +15,8 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
+
+	"github.com/omniviewdev/omniview/internal/ownservers"
 
 	"github.com/google/uuid"
 

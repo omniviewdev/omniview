@@ -347,15 +347,20 @@ func (m *DevServerManager) StopDevServer(pluginID string) error {
 		)
 	}
 	delete(m.instances, pluginID)
+	m.stopping[pluginID] = inst // its servers may answer until Stop returns
 	m.mu.Unlock()
 
 	if err := inst.Stop(); err != nil {
 		m.mu.Lock()
 		m.instances[pluginID] = inst
+		delete(m.stopping, pluginID)
 		m.mu.Unlock()
 		m.emitStatus(pluginID, inst.State())
 		return err
 	}
+	m.mu.Lock()
+	delete(m.stopping, pluginID)
+	m.mu.Unlock()
 	m.ports.ReleaseByPlugin(pluginID)
 	m.ports.SavePIDs()
 
@@ -532,10 +537,12 @@ func (m *DevServerManager) emitErrors(pluginID string, errors []BuildError) {
 func (m *DevServerManager) ListenAddresses() []string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	out := make([]string, 0, len(m.instances))
-	for _, inst := range m.instances {
-		if inst.vitePort > 0 {
-			out = append(out, net.JoinHostPort("127.0.0.1", strconv.Itoa(inst.vitePort)))
+	out := make([]string, 0, len(m.instances)+len(m.stopping))
+	for _, group := range []map[string]*DevServerInstance{m.instances, m.stopping} {
+		for _, inst := range group {
+			if inst.vitePort > 0 {
+				out = append(out, net.JoinHostPort("127.0.0.1", strconv.Itoa(inst.vitePort)))
+			}
 		}
 	}
 	return out

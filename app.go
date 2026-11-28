@@ -171,15 +171,18 @@ const maxServerPort = 65535
 
 // hostServers are the addresses of every server the host listens on now: the application server, the listeners that registered themselves, and the sources.
 func hostServers(sources ...func() []string) []string {
-	out := append([]string{wailsServerAddress()}, ownservers.Addresses()...)
+	out := ownservers.Addresses()
+	if serverBuild {
+		out = append(out, wailsServerAddress()) // Wails listens there in the server build only
+	}
 	for _, source := range sources {
 		out = append(out, source()...)
 	}
 	return out
 }
 
-// ownServerSources are the sources of the servers that are not application servers or registered listeners: the diagnostics endpoint, the MCP relay and the Vite
-// servers of the dev instances.
-func ownServerSources(diagnostics, relay func() string, vite func() []string) func() []string {
-	return func() []string { return append([]string{diagnostics(), relay()}, vite()...) }
+// ownServerSources are the sources of the servers that are not the application server or registered listeners: the diagnostics endpoint and the Vite servers of the
+// dev instances.
+func ownServerSources(diagnostics func() string, vite func() []string) func() []string {
+	return func() []string { return append([]string{diagnostics()}, vite()...) }
 }

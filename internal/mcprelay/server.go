@@ -24,6 +24,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/tools"
 	"github.com/omniviewdev/omniview/internal/devsession"
+	"github.com/omniviewdev/omniview/internal/ownservers"
 	settingsstore "github.com/omniviewdev/omniview/internal/settings/store"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
@@ -109,6 +110,7 @@ type Relay struct {
 	registered            map[string]bool
 	published             map[string]ToolInfo
 	listener              net.Listener
+	unlisten              func() // removes the listener's address from the host's own servers (ownservers)
 	httpServer            *http.Server
 	listenErr             string
 	listenAddr            string // tests set "127.0.0.1:0"; empty means the configured port
@@ -295,6 +297,7 @@ func (r *Relay) startListenerLocked() {
 		BaseContext: func(net.Listener) context.Context { return listenerCtx }}
 	r.listenerCancel = listenerCancel
 	r.listener = listener
+	r.unlisten = ownservers.Add(listener.Addr().String())
 	r.httpServer = server
 	r.listenErr = ""
 	go func() {
@@ -334,6 +337,8 @@ func (r *Relay) stopListenerOwned() {
 	r.listenerCancel = nil
 	r.httpServer = nil
 	r.listener = nil
+	unlisten := r.unlisten
+	r.unlisten = nil
 	status := r.statusLocked()
 	r.authority.Retire()
 	r.mu.Unlock()
@@ -341,10 +346,16 @@ func (r *Relay) stopListenerOwned() {
 		cancel()
 	}
 	if server == nil {
+		if unlisten != nil {
+			unlisten()
+		}
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
+	if unlisten != nil {
+		defer unlisten() // the address is an own server until the server has stopped answering
+	}
 	if err := drainHTTPServer(ctx, server, func() {
 		var sessions sync.WaitGroup
 		for session := range r.server.Sessions() {
@@ -372,16 +383,6 @@ func (r *Relay) restartListener() {
 	status := r.statusLocked()
 	r.mu.Unlock()
 	r.emit(EventStatus, status)
-}
-
-// ListenAddress is where the relay listens, or would listen when it is enabled, as host:port.
-func (r *Relay) ListenAddress() string {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.listener == nil {
-		return net.JoinHostPort(listenHost, strconv.Itoa(r.cfg.Port))
-	}
-	return r.listener.Addr().String()
 }
 
 func (r *Relay) endpointLocked() string {

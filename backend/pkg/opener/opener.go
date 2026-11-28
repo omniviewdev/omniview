@@ -149,6 +149,9 @@ func (o *Opener) check(raw string) (string, Reason) {
 	if err != nil {
 		return "", ReasonMalformed
 	}
+	if len(sanitized) > MaxURL { // the platform validator escapes what it hands back: the cap is on what is opened
+		return "", ReasonTooLong
+	}
 	return sanitized, ""
 }
 
@@ -264,11 +267,22 @@ func looksNumeric(label string) bool {
 	if label == "" {
 		return false
 	}
-	if strings.HasPrefix(label, "0x") {
-		return true
+	if rest, hex := strings.CutPrefix(label, "0x"); hex {
+		return isHex(rest) // the URL standard: `0x` and hexadecimal digits only; `0xgarden` is a name
 	}
 	for i := 0; i < len(label); i++ {
 		if label[i] < '0' || label[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// isHex is whether every character is a hexadecimal digit (an empty text is).
+func isHex(s string) bool {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			return false
 		}
 	}

@@ -798,9 +798,9 @@ func main() {
 		},
 	})
 
-	// The opener refuses an address of the host's own servers: the server-mode port, the diagnostics endpoint and the MCP relay.
+	// The opener refuses an address of the host's own servers: the application server (server build), the diagnostics endpoint, the Vite servers and the listeners that register themselves (the MCP relay, the trace receivers, the control server).
 	appService.setOwnServers(func() []string {
-		return hostServers(ownServerSources(diagnosticsHTTP.Address, mcpRelay.ListenAddress, devServerManager.ListenAddresses))
+		return hostServers(ownServerSources(diagnosticsHTTP.Address, devServerManager.ListenAddresses))
 	})
 
 	uiInspectionEnabled, _ := coreSettings.CategoryValues("developer")["ui_inspection_enabled"].(bool)
