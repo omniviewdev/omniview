@@ -246,12 +246,15 @@ func denied(p string) bool {
 	return false
 }
 
+// everywhere allows a walk to look anywhere: the walk to a directory the host was told to resolve in. An empty list allows nothing.
+var everywhere = []string{"/"} //nolint:gochecknoglobals // a constant list
+
 // permitted is whether a path may be looked at: it is one of the directories a path may lie in, inside one, or an ancestor of one (a walk to a
 // directory looks at each of its ancestors). Anything else is outside and is not looked at, so text cannot make the host touch a path of its choosing
 // (an automounted /net/host/..., a path on a hung mount), and a missing path outside is answered as an existing one is.
 func permitted(p string, allowed []string) bool {
-	if allowed == nil || p == "/" {
-		return true
+	if p == "/" {
+		return len(allowed) > 0
 	}
 	for _, base := range allowed {
 		base = strings.TrimSuffix(base, "/")
@@ -330,7 +333,7 @@ func (c *call) bases(in Input) ([]string, Reason) {
 		if !filepath.IsAbs(dir) {
 			continue
 		}
-		resolved, info, reason := c.real(filepath.Clean(dir), nil)
+		resolved, info, reason := c.real(filepath.Clean(dir), everywhere)
 		if reason == ReasonTimeout || (reason == ReasonDenied && i == 0) {
 			return nil, reason
 		}
