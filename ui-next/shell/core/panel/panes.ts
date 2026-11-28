@@ -1,7 +1,7 @@
 import { equalRatios, fitRatios, minRatio, moveBoundary, PANE_MIN_PX } from './ratios';
 import { openSession } from './sessions';
 import { effectiveSession, identifier, own, patch, refuse, sessionVisible, settle, toolVisible, unchanged, type Context, type Step } from './state';
-import type { PaneAxis, PaneGroup, PaneId, PanelResult, PanelState, SessionId, SessionInput, SplitResult, ToolId } from './types';
+import type { PaneAxis, PaneGroup, PaneId, PaneLayout, PanelResult, PanelState, SessionId, SessionInput, SplitResult, ToolId } from './types';
 
 // The panes of a tool: a new session beside the active one, the sash, the shares. A tool that has no group shows one session and none of this applies to it. Closing a pane is closing its session
 // (`closeSession`, ./sessions.ts); what keeps the active session in the active pane is `settle` (./state.ts).
@@ -143,4 +143,15 @@ export function equalisePanes(state: PanelState, tool: ToolId, extent: number): 
 export function fitPanes(state: PanelState, tool: ToolId, extent: number): Step<PanelResult> {
   const found = sized(state, tool, extent);
   return 'state' in found ? found : withShares(state, tool, found.group, fitRatios(found.group.ratios, found.min));
+}
+
+/** How the keyboard moves between the panes of a group. */
+export type PaneStep = 'next' | 'previous' | 'left' | 'right' | 'up' | 'down';
+
+export function paneToward(_layout: PaneLayout, _step: PaneStep): PaneId | undefined {
+  return undefined;
+}
+
+export function leavePane(state: PanelState, _session: SessionId): Step<PanelResult> {
+  return unchanged(state);
 }

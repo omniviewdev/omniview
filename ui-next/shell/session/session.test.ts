@@ -365,6 +365,38 @@ describe('a window that is saved and comes back', () => {
   });
 });
 
+describe('the panes of a tool come back with the window (#697 step 6)', () => {
+  it('saves the group with the burst and brings it back: the same panes in the same order with the same shares and the active pane; a drag of a sash is saved again', async () => {
+    const memory = memoryStorage();
+    const first = live(await loadSession(memory.storage, optionsOf(notes().log)));
+    equip(first.panel);
+    const a = startIn(first.panel, 'logs', 'a');
+    first.panel.splitPane('logs', { plugin: 'cloud', title: 'b' }, { extent: 1000 });
+    first.panel.focusPane('logs', first.panel.getSnapshot().panes.logs?.panes[0].id ?? '');
+    first.panel.splitPane('logs', { plugin: 'cloud', title: 'c' }, { extent: 1000 });
+    first.panel.moveSash('logs', 0, 0.2, 1000);
+    await settle();
+    const saved = first.panel.getSnapshot().panes.logs;
+    expect(saved?.panes).toHaveLength(3);
+    expect(JSON.parse(memory.writes.at(-1) ?? '')).toMatchObject({ panel: { layout: { version: 1, tools: { logs: { axis: 'row', ratios: saved?.ratios } } } } });
+
+    const second = live(await loadSession(memory.storage, optionsOf(notes().log)));
+    equip(second.panel);
+    const back = second.panel.getSnapshot().panes.logs;
+    expect(back?.panes.map((pane) => pane.session)).toEqual(saved?.panes.map((pane) => pane.session));
+    expect(back?.ratios).toEqual(saved?.ratios);
+    expect(back?.panes.find((pane) => pane.id === back.active)?.session).toBe(saved?.panes.find((pane) => pane.id === saved.active)?.session);
+    expect(second.panel.getSnapshot().panes.logs?.panes[0].session).toBe(a);
+    expect(checkInvariants(second.panel.getSnapshot())).toEqual([]);
+    // What was saved is what is held now: restoring wrote nothing; a drag of a sash is a change and is written.
+    await settle(1000);
+    const writes = memory.writes.length;
+    second.panel.moveSash('logs', 1, 0.9, 1000);
+    await settle();
+    expect(memory.writes).toHaveLength(writes + 1);
+  });
+});
+
 describe('a session that cannot be used is kept aside and the window starts empty', () => {
   const unusable: ReadonlyArray<readonly [string, string, string]> = [
     ['is not JSON', '{"version":1,"tabs":', 'unreadable'],

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { checkInvariants } from './state';
+import { paneToward } from './panes';
 import { boot, session, tool, type Harness } from './testing';
+import type { PaneLayout } from './types';
 
 // The panes of a tool (#697 step 6): a tool that shows several sessions at once. A tool with no group is the panel as it was, and every other test of this directory is that case.
 
@@ -420,5 +422,77 @@ describe('what a tool draws', () => {
     expect(h.store.selectors.paneLayout(h.snapshot(), 'acme:one')).toMatchObject({ panes: [{ session: 's1' }], ratios: [1] });
     h.store.syncPlugins([]);
     expect(h.store.selectors.paneLayout(h.snapshot(), 'acme:one')).toBeNull();
+  });
+});
+
+describe('a pane that leaves (a terminal that is not there after a reload)', () => {
+  it('goes out of its group and its session stays a tab: its share goes to the others in proportion', () => {
+    const h = terminalWith(3);
+    h.store.moveSash('terminal', 0, 0.2, EXTENT);
+    h.store.moveSash('terminal', 1, 0.5, EXTENT);
+    expect(h.store.leavePane('s2')).toEqual({ status: 'done' });
+    expect(sessionsOf(h)).toEqual(['s1', 's3']);
+    const ratios = group(h)?.ratios ?? [];
+    expect(ratios[0]).toBeCloseTo(0.2 / 0.7, 9);
+    expect(ratios[1]).toBeCloseTo(0.5 / 0.7, 9);
+    expect(h.snapshot().sessions.s2).toBeDefined();
+    expect(h.snapshot().order).toContain('s2');
+    expect(checkInvariants(h.snapshot())).toEqual([]);
+  });
+
+  it('passes the focus as a closed pane does when it was the active one, and dissolves a group left with one pane', () => {
+    const h = terminalWith(3);
+    h.store.focusPane('terminal', 'p2');
+    h.store.leavePane('s2');
+    expect(group(h)?.active).toBe('p3');
+    expect(h.snapshot().active.terminal).toBe('s3');
+    h.store.leavePane('s3');
+    expect(h.snapshot().panes).toEqual({});
+    expect(h.snapshot().active.terminal).toBe('s1');
+    expect(h.snapshot().sessions.s3).toBeDefined();
+    expect(checkInvariants(h.snapshot())).toEqual([]);
+  });
+
+  it('refuses a session that is in no pane, and one that is not there', () => {
+    const h = terminalWith(2);
+    h.store.openSession(session('terminal', 'host', 'aside'), { reveal: false });
+    const before = h.snapshot();
+    expect(h.store.leavePane('s3')).toMatchObject({ status: 'refused', reason: 'missing' });
+    expect(h.store.leavePane('ghost')).toMatchObject({ status: 'refused', reason: 'missing' });
+    expect(h.snapshot()).toBe(before);
+  });
+});
+
+describe('moving the focus between panes', () => {
+  const layout = (count: number, axis: 'row' | 'column' = 'row', active = 'p1'): PaneLayout => ({ axis, panes: Array.from({ length: count }, (_, i) => ({ id: `p${String(i + 1)}`, session: `s${String(i + 1)}` })), ratios: Array.from({ length: count }, () => 1 / count), active });
+
+  it('goes to the next and the previous pane, wrapping at either end', () => {
+    expect(paneToward(layout(3), 'next')).toBe('p2');
+    expect(paneToward(layout(3, 'row', 'p3'), 'next')).toBe('p1');
+    expect(paneToward(layout(3), 'previous')).toBe('p3');
+    expect(paneToward(layout(3, 'row', 'p2'), 'previous')).toBe('p1');
+  });
+
+  it('goes left and right in a row, and stops at the ends: there is no pane beyond', () => {
+    expect(paneToward(layout(3, 'row', 'p2'), 'left')).toBe('p1');
+    expect(paneToward(layout(3, 'row', 'p2'), 'right')).toBe('p3');
+    expect(paneToward(layout(3), 'left')).toBeUndefined();
+    expect(paneToward(layout(3, 'row', 'p3'), 'right')).toBeUndefined();
+    expect(paneToward(layout(3, 'row', 'p2'), 'up')).toBeUndefined();
+    expect(paneToward(layout(3, 'row', 'p2'), 'down')).toBeUndefined();
+  });
+
+  it('goes up and down in a column; left and right there are the previous and the next (the keys of a platform that has no up and down)', () => {
+    expect(paneToward(layout(3, 'column', 'p2'), 'up')).toBe('p1');
+    expect(paneToward(layout(3, 'column', 'p2'), 'down')).toBe('p3');
+    expect(paneToward(layout(3, 'column', 'p2'), 'left')).toBe('p1');
+    expect(paneToward(layout(3, 'column', 'p2'), 'right')).toBe('p3');
+    expect(paneToward(layout(3, 'column'), 'up')).toBeUndefined();
+  });
+
+  it('has nowhere to go with one pane, or when the active pane is not among them', () => {
+    expect(paneToward(layout(1), 'next')).toBeUndefined();
+    expect(paneToward(layout(1), 'right')).toBeUndefined();
+    expect(paneToward(layout(3, 'row', 'p9'), 'next')).toBeUndefined();
   });
 });

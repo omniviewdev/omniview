@@ -226,3 +226,20 @@ describe('the keys that jump to a command', () => {
     expect(keyOf(key('ArrowUp', { key: 'ArrowUp' }), 'other', false), 'plain Up is the shell\'s history').toBe('terminal');
   });
 });
+
+// The pane chords (core/chords.ts `paneChordOf`) belong to the window: the terminal neither takes them nor stops them, so the shell never receives an escape sequence for them.
+describe('the pane chords', () => {
+  it('are the window\'s on a Mac: Command Option with the arrows and the brackets', () => {
+    for (const code of ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'BracketLeft', 'BracketRight']) {
+      expect(keyOf(key(code, { key: code, metaKey: true, altKey: true }), 'mac', false), code).toBe('app');
+    }
+  });
+
+  it('are the window\'s on Windows and Linux: Control Shift Left and Right and the brackets; Control Shift Up and Down stay the command selection', () => {
+    for (const code of ['ArrowLeft', 'ArrowRight', 'BracketLeft', 'BracketRight']) {
+      expect(keyOf(key(code, { key: code, ctrlKey: true, shiftKey: true }), 'other', false), code).toBe('app');
+    }
+
+    expect(keyOf(key('ArrowUp', { key: 'ArrowUp', ctrlKey: true, shiftKey: true }), 'other', false)).toBe('selectPreviousCommand');
+  });
+});

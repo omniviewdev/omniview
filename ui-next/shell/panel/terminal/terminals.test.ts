@@ -741,6 +741,75 @@ describe('a window that was reloaded finds its terminals again (T2-go)', () => {
     vi.restoreAllMocks();
   });
 
+  /** A reloaded window whose last run had its terminals in panes: the group is saved with the shares and the pane that was active (`active`, an index). */
+  function reloadedInPanes(options: TerminalsOptions, ids: readonly string[], ratios: readonly number[], active = ids.length - 1) {
+    const restoredPanel = restorePanel(
+      { version: PANEL_VERSION, open: true, height: null, tool: 'terminal', active: {}, sessions: ids.map((id) => ({ id, tool: 'terminal', plugin: HOST, title: 'zsh', scope: '' })), layout: { version: 1, tools: { terminal: { axis: 'row', sessions: ids, ratios, active } } } },
+      { now: 500 },
+    );
+    if (!restoredPanel.ok) {
+      throw new Error(restoredPanel.detail);
+    }
+
+    const store = createPanelStore({ initial: restoredPanel.state });
+    store.registerTool(TERMINAL_TOOL);
+    return { store, terminals: createTerminals(store, options) };
+  }
+
+  const paneSessions = (store: PanelStore): readonly string[] | undefined => store.getSnapshot().panes.terminal?.panes.map((pane) => pane.session);
+
+  describe('and its terminals are in panes (#697 step 6)', () => {
+    it('brings the group back as it was: the same panes in the same order with the same shares and the same active pane, and each pane\'s terminal attached again', async () => {
+      const feeds = [keyedFeed(), keyedFeed(), keyedFeed()];
+      const r = reloadedInPanes({ restore: async () => Promise.resolve(['term-c', 'term-a', 'term-b'].map((id) => found(id, feeds['abc'.indexOf(id.slice(-1))]))) }, ['term-a', 'term-b', 'term-c'], [0.2, 0.3, 0.5], 1);
+      const stop = r.terminals.attach();
+      await turns();
+      const state = r.store.getSnapshot();
+      expect(paneSessions(r.store)).toEqual(['term-a', 'term-b', 'term-c']);
+      expect(state.panes.terminal?.ratios).toEqual([0.2, 0.3, 0.5]);
+      expect(state.panes.terminal?.panes.find((pane) => pane.id === state.panes.terminal?.active)?.session).toBe('term-b');
+      expect(['term-a', 'term-b', 'term-c'].map((id) => r.terminals.sessions.feedOf(id))).toEqual(feeds);
+      expect(['term-a', 'term-b', 'term-c'].map((id) => stateOf(r.store, id))).toEqual(['running', 'running', 'running']);
+      stop();
+    });
+
+    it('leaves the pane of a terminal that is gone closed, and gives its share to the others in proportion; its tab stays, ended', async () => {
+      const r = reloadedInPanes({ restore: async () => Promise.resolve([found('term-a'), found('term-c')]) }, ['term-a', 'term-b', 'term-c'], [0.2, 0.3, 0.5]);
+      const stop = r.terminals.attach();
+      await turns();
+      expect(paneSessions(r.store)).toEqual(['term-a', 'term-c']);
+      const ratios = r.store.getSnapshot().panes.terminal?.ratios ?? [];
+      expect(ratios[0]).toBeCloseTo(0.2 / 0.7, 9);
+      expect(ratios[1]).toBeCloseTo(0.5 / 0.7, 9);
+      expect(r.store.getSnapshot().sessions['term-b']).toMatchObject({ state: 'ended' });
+      expect(checkInvariants(r.store.getSnapshot())).toEqual([]);
+      stop();
+    });
+
+    it('closes the group when all but one are gone, and keeps the panes of a host that could not answer', async () => {
+      const gone = reloadedInPanes({ restore: async () => Promise.resolve([found('term-b')]) }, ['term-a', 'term-b', 'term-c'], [0.2, 0.3, 0.5]);
+      const stopGone = gone.terminals.attach();
+      await turns();
+      expect(gone.store.getSnapshot().panes).toEqual({});
+      expect(gone.store.getSnapshot().active.terminal).toBe('term-b');
+      stopGone();
+      const silent = reloadedInPanes({ restore: async () => Promise.reject(new Error('no host')) }, ['term-a', 'term-b', 'term-c'], [0.2, 0.3, 0.5]);
+      const stopSilent = silent.terminals.attach();
+      await turns();
+      expect(paneSessions(silent.store)).toEqual(['term-a', 'term-b', 'term-c']);
+      stopSilent();
+    });
+
+    it('keeps the pane of a terminal the host lists as ended: its lane offers a restart there', async () => {
+      const ended = { ...found('term-b', keyedFeed({ state: 'ended' })), ended: true };
+      const r = reloadedInPanes({ restore: async () => Promise.resolve([found('term-a'), ended, found('term-c')]) }, ['term-a', 'term-b', 'term-c'], [0.2, 0.3, 0.5]);
+      const stop = r.terminals.attach();
+      await turns();
+      expect(paneSessions(r.store)).toEqual(['term-a', 'term-b', 'term-c']);
+      stop();
+    });
+  });
+
   it('asks the host for its terminals once, when the window attaches and not before, and gives each the saved tab of its id', async () => {
     const [a, b] = [keyedFeed(), keyedFeed()];
     const restore = vi.fn(async () => Promise.resolve([found('term-b', b), found('term-a', a)]));

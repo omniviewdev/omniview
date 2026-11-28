@@ -572,3 +572,120 @@ describe('the room for one more pane', () => {
     vi.unstubAllGlobals();
   });
 });
+
+/** A body with a text input where the keyboard goes, as an emulator's is. */
+function Input({ title }: { readonly title: string }) {
+  return <textarea className="xterm-helper-textarea" aria-label={`Terminal input, ${title}`} />;
+}
+
+describe('the pane chords (the keyboard moves between panes)', () => {
+  function chordRig(count: number) {
+    const panel = staticPanel({ tools: [TERMINAL], sessions: [running('zsh')], open: true, renderBody: (session) => <Input title={session.title} /> });
+    render(
+      <StaticShell registration={registration} panel={panel}>
+        <button type="button">Inside the page</button>
+      </StaticShell>,
+    );
+    for (let i = 2; i <= count; i += 1) {
+      act(() => {
+        panel.store.splitPane('terminal', { plugin: 'host', title: `bash ${String(i)}`, state: 'running' }, { extent: DECK });
+      });
+    }
+
+    const inputs = (): HTMLElement[] => slots().filter((slot) => !slot.hidden).map((slot) => slot.querySelector<HTMLElement>('textarea') as HTMLElement);
+    return { panel, store: panel.store, inputs };
+  }
+
+  const press = (target: Element, code: string, extra: Partial<KeyboardEventInit> = {}): boolean => fireEvent.keyDown(target, { code, key: code, ctrlKey: true, shiftKey: true, ...extra });
+
+  it('moves the keyboard to the pane on the left and on the right, into its input, and makes it the active pane', () => {
+    const r = chordRig(3);
+    const [one, two, three] = r.inputs();
+    act(() => {
+      three.focus();
+    });
+    expect(r.store.getSnapshot().panes.terminal?.active).toBe('p3');
+    act(() => {
+      press(three, 'ArrowLeft');
+    });
+    expect(two).toHaveFocus();
+    expect(r.store.getSnapshot().panes.terminal?.active).toBe('p2');
+    act(() => {
+      press(two, 'ArrowLeft');
+    });
+    expect(one).toHaveFocus();
+    act(() => {
+      press(one, 'ArrowRight');
+    });
+    expect(two).toHaveFocus();
+  });
+
+  it('stops at the ends for left and right, and wraps for the next and the previous pane', () => {
+    const r = chordRig(3);
+    const [one, , three] = r.inputs();
+    act(() => {
+      one.focus();
+    });
+    act(() => {
+      press(one, 'ArrowLeft');
+    });
+    expect(one).toHaveFocus();
+    act(() => {
+      press(one, 'BracketLeft');
+    });
+    expect(three).toHaveFocus();
+    act(() => {
+      press(three, 'BracketRight');
+    });
+    expect(one).toHaveFocus();
+  });
+
+  it('is cancelled when it moved the keyboard (the terminal must not also see it), and left alone when there is nowhere to go', () => {
+    const r = chordRig(2);
+    const [one, two] = r.inputs();
+    act(() => {
+      one.focus();
+    });
+    let moved = true;
+    act(() => {
+      moved = press(one, 'ArrowRight');
+    });
+    expect(moved).toBe(false);
+    expect(two).toHaveFocus();
+    act(() => {
+      moved = press(two, 'ArrowRight');
+    });
+    expect(moved).toBe(true);
+  });
+
+  it('does nothing outside the panel, with one pane, or for the other platform\'s chord', () => {
+    const r = chordRig(2);
+    const [one, two] = r.inputs();
+    const outside = screen.getByRole('button', { name: 'Inside the page' });
+    act(() => {
+      outside.focus();
+    });
+    act(() => {
+      press(outside, 'ArrowRight');
+    });
+    expect(outside).toHaveFocus();
+    act(() => {
+      one.focus();
+    });
+    act(() => {
+      press(one, 'ArrowRight', { ctrlKey: false, metaKey: true, altKey: true, shiftKey: false });
+    });
+    expect(one).toHaveFocus();
+    expect(two).not.toHaveFocus();
+    act(() => {
+      r.store.closeSession(r.store.getSnapshot().order[1]);
+    });
+    act(() => {
+      one.focus();
+    });
+    act(() => {
+      press(one, 'ArrowRight');
+    });
+    expect(one).toHaveFocus();
+  });
+});

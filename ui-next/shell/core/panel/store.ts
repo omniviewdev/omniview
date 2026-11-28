@@ -1,5 +1,5 @@
 import { activateSession, activateTool, fitHeight, hide, reorderSession, resize, revealSession, setHeight, show, toggleMaximized, type ShowOptions } from './arrange';
-import { equalisePanes, fitPanes, focusPane, moveSash, splitPane, type SplitOptions } from './panes';
+import { equalisePanes, fitPanes, focusPane, leavePane, moveSash, splitPane, type SplitOptions } from './panes';
 import { serialise } from './persist';
 import { createSelectors } from './selectors';
 import { closeSession, openSession, renameSession, retitleSession, setSessionState, type OpenOptions, type StateChange } from './sessions';
@@ -79,6 +79,8 @@ export type PanelStore = {
   readonly focusPane: (tool: ToolId, pane: PaneId) => PanelResult;
   /** The sash between pane `boundary` and the next is dragged to `position`, a share of the whole in 0..1. The ratios end within the minimum for `extent`. */
   readonly moveSash: (tool: ToolId, boundary: number, position: number, extent: number) => PanelResult;
+  /** A session leaves its pane and stays a tab: its share goes to the others in proportion, the focus passes as when a pane closes, and a group left with one pane is dissolved. For a terminal that is not there any more after a reload. */
+  readonly leavePane: (session: SessionId) => PanelResult;
   /** Every pane the same share again (a double click on a sash). */
   readonly equalisePanes: (tool: ToolId, extent: number) => PanelResult;
   /** The panel is `extent` long: shares below the minimum for it are brought within it, and stay so (as `fitHeight` does for the height). */
@@ -177,6 +179,7 @@ export function createPanelStore(options: PanelStoreOptions = {}): PanelStore {
     splitPane: (tool, input, splitOptions) => run(splitPane(state, tool, input, ctx, splitOptions)),
     focusPane: (tool, pane) => run(focusPane(state, tool, pane)),
     moveSash: (tool, boundary, position, extent) => run(moveSash(state, tool, boundary, position, extent)),
+    leavePane: (session) => run(leavePane(state, session)),
     equalisePanes: (tool, extent) => run(equalisePanes(state, tool, extent)),
     fitPanes: (tool, extent) => run(fitPanes(state, tool, extent)),
 

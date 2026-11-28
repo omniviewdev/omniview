@@ -114,3 +114,10 @@ export function panelChordOf(event: KeyLike, platform: Platform, inPanel: boolea
   const close = platform === 'mac' ? native : event.ctrlKey && event.shiftKey && !event.metaKey && !event.altKey;
   return close || web ? { action: 'close-session' } : undefined;
 }
+
+/** What a pane chord asks: to move the keyboard to the next or previous pane of the tool on screen (wrapping), or to the pane to the left, right, above or below. */
+export type PaneChord = { readonly action: 'next' | 'previous' | 'left' | 'right' | 'up' | 'down' };
+
+export function paneChordOf(_event: KeyLike, _platform: Platform, _inPanel: boolean): PaneChord | undefined {
+  return undefined;
+}

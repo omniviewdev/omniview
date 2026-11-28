@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chordOf, panelChordOf, platformOf, type KeyLike } from './chords';
+import { chordOf, paneChordOf, panelChordOf, platformOf, type KeyLike } from './chords';
 
 const key = (code: string, over: Partial<KeyLike> = {}): KeyLike => ({ code, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...over });
 
@@ -185,5 +185,49 @@ describe('the panel chords', () => {
 
   it('are matched by the physical key', () => {
     expect(panelChordOf({ ...key('KeyJ', { ctrlKey: true, altKey: true }), ...{ key: '∆' } }, 'mac', false)).toEqual({ action: 'toggle' });
+  });
+});
+
+// The pane chords (#697 step 6): move the keyboard between the panes of the Terminal tool, while it is in the panel. VS Code's are Command Option and the arrows on a Mac; elsewhere Alt and the arrows are the shell's (word movement), so the terminal
+// keeps Control chords without Shift and gives the window Control Shift: Control Shift Left and Right, and the brackets for the next and the previous pane. Up and Down with Control Shift are the terminal's (select the command's output).
+describe('the pane chords', () => {
+  const at = (code: string, platform: 'mac' | 'other', over: Partial<KeyLike> = {}, inPanel = true) => paneChordOf(key(code, over), platform, inPanel);
+
+  it('are Command Option and the arrows on a Mac, and Command Option with the brackets for the next and the previous pane', () => {
+    expect(at('ArrowLeft', 'mac', { metaKey: true, altKey: true })).toEqual({ action: 'left' });
+    expect(at('ArrowRight', 'mac', { metaKey: true, altKey: true })).toEqual({ action: 'right' });
+    expect(at('ArrowUp', 'mac', { metaKey: true, altKey: true })).toEqual({ action: 'up' });
+    expect(at('ArrowDown', 'mac', { metaKey: true, altKey: true })).toEqual({ action: 'down' });
+    expect(at('BracketRight', 'mac', { metaKey: true, altKey: true })).toEqual({ action: 'next' });
+    expect(at('BracketLeft', 'mac', { metaKey: true, altKey: true })).toEqual({ action: 'previous' });
+  });
+
+  it('are Control Shift Left and Right, and the brackets, on Windows and Linux (Up and Down are the terminal\'s there)', () => {
+    expect(at('ArrowLeft', 'other', { ctrlKey: true, shiftKey: true })).toEqual({ action: 'left' });
+    expect(at('ArrowRight', 'other', { ctrlKey: true, shiftKey: true })).toEqual({ action: 'right' });
+    expect(at('BracketRight', 'other', { ctrlKey: true, shiftKey: true })).toEqual({ action: 'next' });
+    expect(at('BracketLeft', 'other', { ctrlKey: true, shiftKey: true })).toEqual({ action: 'previous' });
+    expect(at('ArrowUp', 'other', { ctrlKey: true, shiftKey: true })).toBeUndefined();
+    expect(at('ArrowDown', 'other', { ctrlKey: true, shiftKey: true })).toBeUndefined();
+  });
+
+  it('are the panel\'s: with the keyboard outside it they are nothing', () => {
+    expect(at('ArrowLeft', 'mac', { metaKey: true, altKey: true }, false)).toBeUndefined();
+    expect(at('ArrowLeft', 'other', { ctrlKey: true, shiftKey: true }, false)).toBeUndefined();
+  });
+
+  it('are not the other platform\'s, and not a chord with a modifier more or less', () => {
+    expect(at('ArrowLeft', 'mac', { ctrlKey: true, shiftKey: true })).toBeUndefined();
+    expect(at('ArrowLeft', 'other', { metaKey: true, altKey: true })).toBeUndefined();
+    expect(at('ArrowLeft', 'mac', { metaKey: true })).toBeUndefined();
+    expect(at('ArrowLeft', 'mac', { metaKey: true, altKey: true, shiftKey: true })).toBeUndefined();
+    expect(at('ArrowLeft', 'other', { ctrlKey: true })).toBeUndefined();
+    expect(at('ArrowLeft', 'other', { ctrlKey: true, shiftKey: true, altKey: true })).toBeUndefined();
+  });
+
+  it('are not a composition, a key something else took, or AltGr', () => {
+    expect(at('ArrowLeft', 'mac', { metaKey: true, altKey: true, isComposing: true })).toBeUndefined();
+    expect(at('ArrowLeft', 'mac', { metaKey: true, altKey: true, defaultPrevented: true })).toBeUndefined();
+    expect(at('ArrowLeft', 'mac', { metaKey: true, altKey: true, keyCode: 229 })).toBeUndefined();
   });
 });

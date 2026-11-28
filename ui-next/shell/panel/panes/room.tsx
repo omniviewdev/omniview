@@ -18,3 +18,14 @@ export const PaneRoomProvider = RoomContext.Provider;
 export function usePaneRoom(): PaneRoom | null {
   return useContext(RoomContext);
 }
+
+/** Where a body is among the panes of its group: its place (from 0) and how many there are. Provided to each body of a group by the deck, and absent for a tool that shows one session. */
+export type PaneSeat = { readonly index: number; readonly count: number };
+
+const SeatContext = createContext<PaneSeat | null>(null);
+
+export const PaneSeatProvider = SeatContext.Provider;
+
+export function usePaneSeat(): PaneSeat | null {
+  return useContext(SeatContext);
+}

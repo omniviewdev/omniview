@@ -1,8 +1,8 @@
-import { cleanup, render, screen as page } from '@testing-library/react';
+import { cleanup, render, screen as page, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createPanelStore, HOST } from '../../core/panel';
-import { PaneRoomProvider, type PaneRoom } from '../panes/room';
+import { PaneRoomProvider, PaneSeatProvider, type PaneRoom } from '../panes/room';
 import { fakeEngineLoader, fakeTerminalFeed } from './testing';
 import { createScreenReaderChoice } from './screenReader';
 import { TerminalBody } from './TerminalBody';
@@ -72,5 +72,36 @@ describe('Split terminal', () => {
   it('is not in a body the window gives no way to split', () => {
     mount({ room: { fits: true, extent: () => 900 } });
     expect(page.queryByRole('button', { name: 'Split terminal' })).toBeNull();
+  });
+});
+
+describe('the input\'s name in a group of panes', () => {
+  function seated(seat: { readonly index: number; readonly count: number } | null) {
+    const store = createPanelStore({ now: () => 1_000, newId: () => 's1' });
+    store.registerTool(TERMINAL_TOOL);
+    const sessions = createTerminalSessions(store, { newId: () => 'term-1' });
+    sessions.attach();
+    const loader = fakeEngineLoader();
+    const opened = sessions.open({ plugin: HOST, id: 'local', title: 'Terminal', open: () => fakeTerminalFeed({ state: 'running' }) });
+    const session = store.getSnapshot().sessions[opened?.id ?? ''];
+    const body = <TerminalBody sessions={sessions} session={session} visible load={loader.load} screenReader={createScreenReaderChoice(false)} />;
+    render(seat === null ? body : <PaneSeatProvider value={seat}>{body}</PaneSeatProvider>);
+    return loader;
+  }
+
+  it('says which pane it is in and how many there are, so that a screen reader announces it when the keyboard arrives: Terminal input, pane 2 of 3, ...', async () => {
+    const loader = seated({ index: 1, count: 3 });
+    await screen.findByRole('toolbar', { name: 'Terminal tools' });
+    expect(loader.engines.at(0)?.labels.at(-1)?.[0]).toBe('Terminal input, pane 2 of 3, Terminal');
+  });
+
+  it('is the name it always had for a terminal that is alone', async () => {
+    const loader = seated(null);
+    await screen.findByRole('toolbar', { name: 'Terminal tools' });
+    expect(loader.engines.at(0)?.labels.at(-1)?.[0]).toBe('Terminal input, Terminal');
+    cleanup();
+    const one = seated({ index: 0, count: 1 });
+    await screen.findByRole('toolbar', { name: 'Terminal tools' });
+    expect(one.engines.at(0)?.labels.at(-1)?.[0]).toBe('Terminal input, Terminal');
   });
 });
