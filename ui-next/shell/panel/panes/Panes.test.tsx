@@ -620,6 +620,27 @@ describe('the pane chords (the keyboard moves between panes)', () => {
     expect(two).toHaveFocus();
   });
 
+  it('makes the pane the active one even when its body has nothing to take the keyboard', () => {
+    const panel = staticPanel({ tools: [TERMINAL], sessions: [running('zsh')], open: true, renderBody: () => <div>no controls</div> });
+    render(
+      <StaticShell registration={registration} panel={panel}>
+        <button type="button">Inside the page</button>
+      </StaticShell>,
+    );
+    act(() => {
+      panel.store.splitPane('terminal', { plugin: 'host', title: 'two', state: 'running' }, { extent: DECK });
+    });
+    expect(panel.store.getSnapshot().panes.terminal?.active).toBe('p2');
+    const tab = screen.getAllByRole('tab', { name: /zsh/ })[0];
+    act(() => {
+      tab.focus();
+    });
+    act(() => {
+      press(tab, 'ArrowLeft');
+    });
+    expect(panel.store.getSnapshot().panes.terminal?.active).toBe('p1');
+  });
+
   it('stops at the ends for left and right, and wraps for the next and the previous pane', () => {
     const r = chordRig(3);
     const [one, , three] = r.inputs();
@@ -666,9 +687,10 @@ describe('the pane chords (the keyboard moves between panes)', () => {
       outside.focus();
     });
     act(() => {
-      press(outside, 'ArrowRight');
+      press(outside, 'ArrowLeft');
     });
     expect(outside).toHaveFocus();
+    expect(r.store.getSnapshot().panes.terminal?.active).toBe('p2');
     act(() => {
       one.focus();
     });
