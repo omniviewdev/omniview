@@ -283,3 +283,53 @@ describe('Open link names the address as the browser reads it', () => {
     expect(actions.openLink).toHaveBeenCalledExactlyOnceWith('https://\u0430pple.com/x');
   });
 });
+
+// FILE LINKS IN OPEN LINK (#696 step 4): the files the host resolved in the lines in view, after the web addresses, each named by what it would copy: the absolute path with its line and column. Until an editor registers `openFile`
+// (step 5) the action is Copy path, and the item says so.
+describe('Open link lists the file links in view', () => {
+  const FILE = { path: '/work/src/a.go', kind: 'file', line: 12, col: 3 } as const;
+  const withFiles = (files: readonly (typeof FILE | { readonly path: string; readonly kind: 'dir' | 'file'; readonly line?: number })[], links: readonly string[] = []) => {
+    const actions = { ...fakes(), openLink: vi.fn(), copyPath: vi.fn() };
+    const items = terminalMenu(actions, { selected: true, input: true, links, files });
+    const found = items.find((item) => item.id === 'open-link');
+    if (found?.kind !== 'submenu') {
+      throw new Error('no submenu');
+    }
+
+    return { actions, submenu: found };
+  };
+
+  it('has an item for each file, after the web addresses, saying what it does and what it copies', () => {
+    const { submenu } = withFiles([FILE, { path: '/work/src', kind: 'dir' }, { path: '/work/b.go', kind: 'file', line: 7 }], ['https://example.com/docs']);
+    expect(submenu.items.map((item) => ('label' in item ? item.label : undefined))).toEqual([
+      'https://example.com/docs',
+      'Copy path /work/src/a.go:12:3',
+      'Copy path /work/src',
+      'Copy path /work/b.go:7',
+    ]);
+  });
+
+  it('is available with files and no web address, and says why it is not when neither is in view', () => {
+    expect(withFiles([FILE]).submenu.disabled).toBeFalsy();
+    expect(withFiles([]).submenu.disabled).toBe(NO_LINKS);
+  });
+
+  it('copies the path of the item chosen, once, and opens no address', () => {
+    const { actions, submenu } = withFiles([FILE, { path: '/work/b.go', kind: 'file', line: 7 }]);
+    const [, second] = submenu.items;
+    if (second?.kind !== 'action') {
+      throw new Error('no second item');
+    }
+
+    second.onSelect();
+    expect(actions.copyPath).toHaveBeenCalledExactlyOnceWith('/work/b.go:7');
+    expect(actions.openLink).not.toHaveBeenCalled();
+  });
+
+  it('has no file items for a menu with no copy action', () => {
+    const actions = { ...fakes(), openLink: vi.fn() };
+    const items = terminalMenu(actions, { selected: true, input: true, links: [], files: [FILE] });
+    const found = items.find((item) => item.id === 'open-link');
+    expect(found?.kind === 'submenu' ? found.items : undefined).toEqual([]);
+  });
+});

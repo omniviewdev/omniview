@@ -2,7 +2,8 @@ import { act, cleanup, render, screen as page } from '@testing-library/react';
 import { StrictMode, type ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { Platform } from '../../../core/chords';
-import type { LinkHandler, LinkHover } from '../engine';
+import type { FileCandidates, FileLinkHandler, FileLinkHover, LinkHandler, LinkHover } from '../engine';
+import type { TerminalBusy, TerminalLink } from '../feed';
 import { isWebAddress } from './links';
 import { useTerminalLinks, type TerminalLinksOptions, type TerminalLinksScreen } from './useTerminalLinks';
 
@@ -577,5 +578,258 @@ describe('the host', () => {
     const rig = mount();
     rig.hover({ uri: `https://b.example/${'a'.repeat(100_000)}`, x: 120, y: 80 });
     expect(page.queryByRole('tooltip')).toBeNull();
+  });
+});
+
+// THE FILE LINKS (#696 step 4): the host resolves, the page asks only what is worth asking, and a link shows the resolved path before it is followed. What a click does until the editor registers `openFile` (step 5) is
+// "Copy path", through the clipboard.
+describe('the file links', () => {
+  const SRC = { kind: 'file', path: '/work/src/a.go', line: 12, col: 3 } as const satisfies TerminalLink;
+
+  type FileRig = {
+    readonly setFileLinks: Mock<NonNullable<TerminalLinksScreen['setFileLinks']>>;
+    readonly resolveLink: Mock<(rowDirectory: string, text: string) => Promise<TerminalLink>>;
+    readonly busy: Mock<() => Promise<TerminalBusy>>;
+    readonly copyPath: Mock<(text: string) => Promise<boolean>>;
+    readonly directoryAt: Mock<(row: number) => string | undefined>;
+    readonly handler: () => FileLinkHandler;
+    readonly hover: (hover: FileLinkHover | undefined) => void;
+    readonly rerender: (more?: Partial<TerminalLinksOptions>) => void;
+    readonly unmount: () => void;
+    readonly links: () => ReturnType<typeof useTerminalLinks>;
+  };
+
+  function mountFiles(
+    options: { readonly platform?: Platform; readonly table?: Record<string, TerminalLink>; readonly state?: TerminalBusy; readonly candidates?: readonly FileCandidates[]; readonly directory?: string; readonly noResolver?: boolean; readonly noFiles?: boolean } = {},
+  ): FileRig {
+    const setFileLinks = vi.fn<NonNullable<TerminalLinksScreen['setFileLinks']>>();
+    const resolveLink = vi.fn<(rowDirectory: string, text: string) => Promise<TerminalLink>>(async (_directory, text) => Promise.resolve(options.table?.[text] ?? { kind: 'unknown', reason: 'not-found' }));
+    const busy = vi.fn<() => Promise<TerminalBusy>>(async () => Promise.resolve(options.state ?? { state: 'idle' }));
+    const copyPath = vi.fn<(text: string) => Promise<boolean>>(async () => Promise.resolve(true));
+    const directoryAt = vi.fn<(row: number) => string | undefined>(() => options.directory);
+    const screen: TerminalLinksScreen = { setLinks: vi.fn(), setFileLinks, directoryAt, fileCandidatesInView: () => options.candidates ?? [] };
+    const sessions = { canOpenExternal: () => true, canFollow: isWebAddress, openExternal: vi.fn() };
+    let latest: ReturnType<typeof useTerminalLinks> | undefined;
+    function Probe(props: TerminalLinksOptions): ReactElement {
+      latest = useTerminalLinks(props);
+      return <div data-testid="body">{latest.element}</div>;
+    }
+
+    const props = (more: Partial<TerminalLinksOptions> = {}): TerminalLinksOptions => ({
+      screen,
+      sessions,
+      platform: options.platform ?? 'mac',
+      ...(options.noFiles === true ? {} : { files: { feed: options.noResolver === true ? { busy } : { resolveLink, busy }, copyPath } }),
+      ...more,
+    });
+    const view = render(<Probe {...props()} />);
+    const handler = (): FileLinkHandler => {
+      const given = setFileLinks.mock.calls.findLast(([next]) => next !== undefined)?.[0];
+      if (given === undefined) {
+        throw new Error('the screen was given no file link handler');
+      }
+
+      return given;
+    };
+
+    return {
+      setFileLinks,
+      resolveLink,
+      busy,
+      copyPath,
+      directoryAt,
+      handler,
+      hover: (hover) => {
+        act(() => {
+          handler().hover(hover);
+        });
+      },
+      rerender: (more) => {
+        view.rerender(<Probe {...props(more)} />);
+      },
+      unmount: view.unmount,
+      links: () => {
+        if (latest === undefined) {
+          throw new Error('the hook did not run');
+        }
+
+        return latest;
+      },
+    };
+  }
+
+  describe('where there are file links', () => {
+    it('gives the screen a handler when the feed can resolve a link, and takes it back with the body', () => {
+      const rig = mountFiles();
+      expect(rig.setFileLinks).toHaveBeenCalledTimes(1);
+      rig.unmount();
+      expect(rig.setFileLinks).toHaveBeenLastCalledWith(undefined);
+    });
+
+    it('makes none for a feed that has no disk to look at (a terminal of a plugin runs somewhere else), and none for a body given no files', () => {
+      expect(mountFiles({ noResolver: true }).setFileLinks).not.toHaveBeenCalledWith(expect.anything());
+      expect(mountFiles({ noFiles: true }).setFileLinks).not.toHaveBeenCalledWith(expect.anything());
+    });
+
+    it('holds the modifier of the platform: Command on a Mac and Control elsewhere, and no other', () => {
+      const mac = mountFiles({ platform: 'mac' }).handler();
+      expect([mac.held({ metaKey: true, ctrlKey: false }), mac.held({ metaKey: false, ctrlKey: true }), mac.held({ metaKey: false, ctrlKey: false })]).toEqual([true, false, false]);
+      const other = mountFiles({ platform: 'other' }).handler();
+      expect([other.held({ metaKey: false, ctrlKey: true }), other.held({ metaKey: true, ctrlKey: false })]).toEqual([true, false]);
+    });
+  });
+
+  describe('resolving', () => {
+    it('asks the host about each candidate with the directory of the row\'s command, and keeps the files and directories it found: any other answer is no link', async () => {
+      const rig = mountFiles({ directory: '/srv', table: { 'a.go:1': SRC, 'dir/': { kind: 'dir', path: '/work/dir' }, 'gone.go:2': { kind: 'unknown', reason: 'gone' } } });
+      const answers = await rig.handler().resolve(7, ['a.go:1', 'dir/', 'gone.go:2', 'nowhere.go:3']);
+      expect(rig.directoryAt).toHaveBeenCalledWith(7);
+      expect(rig.resolveLink.mock.calls).toEqual([['/srv', 'a.go:1'], ['/srv', 'dir/'], ['/srv', 'gone.go:2'], ['/srv', 'nowhere.go:3']]);
+      expect(answers).toEqual([{ path: '/work/src/a.go', kind: 'file', line: 12, col: 3 }, { path: '/work/dir', kind: 'dir' }, undefined, undefined]);
+    });
+
+    it('names no directory of its own: a row that no proven command owns is asked with an empty directory, which is where the shell is now', async () => {
+      const rig = mountFiles({ table: { 'a.go:1': SRC } });
+      await rig.handler().resolve(0, ['a.go:1']);
+      expect(rig.resolveLink.mock.calls).toEqual([['', 'a.go:1']]);
+    });
+
+    it.each([
+      ['a program holds the foreground (ssh, a container exec)', { state: 'busy', name: 'ssh' } as TerminalBusy],
+      ['the host cannot say what runs', { state: 'unknown' } as TerminalBusy],
+    ])('asks the host nothing while %s: the answer would be about this machine\'s disk, and there are no links', async (_what, state) => {
+      const rig = mountFiles({ state, table: { 'a.go:1': SRC } });
+      expect(await rig.handler().resolve(0, ['a.go:1'])).toEqual([]);
+      expect(rig.busy).toHaveBeenCalledTimes(1);
+      expect(rig.resolveLink).not.toHaveBeenCalled();
+    });
+
+    it('asks the host what runs once for a line, and not for each candidate', async () => {
+      const rig = mountFiles({ table: { 'a.go:1': SRC, 'b.go:2': SRC } });
+      await rig.handler().resolve(0, ['a.go:1', 'b.go:2']);
+      expect(rig.busy).toHaveBeenCalledTimes(1);
+    });
+
+    it('treats a question about what runs that fails as no links', async () => {
+      const rig = mountFiles({ table: { 'a.go:1': SRC } });
+      rig.busy.mockRejectedValueOnce(new Error('the host is not there'));
+      expect(await rig.handler().resolve(0, ['a.go:1'])).toEqual([]);
+      expect(rig.resolveLink).not.toHaveBeenCalled();
+    });
+
+    it('asks about at most 10 candidates, whatever it is given', async () => {
+      const rig = mountFiles();
+      await rig.handler().resolve(0, Array.from({ length: 25 }, (_, index) => `f${String(index)}.go:1`));
+      expect(rig.resolveLink).toHaveBeenCalledTimes(10);
+    });
+
+    it('makes no link for a candidate whose question failed, and keeps the others', async () => {
+      const rig = mountFiles({ table: { 'b.go:2': SRC } });
+      rig.resolveLink.mockImplementationOnce(async () => Promise.reject(new Error('timeout')));
+      expect(await rig.handler().resolve(0, ['a.go:1', 'b.go:2'])).toEqual([undefined, { path: '/work/src/a.go', kind: 'file', line: 12, col: 3 }]);
+    });
+
+    it('never shows a path the host did not give: an answer with no path is no link', async () => {
+      const rig = mountFiles({ table: { 'a.go:1': { kind: 'file' } } });
+      expect(await rig.handler().resolve(0, ['a.go:1'])).toEqual([undefined]);
+    });
+  });
+
+  describe('the tooltip', () => {
+    const words = (mac: boolean) => `Copy path (${mac ? 'cmd' : 'ctrl'} + click)`;
+
+    it('says the resolved path first and whole, then where in it, after the words that say what the click does', () => {
+      const rig = mountFiles({ platform: 'mac' });
+      rig.hover({ path: '/work/src/a.go', kind: 'file', line: 12, col: 3, x: 120, y: 80 });
+      const tip = page.getByRole('tooltip');
+      expect(Array.from(tip.children).map((child) => child.textContent)).toEqual([words(true), '/work/src/a.go', 'line 12, column 3']);
+    });
+
+    it('says the words of the platform: control elsewhere', () => {
+      const rig = mountFiles({ platform: 'other' });
+      rig.hover({ path: '/work/src/a.go', kind: 'file', line: 12, x: 1, y: 1 });
+      expect(page.getByRole('tooltip').children[0]).toHaveTextContent(words(false));
+    });
+
+    it('says the line alone when the text gave no column, and no position at all when it gave neither (a directory)', () => {
+      const rig = mountFiles();
+      rig.hover({ path: '/work/src/a.go', kind: 'file', line: 12, x: 1, y: 1 });
+      expect(page.getByRole('tooltip').children[2]).toHaveTextContent('line 12');
+      rig.hover({ path: '/work/src', kind: 'dir', x: 1, y: 1 });
+      expect(Array.from(page.getByRole('tooltip').children).map((child) => child.textContent)).toEqual([words(true), '/work/src']);
+    });
+
+    it('keeps a long path whole in the document: the path is the one thing the person decides on', () => {
+      const rig = mountFiles();
+      const long = `/work/${'d'.repeat(900)}/a.go`;
+      rig.hover({ path: long, kind: 'file', x: 1, y: 1 });
+      expect(page.getByRole('tooltip').children[1]).toHaveTextContent(long);
+    });
+
+    it('is the one tooltip of a link, as a web link\'s is: a file link and then a web link are one tooltip at a time', () => {
+      const rig = mountFiles();
+      rig.hover({ path: '/work/src/a.go', kind: 'file', x: 1, y: 1 });
+      act(() => {
+        rig.setFileLinks.mock.calls.at(-1)?.[0]?.hover(undefined);
+      });
+      expect(page.queryByRole('tooltip')).toBeNull();
+    });
+  });
+
+  describe('following a file link', () => {
+    it('copies the path with the line and the column, with the platform\'s click, once: the editor that opens a file is step 5', async () => {
+      const rig = mountFiles({ platform: 'mac' });
+      rig.handler().activate({ path: '/work/src/a.go', kind: 'file', line: 12, col: 3 }, new MouseEvent('click', { metaKey: true }));
+      expect(rig.copyPath).toHaveBeenCalledExactlyOnceWith('/work/src/a.go:12:3');
+    });
+
+    it('copies the path alone when the text gave no position, and a directory\'s path', () => {
+      const rig = mountFiles({ platform: 'mac' });
+      rig.handler().activate({ path: '/work/src', kind: 'dir' }, new MouseEvent('click', { metaKey: true }));
+      rig.handler().activate({ path: '/work/a.go', kind: 'file', line: 7 }, new MouseEvent('click', { metaKey: true }));
+      expect(rig.copyPath.mock.calls).toEqual([['/work/src'], ['/work/a.go:7']]);
+    });
+
+    it('does nothing for a click without the platform\'s modifier: a plain click selects', () => {
+      const rig = mountFiles({ platform: 'other' });
+      rig.handler().activate({ path: '/work/a.go', kind: 'file' }, new MouseEvent('click'));
+      rig.handler().activate({ path: '/work/a.go', kind: 'file' }, new MouseEvent('click', { metaKey: true }));
+      expect(rig.copyPath).not.toHaveBeenCalled();
+    });
+
+    it('says once on the console when the clipboard refuses, and does not throw', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const rig = mountFiles({ platform: 'mac' });
+      rig.copyPath.mockResolvedValueOnce(false);
+      rig.handler().activate({ path: '/work/a.go', kind: 'file' }, new MouseEvent('click', { metaKey: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(warn).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('the links in view, for a person with no pointer', () => {
+    it('resolves the candidates of the lines in view when asked, and lists what the host found, once each, in the order of the lines', async () => {
+      const rig = mountFiles({ candidates: [{ row: 5, texts: ['a.go:1', 'b.go:2'] }, { row: 2, texts: ['a.go:1', 'nowhere.go:3'] }], table: { 'a.go:1': SRC, 'b.go:2': { kind: 'file', path: '/work/b.go', line: 2 } } });
+      expect(rig.links().files?.inView()).toEqual([]);
+      await act(async () => {
+        await rig.links().files?.warm();
+      });
+      expect(rig.links().files?.inView()).toEqual([{ path: '/work/src/a.go', kind: 'file', line: 12, col: 3 }, { path: '/work/b.go', kind: 'file', line: 2 }]);
+      expect(rig.resolveLink).toHaveBeenCalledTimes(4);
+    });
+
+    it('lists nothing while a program holds the foreground, and asks the host nothing about the lines', async () => {
+      const rig = mountFiles({ state: { state: 'busy', name: 'ssh' }, candidates: [{ row: 0, texts: ['a.go:1'] }], table: { 'a.go:1': SRC } });
+      await act(async () => {
+        await rig.links().files?.warm();
+      });
+      expect(rig.links().files?.inView()).toEqual([]);
+      expect(rig.resolveLink).not.toHaveBeenCalled();
+    });
+
+    it('has no such members for a body with no file links', () => {
+      expect(mountFiles({ noFiles: true }).links().files).toBeUndefined();
+    });
   });
 });

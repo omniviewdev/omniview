@@ -1,4 +1,5 @@
 import type { MenuItem } from '@omniviewdev/kit';
+import type { ResolvedFile } from '../engine';
 import { linkLabel } from '../links/links';
 import { NO_COMMANDS, NO_OUTPUT } from '../gutter/words';
 import { NO_SELECTION } from '../TerminalToolbar';
@@ -24,6 +25,8 @@ export type TerminalMenuActions = {
   readonly find: () => void;
   /** Opens the link of this target, outside the app. Absent: the menu has no Open link item (a window that cannot open an address). */
   readonly openLink?: ((uri: string) => void) | undefined;
+  /** Copies a file link's path (with its position): what a file link does until an editor registers `openFile` (#696 step 5). Absent: the menu lists no file links. */
+  readonly copyPath?: ((text: string) => void) | undefined;
   /** Opens a new terminal in the directory of this one, as the host says it is. Absent: the menu has no such item (a window that cannot open a terminal). */
   readonly newHere?: (() => void) | undefined;
   /** What the commands of the shell's marks offer (issue #694 step 5): go to the previous and the next command, select and copy a command's output, type a command again. Absent: the menu has no such items. */
@@ -48,6 +51,8 @@ export type TerminalMenuState = {
   readonly here?: boolean | undefined;
   /** The targets of the links in view, read only when the menu has an `openLink` action. */
   readonly links?: readonly string[] | undefined;
+  /** The file links in view that the host resolved, read only when the menu has a `copyPath` action. */
+  readonly files?: readonly ResolvedFile[] | undefined;
   /** What the screen holds of commands now, read only when the menu has `commands` actions: how many there are, whether the one the actions are for printed output, and why it cannot be typed again (`undefined`: it can). */
   readonly commands?: { readonly count: number; readonly output: boolean; readonly rerun: string | undefined } | undefined;
 };

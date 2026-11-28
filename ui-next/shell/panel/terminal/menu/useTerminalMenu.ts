@@ -1,6 +1,7 @@
 import { menuTrigger, useMenu, type MenuTriggerAttributes } from '@omniviewdev/kit';
 import { useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore, type MouseEvent } from 'react';
 import { useMaybePanel } from '../../context';
+import type { ResolvedFile } from '../engine';
 import type { TerminalFeedSnapshot } from '../feed';
 import type { TerminalScreen } from '../screen';
 import { terminalMenu } from './terminalMenu';
@@ -52,7 +53,12 @@ export type TerminalMenu = {
 export type TerminalMenuHere = { readonly open: () => void; readonly available: boolean };
 
 /** "Open link" of the menu: the registry's own calls, `TerminalSessions.openExternal` and `TerminalSessions.canFollow`. */
-export type TerminalMenuLinks = { readonly open: (uri: string) => void; readonly follows: (uri: string) => boolean };
+export type TerminalMenuLinks = {
+  readonly open: (uri: string) => void;
+  readonly follows: (uri: string) => boolean;
+  /** The file links in view (#696 step 4): what the page has resolved, asked afresh for the next opening, and the action of a chosen one. Absent: the menu lists none. */
+  readonly files?: { readonly inView: () => readonly ResolvedFile[]; readonly warm: () => Promise<void>; readonly copy: (text: string) => void } | undefined;
+};
 
 const quiet = (): (() => void) => () => undefined;
 

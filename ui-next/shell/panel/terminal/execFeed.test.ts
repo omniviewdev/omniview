@@ -3544,3 +3544,55 @@ describe('a command that finished while the page watched (`finished`)', () => {
     expect(r.feed.getSnapshot().finished).toBeUndefined();
   });
 });
+
+// WHAT A CANDIDATE LINK NAMES (#696 step 4): the host's answer, asked at the moment a person hovers a path and never before, for a shell that runs and that this page holds. The page never decides that a file exists; an answer that cannot be
+// read is `unknown`, and so is a question that failed.
+describe('what a candidate link names (`resolveLink`)', () => {
+  it('asks the host with the row\'s directory and the text, and answers the file, its line and its column as the host said them', async () => {
+    const r = await running({}, { channels: { resolveLink: () => ({ kind: 'file', path: '/work/src/a.go', line: 12, col: 3 }) } });
+    expect(await r.feed.resolveLink?.('/work', 'src/a.go:12:3')).toEqual({ kind: 'file', path: '/work/src/a.go', line: 12, col: 3 });
+    expect(r.channels.of('resolve')).toEqual([{ kind: 'resolve', id: 'term-1', rowDirectory: '/work', text: 'src/a.go:12:3' }]);
+  });
+
+  it('asks nothing until it is called, and keeps nothing: the host has the cache', async () => {
+    const r = await running({}, { channels: { resolveLink: () => ({ kind: 'file', path: '/x' }) } });
+    vi.advanceTimersByTime(600_000);
+    expect(r.channels.of('resolve')).toEqual([]);
+    await r.feed.resolveLink?.('', 'a');
+    await r.feed.resolveLink?.('', 'a');
+    expect(r.channels.of('resolve')).toHaveLength(2);
+  });
+
+  it('answers a directory, and an unknown with the host\'s reason', async () => {
+    const dir = await running({}, { channels: { resolveLink: () => ({ kind: 'dir', path: '/work/src' }) } });
+    expect(await dir.feed.resolveLink?.('', 'src/')).toEqual({ kind: 'dir', path: '/work/src' });
+    const gone = await running({}, { channels: { resolveLink: () => ({ kind: 'unknown', reason: 'gone' }) } });
+    expect(await gone.feed.resolveLink?.('', 'src/a.go')).toEqual({ kind: 'unknown', reason: 'gone' });
+  });
+
+  it('says unknown when the answer cannot be read: a file with no path, a kind that is not one, something that is no object', async () => {
+    for (const answer of [undefined, null, 'file', {}, { kind: 'file' }, { kind: 'file', path: '' }, { kind: 'socket', path: '/x' }, { kind: 'dir', path: 7 }]) {
+      const r = await running({}, { channels: { resolveLink: () => answer } });
+      expect(await r.feed.resolveLink?.('', 'a.go'), JSON.stringify(answer)).toEqual({ kind: 'unknown', reason: 'unreadable' });
+    }
+  });
+
+  it('takes the line and the column only when they are numbers: a page that is told 12 is not told "12"', async () => {
+    const r = await running({}, { channels: { resolveLink: () => ({ kind: 'file', path: '/x', line: '12', col: 3 }) } });
+    expect(await r.feed.resolveLink?.('', 'a.go')).toEqual({ kind: 'file', path: '/x', col: 3 });
+  });
+
+  it('says unknown, and never throws, when the question fails or the host says the terminal is gone', async () => {
+    const failed = await running({}, { channels: { resolveLink: () => { throw new Error('the host is not there'); } } });
+    expect(await failed.feed.resolveLink?.('', 'a.go')).toEqual({ kind: 'unknown', reason: 'unanswered' });
+    const gone = await running({}, { channels: { resolveLink: () => { throw goneError(); } } });
+    expect(await gone.feed.resolveLink?.('', 'a.go')).toEqual({ kind: 'unknown', reason: 'gone' });
+  });
+
+  it('asks nothing of a terminal that has ended: its disk is where it was, and the shell that printed the row is not the one a new question is about', async () => {
+    const r = await running({}, { channels: { resolveLink: () => ({ kind: 'file', path: '/x' }) } });
+    r.stream().ended({ reason: 'exited', exit_code: 0 });
+    expect(await r.feed.resolveLink?.('', 'a.go')).toEqual({ kind: 'unknown', reason: 'ended' });
+    expect(r.channels.of('resolve')).toEqual([]);
+  });
+});

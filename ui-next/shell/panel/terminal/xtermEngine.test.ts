@@ -2,7 +2,7 @@ import userEvent from '@testing-library/user-event';
 import type { ISearchOptions, SearchAddon } from '@xterm/addon-search';
 import { Terminal, type IBuffer, type IDecoration, type ILink, type ILinkProvider } from '@xterm/xterm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { FIND_LIMIT, FULL_RESET, modesPrologue, type Engine, type EngineAppearance, type EngineLoader, type FindOptions, type FindState, type Finder, type LinkHandler, type LinkHover } from './engine';
+import { FILE_LINK_SETTLE_MS, FIND_LIMIT, FULL_RESET, modesPrologue, type Engine, type FileLinkHandler, type FileLinkHover, type ResolvedFile, type EngineAppearance, type EngineLoader, type FindOptions, type FindState, type Finder, type LinkHandler, type LinkHover } from './engine';
 import type { TerminalMark, TerminalModes, TerminalReplay } from './feed';
 import { findDecorations } from './findColours';
 import { createScreen, SCROLLBACK, type ScreenDeps, type TerminalScreen } from './screen';
@@ -1965,6 +1965,62 @@ describe('the input of a real emulator', () => {
   });
 });
 
+/** The size of a cell in pixels, as the screen element's rectangle gives it: 800 by 480 for 80 by 24 cells. */
+const CELL = { width: 10, height: 20 } as const;
+
+/** A member of something the emulator keeps, or nothing: what a pointer is measured by is in private members that its public interface does not give. */
+const privately = (owner: unknown, name: string): unknown => (typeof owner === 'object' && owner !== null ? Reflect.get(owner, name) : undefined);
+
+/** Gives the size of a cell to a member of the emulator that holds one, or fails in words when the emulator keeps it elsewhere now. */
+const sized = (holder: unknown, where: string): void => {
+  if (typeof holder !== 'object' || holder === null) {
+    throw new Error(`xterm no longer keeps ${where}, where this test sets the size of a cell`);
+  }
+
+  Reflect.set(holder, 'width', CELL.width);
+  Reflect.set(holder, 'height', CELL.height);
+};
+
+/**
+ * The pointer over the screen of an emulator, as a person moves it, so that the emulator's own linkifier finds the link under it, tells it of the pointer and takes a press and a release on it for a click. The emulator turns
+ * a mouse event into the cell it is on by the size of a cell, which jsdom has no layout to measure: the screen element has the rectangle a layout would give it and no padding (jsdom computes none for an element with no
+ * style, which the emulator would read as not a number), and the two places the emulator reads the size of a cell from are set. Cells are counted from 1, as the emulator counts them.
+ */
+function pointerOn(terminal: Terminal, rectangle = { left: 100, top: 50, width: 800, height: 480 }) {
+  const screen = terminal.element?.querySelector('.xterm-screen');
+  if (!(screen instanceof HTMLElement)) {
+    throw new Error('the emulator has no screen element');
+  }
+
+  Object.defineProperty(screen, 'getBoundingClientRect', { value: () => ({ ...rectangle, right: rectangle.left + rectangle.width, bottom: rectangle.top + rectangle.height, x: rectangle.left, y: rectangle.top, toJSON: () => ({}) }) });
+  screen.style.paddingLeft = '0px';
+  screen.style.paddingTop = '0px';
+  const core = privately(terminal, '_core');
+  sized(privately(core, '_charSizeService'), 'the size of a character (terminal._core._charSizeService)');
+  sized(privately(privately(privately(privately(core, '_renderService'), 'dimensions'), 'css'), 'cell'), 'the size of a cell (terminal._core._renderService.dimensions.css.cell)');
+  const event = (type: string, column: number, row: number, init: MouseEventInit): MouseEvent => {
+    const made = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: rectangle.left + (column - 0.5) * CELL.width, clientY: rectangle.top + (row - 0.5) * CELL.height, ...init });
+    screen.dispatchEvent(made);
+    return made;
+  };
+
+  return {
+    /** The pointer is on a cell: it moves there. */
+    over: (column: number, row: number, init: MouseEventInit = {}): MouseEvent => event('mousemove', column, row, init),
+    /** A press and a release on a cell, which a click is made of: the release is the event a link is activated with. */
+    click: (column: number, row: number, init: MouseEventInit = {}): MouseEvent => {
+      event('mousedown', column, row, init);
+      return event('mouseup', column, row, init);
+    },
+    /** The pointer leaves the screen. */
+    leave: (): void => {
+      screen.dispatchEvent(new MouseEvent('mouseleave'));
+    },
+    /** Whether the emulator shows the pointer of a link: it does while the pointer is on one. */
+    pointing: (): boolean => screen.classList.contains('xterm-cursor-pointer'),
+  };
+}
+
 describe('the links of a real emulator', () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -1983,62 +2039,6 @@ describe('the links of a real emulator', () => {
       },
     };
     return { handler, hovers, clicks };
-  }
-
-  /** The size of a cell in pixels, as the screen element's rectangle gives it: 800 by 480 for 80 by 24 cells. */
-  const CELL = { width: 10, height: 20 } as const;
-
-  /** A member of something the emulator keeps, or nothing: what a pointer is measured by is in private members that its public interface does not give. */
-  const privately = (owner: unknown, name: string): unknown => (typeof owner === 'object' && owner !== null ? Reflect.get(owner, name) : undefined);
-
-  /** Gives the size of a cell to a member of the emulator that holds one, or fails in words when the emulator keeps it elsewhere now. */
-  const sized = (holder: unknown, where: string): void => {
-    if (typeof holder !== 'object' || holder === null) {
-      throw new Error(`xterm no longer keeps ${where}, where this test sets the size of a cell`);
-    }
-
-    Reflect.set(holder, 'width', CELL.width);
-    Reflect.set(holder, 'height', CELL.height);
-  };
-
-  /**
-   * The pointer over the screen of an emulator, as a person moves it, so that the emulator's own linkifier finds the link under it, tells it of the pointer and takes a press and a release on it for a click. The emulator turns
-   * a mouse event into the cell it is on by the size of a cell, which jsdom has no layout to measure: the screen element has the rectangle a layout would give it and no padding (jsdom computes none for an element with no
-   * style, which the emulator would read as not a number), and the two places the emulator reads the size of a cell from are set. Cells are counted from 1, as the emulator counts them.
-   */
-  function pointerOn(terminal: Terminal, rectangle = { left: 100, top: 50, width: 800, height: 480 }) {
-    const screen = terminal.element?.querySelector('.xterm-screen');
-    if (!(screen instanceof HTMLElement)) {
-      throw new Error('the emulator has no screen element');
-    }
-
-    Object.defineProperty(screen, 'getBoundingClientRect', { value: () => ({ ...rectangle, right: rectangle.left + rectangle.width, bottom: rectangle.top + rectangle.height, x: rectangle.left, y: rectangle.top, toJSON: () => ({}) }) });
-    screen.style.paddingLeft = '0px';
-    screen.style.paddingTop = '0px';
-    const core = privately(terminal, '_core');
-    sized(privately(core, '_charSizeService'), 'the size of a character (terminal._core._charSizeService)');
-    sized(privately(privately(privately(privately(core, '_renderService'), 'dimensions'), 'css'), 'cell'), 'the size of a cell (terminal._core._renderService.dimensions.css.cell)');
-    const event = (type: string, column: number, row: number, init: MouseEventInit): MouseEvent => {
-      const made = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: rectangle.left + (column - 0.5) * CELL.width, clientY: rectangle.top + (row - 0.5) * CELL.height, ...init });
-      screen.dispatchEvent(made);
-      return made;
-    };
-
-    return {
-      /** The pointer is on a cell: it moves there. */
-      over: (column: number, row: number): MouseEvent => event('mousemove', column, row, {}),
-      /** A press and a release on a cell, which a click is made of: the release is the event a link is activated with. */
-      click: (column: number, row: number, init: MouseEventInit = {}): MouseEvent => {
-        event('mousedown', column, row, init);
-        return event('mouseup', column, row, init);
-      },
-      /** The pointer leaves the screen. */
-      leave: (): void => {
-        screen.dispatchEvent(new MouseEvent('mouseleave'));
-      },
-      /** Whether the emulator shows the pointer of a link: it does while the pointer is on one. */
-      pointing: (): boolean => screen.classList.contains('xterm-cursor-pointer'),
-    };
   }
 
   /**
@@ -2548,6 +2548,260 @@ describe('the links of a real emulator', () => {
     const { disposals, close } = linked();
     close();
     expect(disposals()).toBe(1);
+  });
+});
+
+// THE FILE LINKS OF A REAL EMULATOR (#696 step 4). The emulator finds the candidates (the matcher over the logical line of the hovered row, offsets turned into cells through the buffer) and asks the host's handler about them, and
+// makes a link only for what the host resolved. Everything the emulator asks is counted: the handler records each question. The settle before a question is the engine's timer, driven by fake timers (`setTimeout` only: the
+// emulator's own writes wait on one, so every test writes first and takes the clock after).
+describe('the file links of a real emulator (#696 step 4)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const SRC: ResolvedFile = { path: '/work/src/a.go', kind: 'file', line: 12, col: 3 };
+
+  /** A handler that answers from a table (candidate text to resolution) and records every question, every hover and every click. */
+  function filed(table: Record<string, ResolvedFile | undefined> = { 'src/a.go:12:3': SRC }) {
+    const emulated = emulator();
+    const { engine, terminal } = emulated;
+    const pointer = pointerOn(terminal);
+    const asked: Array<{ readonly row: number; readonly texts: readonly string[] }> = [];
+    const hovers: Array<FileLinkHover | undefined> = [];
+    const clicks: Array<readonly [ResolvedFile, MouseEvent]> = [];
+    const handler: FileLinkHandler = {
+      held: (event) => event.metaKey,
+      resolve: async (row, texts) => {
+        asked.push({ row, texts: [...texts] });
+        return Promise.resolve(texts.map((text) => table[text]));
+      },
+      hover: (hover) => {
+        hovers.push(hover);
+      },
+      activate: (link, event) => {
+        clicks.push([link, event]);
+      },
+    };
+    engine.setFileLinks(handler);
+    /** The clock is taken after the writes. */
+    const timed = () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    };
+
+    /** The settle has passed and what the handler was asked is answered. */
+    const settle = async () => {
+      await vi.advanceTimersByTimeAsync(FILE_LINK_SETTLE_MS);
+    };
+
+    const press = (key: 'Meta' | 'Control', type: 'keydown' | 'keyup' = 'keydown') => {
+      window.dispatchEvent(new KeyboardEvent(type, { key, metaKey: key === 'Meta' && type === 'keydown', ctrlKey: key === 'Control' && type === 'keydown', bubbles: true }));
+    };
+
+    return { ...emulated, pointer, asked, hovers, clicks, handler, timed, settle, press };
+  }
+
+  const CMD = { metaKey: true } as const;
+
+  it('makes a link for a candidate the host resolved, under the modifier: the host is asked once, for the hovered line, and the pointer is on a link at the cells of the path', async () => {
+    const { write, pointer, asked, hovers, timed, settle, close } = filed();
+    await write('see src/a.go:12:3 now\r\n');
+    timed();
+    pointer.over(8, 1, CMD);
+    await settle();
+    expect(asked).toEqual([{ row: 0, texts: ['src/a.go:12:3'] }]);
+    expect(pointer.pointing()).toBe(true);
+    // The path starts at the fifth cell of the first row: four cells of 10 pixels in, from the screen's corner at 100, 50.
+    expect(hovers).toEqual([{ ...SRC, x: 140, y: 50 }]);
+    close();
+  });
+
+  it('asks nothing and makes no link without the modifier: a plain pointer on a path costs the host nothing', async () => {
+    const { write, pointer, asked, hovers, timed, settle, close } = filed();
+    await write('see src/a.go:12:3 now\r\n');
+    timed();
+    pointer.over(8, 1);
+    await settle();
+    expect(asked).toEqual([]);
+    expect(pointer.pointing()).toBe(false);
+    expect(hovers).toEqual([]);
+    close();
+  });
+
+  it('is active when the modifier is pressed while the pointer rests on the line, with no move: the question waits for the key, and a key released before the settle cancels it', async () => {
+    const { write, pointer, asked, hovers, timed, settle, press, close } = filed();
+    await write('see src/a.go:12:3 now\r\n');
+    timed();
+    pointer.over(8, 1);
+    await settle();
+    expect(asked).toEqual([]);
+    press('Meta');
+    press('Meta', 'keyup');
+    await settle();
+    expect(asked, 'the key was released before the settle').toEqual([]);
+    press('Meta');
+    await settle();
+    expect(asked).toHaveLength(1);
+    expect(hovers).toHaveLength(1);
+    close();
+  });
+
+  it('makes no link for a candidate the host did not resolve, and underlines nothing: a file that is not there is not a link', async () => {
+    const { write, pointer, asked, hovers, timed, settle, close } = filed({});
+    await write('see src/missing.go:12:3 now\r\n');
+    timed();
+    pointer.over(8, 1, CMD);
+    await settle();
+    expect(asked).toEqual([{ row: 0, texts: ['src/missing.go:12:3'] }]);
+    expect(pointer.pointing()).toBe(false);
+    expect(hovers).toEqual([]);
+    close();
+  });
+
+  it('asks only about the line the pointer is on: five lines of paths printed, one hovered, one question', async () => {
+    const { write, pointer, asked, timed, settle, close } = filed();
+    await write('src/a.go:12:3\r\nsrc/b.go:1\r\nsrc/c.go:2\r\nsrc/d.go:3\r\nsrc/e.go:4\r\n');
+    timed();
+    pointer.over(3, 3, CMD);
+    await settle();
+    expect(asked).toEqual([{ row: 2, texts: ['src/c.go:2'] }]);
+    close();
+  });
+
+  it('settles before it asks: a pointer that crosses three lines asks about the one it stops on, and one that leaves asks about none', async () => {
+    const { write, pointer, asked, timed, settle, close } = filed();
+    await write('src/a.go:1\r\nsrc/b.go:2\r\nsrc/c.go:3\r\n');
+    timed();
+    pointer.over(3, 1, CMD);
+    pointer.over(3, 2, CMD);
+    pointer.over(3, 3, CMD);
+    await settle();
+    expect(asked).toEqual([{ row: 2, texts: ['src/c.go:3'] }]);
+    pointer.over(3, 1, CMD);
+    pointer.leave();
+    await settle();
+    expect(asked, 'the pointer left before the settle').toHaveLength(1);
+    close();
+  });
+
+  it('asks about at most 10 candidates of a line, however many it holds', async () => {
+    const { write, pointer, asked, timed, settle, close } = filed();
+    await write(`${Array.from({ length: 30 }, (_, index) => `f${String(index)}.go:1`).join(' ')}\r\n`);
+    timed();
+    pointer.over(3, 1, CMD);
+    await settle();
+    expect(asked.length).toBeGreaterThan(0);
+    expect(asked.every((one) => one.texts.length <= 10)).toBe(true);
+    close();
+  });
+
+  it('asks nothing of a line over 2,000 characters, and of a megabyte of `a:1` that wraps over thousands of rows it reads a bounded number of rows: the work does not grow with the line', async () => {
+    const { engine, terminal, write, pointer, asked, timed, settle, close } = filed();
+    expect(engine).toBeDefined();
+    await write(`${'a:1 '.repeat(500_000)}\r\n`);
+    timed();
+    const buffer = terminal.buffer.active;
+    const getLine = vi.spyOn(buffer, 'getLine');
+    pointer.over(3, 10, CMD);
+    await settle();
+    expect(asked).toEqual([]);
+    // 2,001 characters at 80 columns are 26 rows; a walk up and a walk down each stay within that and a few more.
+    expect(getLine.mock.calls.length).toBeLessThanOrEqual(120);
+    close();
+  });
+
+  it('joins a path that wraps over two rows into one link: the question is the whole path, from the first row, whichever row is hovered', async () => {
+    const { write, pointer, asked, hovers, timed, settle, close } = filed({ [`${'d'.repeat(70)}/src/a.go:12:3`]: SRC });
+    await write(`${'d'.repeat(70)}/src/a.go:12:3\r\n`);
+    timed();
+    // The second row holds the end of the path: the first row is where the line starts.
+    pointer.over(3, 2, CMD);
+    await settle();
+    expect(asked).toEqual([{ row: 0, texts: [`${'d'.repeat(70)}/src/a.go:12:3`] }]);
+    expect(hovers).toHaveLength(1);
+    expect(hovers[0]?.y).toBe(50);
+    close();
+  });
+
+  it('maps the offsets to cells after wide characters: a link after two CJK characters starts at the fifth cell, not the third', async () => {
+    const { write, pointer, hovers, timed, settle, close } = filed();
+    await write('\u65e5\u672c src/a.go:12:3 end\r\n');
+    timed();
+    pointer.over(10, 1, CMD);
+    await settle();
+    // Two wide characters are four cells, a space the fifth: the path starts at the sixth cell (five cells of 10 pixels in).
+    expect(hovers).toEqual([{ ...SRC, x: 150, y: 50 }]);
+    close();
+  });
+
+  it('is not on a candidate that the pointer is beside: the cell before the path and the cell after it are not on the link', async () => {
+    const { write, pointer, asked, timed, settle, close } = filed();
+    await write('see src/a.go:12:3 now\r\n');
+    timed();
+    pointer.over(2, 1, CMD);
+    await settle();
+    expect(asked, 'the line is asked about as a whole').toHaveLength(1);
+    expect(pointer.pointing()).toBe(false);
+    pointer.over(19, 1, CMD);
+    expect(pointer.pointing()).toBe(false);
+    close();
+  });
+
+  it('gives a click with the modifier to the handler with what the host resolved, and a click without it nothing', async () => {
+    const { write, pointer, clicks, timed, settle, close } = filed();
+    await write('see src/a.go:12:3 now\r\n');
+    timed();
+    pointer.over(8, 1, CMD);
+    await settle();
+    const plain = pointer.click(8, 1);
+    const held = pointer.click(8, 1, CMD);
+    expect(clicks.map(([link, event]) => [link, event === held])).toEqual([[SRC, true]]);
+    expect(plain.metaKey).toBe(false);
+    close();
+  });
+
+  it('asks nothing on the alternate screen: a program that has the whole screen has no paths of a command', async () => {
+    const { write, pointer, asked, timed, settle, close } = filed();
+    await write('\u001b[?1049hsrc/a.go:12:3\r\n');
+    timed();
+    pointer.over(3, 1, CMD);
+    await settle();
+    expect(asked).toEqual([]);
+    close();
+  });
+
+  it('asks nothing about a path inside a web address: the address is the web link\'s, and the host is never asked to look at a URL', async () => {
+    const { write, pointer, asked, timed, settle, close } = filed({ 'src/a.go:12': SRC });
+    await write('https://example.com/src/a.go:12 end\r\n');
+    timed();
+    pointer.over(22, 1, CMD);
+    await settle();
+    expect(asked).toEqual([]);
+    close();
+  });
+
+  it('stops asking when the handler is taken away: no question, no link', async () => {
+    const { engine, write, pointer, asked, timed, settle, close } = filed();
+    await write('see src/a.go:12:3 now\r\n');
+    engine.setFileLinks(undefined);
+    timed();
+    pointer.over(8, 1, CMD);
+    await settle();
+    expect(asked).toEqual([]);
+    expect(pointer.pointing()).toBe(false);
+    close();
+  });
+
+  it('lists the candidates of the lines in view for a person with no pointer: newest line first, at most 20 lines and 40 candidates, and none on the alternate screen', async () => {
+    const { engine, write, close } = filed();
+    await write('first src/a.go:1\r\nplain words\r\nsecond src/b.go:2 src/c.go:3\r\n');
+    expect(engine.fileCandidatesInView()).toEqual([{ row: 2, texts: ['src/b.go:2', 'src/c.go:3'] }, { row: 0, texts: ['src/a.go:1'] }]);
+    await write(Array.from({ length: 60 }, (_, index) => `f${String(index)}.go:1 g${String(index)}.go:2 h${String(index)}.go:3\r\n`).join(''));
+    const many = engine.fileCandidatesInView();
+    expect(many.length).toBeLessThanOrEqual(20);
+    expect(many.reduce((sum, one) => sum + one.texts.length, 0)).toBeLessThanOrEqual(40);
+    await write('\u001b[?1049h');
+    expect(engine.fileCandidatesInView()).toEqual([]);
+    close();
   });
 });
 

@@ -163,6 +163,22 @@ describe('the marks in the bytes the screen writes', () => {
   });
 });
 
+describe('the directory of a row (#696 step 4)', () => {
+  it('is the directory the shell proved for the command that printed the row, and nothing before the first command', async () => {
+    const { feed, frame, screen } = await rig();
+    feed.push('$ ls\r\nout1\r\nout2\r\n', [placed(0, mark('cwd', { cwd: '/srv', trust: 'nonce' })), placed(6, B()), placed(6, C('ls'))]);
+    frame();
+    expect([0, 1, 2, 3].map((row) => screen.directoryAt(row))).toEqual([undefined, '/srv', '/srv', '/srv']);
+  });
+
+  it('is nothing for a terminal that has no marks', async () => {
+    const { feed, frame, screen } = await rig();
+    feed.push('plain\r\n');
+    frame();
+    expect(screen.directoryAt(0)).toBeUndefined();
+  });
+});
+
 describe('the marks in a replay', () => {
   const replay = (data: string, marks: readonly PlacedMark[]): TerminalReplay => ({
     data: bytesOf(data),

@@ -1,6 +1,6 @@
-import type { Engine, EngineAppearance, EngineBehaviour, EngineDecoration, EngineLoader, EngineMarker, EngineOptions, EngineRenderer, EngineViewport, FindOptions, FindState, Finder, LinkHandler, LinkHover } from './engine';
+import type { Engine, EngineAppearance, EngineBehaviour, EngineDecoration, EngineLoader, EngineMarker, EngineOptions, EngineRenderer, EngineViewport, FindOptions, FindState, Finder, FileCandidates, FileLinkHandler, LinkHandler, LinkHover } from './engine';
 import type { ChannelEvents, ChannelLink, TerminalChannels } from './channel';
-import type { PlacedMark, TerminalBusy, TerminalDirectory, TerminalFeedHandle, TerminalFeedSnapshot, TerminalOutput, TerminalReplay, TerminalRestart, TerminalShellAttempt } from './feed';
+import type { PlacedMark, TerminalBusy, TerminalDirectory, TerminalFeedHandle, TerminalLink, TerminalFeedSnapshot, TerminalOutput, TerminalReplay, TerminalRestart, TerminalShellAttempt } from './feed';
 
 // A feed for the tests of the Terminal tool: it has the contract of a real one (a reader that reads what is held, a wake-up once between two reads, a status that is the same object until it changes) and the
 // counters a test asks for: how many listeners it has, how many times it was closed and read, what was typed, which sizes were asked for. Invented bytes; nothing here is a backend.
@@ -45,6 +45,8 @@ export type FakeTerminalFeedOptions = {
   readonly busy?: (() => Promise<TerminalBusy>) | undefined;
   /** What the feed answers when it is asked where a new terminal opened from it starts; default: the feed cannot tell (it has no such member). */
   readonly directory?: (() => Promise<TerminalDirectory>) | undefined;
+  /** What the feed answers when it is asked what a candidate link names; default: the feed has no disk to look at (it has no such member). */
+  readonly resolveLink?: ((rowDirectory: string, text: string) => Promise<TerminalLink>) | undefined;
   /** What the feed says it was asked to start with (`launch`); default: the feed says nothing. */
   readonly launch?: { readonly command?: readonly string[]; readonly env?: Readonly<Record<string, string>> } | undefined;
   /** The producer's own id for the terminal (`TerminalFeedHandle.id`); default: the feed says none. */
@@ -195,6 +197,7 @@ export function fakeTerminalFeed(options: FakeTerminalFeedOptions = {}): FakeTer
     },
     ...(options.busy === undefined ? {} : { busy: options.busy }),
     ...(options.directory === undefined ? {} : { directory: options.directory }),
+    ...(options.resolveLink === undefined ? {} : { resolveLink: options.resolveLink }),
     ...(options.id === undefined ? {} : { id: options.id }),
     ...(options.launch === undefined ? {} : { launch: () => options.launch }),
     ...(options.restart === undefined ? {} : { restart: typeof options.restart === 'function' ? options.restart : () => options.restart as TerminalRestart }),
@@ -311,6 +314,10 @@ export type FakeEngine = Engine & {
   readonly links: () => LinkHandler | undefined;
   /** The targets `viewLinks` says are in view now. */
   readonly linksInView: (targets: readonly string[]) => void;
+  /** The handler the screen gave the file links (`undefined`: it asked for none). */
+  readonly fileLinks: () => FileLinkHandler | undefined;
+  /** The candidates `fileCandidatesInView` says are in view now. */
+  readonly filesInView: (candidates: readonly FileCandidates[]) => void;
   /** The pointer is on a link, or leaves it (`undefined`): tells the handler, as the emulator does. */
   readonly linkHover: (hover: LinkHover | undefined) => void;
   /** A link is clicked: tells the handler, as the emulator does, with the event as it came. */
@@ -385,6 +392,8 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
   let attributes: Readonly<Record<string, string>> = {};
   let linkHandler: LinkHandler | undefined;
   let inView: readonly string[] = [];
+  let fileHandler: FileLinkHandler | undefined;
+  let inViewFiles: readonly FileCandidates[] = [];
   // The plain buffer of the marker tests: the lines parsed so far (the last is the one the cursor is on), the markers made, the decorations drawn.
   let buffer: string[] = [''];
   let atTop: number | undefined;
@@ -736,6 +745,14 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
       linkHandler = handler;
     },
     viewLinks: () => inView,
+    setFileLinks: (handler) => {
+      fileHandler = handler;
+    },
+    fileCandidatesInView: () => inViewFiles,
+    fileLinks: () => fileHandler,
+    filesInView: (candidates) => {
+      inViewFiles = candidates;
+    },
     finds,
     findClears: () => findClears,
     findAsks: () => findAsks,
@@ -953,6 +970,7 @@ export type ChannelCall =
   | { readonly kind: 'dismiss'; readonly id: string }
   | { readonly kind: 'busy'; readonly id: string }
   | { readonly kind: 'cwd'; readonly id: string }
+  | { readonly kind: 'resolve'; readonly id: string; readonly rowDirectory: string; readonly text: string }
   | { readonly kind: 'listed'; readonly id: string }
   | { readonly kind: 'list' };
 
@@ -964,6 +982,8 @@ export type FakeChannelsOptions = {
   readonly busy?: ((id: string) => unknown) | undefined;
   /** What `cwd` answers (`ChannelTerminalCwd`: `{ path }` or `{ reason }`). Default: `{ path: '/home/u' }`. A function may answer with a promise the test holds, or throw. */
   readonly cwd?: ((id: string) => unknown) | undefined;
+  /** What `resolveLink` answers (`ChannelTerminalResolveLink`: `{ kind, path, line, col }` or `{ kind: 'unknown', reason }`). Default: `{ kind: 'unknown', reason: 'not-found' }`. */
+  readonly resolveLink?: ((id: string, rowDirectory: string, text: string) => unknown) | undefined;
   readonly list?: (() => unknown) | undefined;
   readonly listed?: ((id: string) => unknown) | undefined;
 };
@@ -1215,6 +1235,10 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
     cwd: async (id) => {
       calls.push({ kind: 'cwd', id });
       return options.cwd === undefined ? { path: '/home/u' } : options.cwd(id);
+    },
+    resolveLink: async (id, rowDirectory, text) => {
+      calls.push({ kind: 'resolve', id, rowDirectory, text });
+      return options.resolveLink === undefined ? { kind: 'unknown', reason: 'not-found' } : options.resolveLink(id, rowDirectory, text);
     },
     list: async () => {
       calls.push({ kind: 'list' });

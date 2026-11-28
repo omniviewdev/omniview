@@ -767,3 +767,40 @@ describe('revealing a command of an earlier terminal', () => {
     expect(events.at(-1)).toEqual({ kind: 'said', words: 'That command is no longer in the terminal' });
   });
 });
+
+// WHAT DIRECTORY A ROW BELONGS TO (#696 step 4): the file links resolve a path against the directory of the command that printed the row, as the shell proved it. A row before any command, and a command whose directory
+// the shell did not prove, belong to no directory: the host then uses the shell's own, and the page never names one of its own.
+describe('the directory of a row', () => {
+  it('is the directory of the command whose line is at or above the row and whose successor is below it', async () => {
+    const { gutter, feed, run } = setup();
+    await feed('banner\r\n');
+    await feed('', [CWD('/a')]);
+    await run('make', 'one\r\ntwo\r\n', { id: 'c1' });
+    await feed('', [CWD('/b')]);
+    await run('ls', 'x\r\n', { id: 'c2' });
+    const lines = gutter.commands().map((one) => one.line);
+    expect(lines).toEqual([1, 4]);
+    expect([0, 1, 2, 3, 4, 5].map((row) => gutter.directoryAt(row))).toEqual([undefined, '/a', '/a', '/a', '/b', '/b']);
+  });
+
+  it('is nothing for a command whose directory the shell did not prove, and nothing past the buffer', async () => {
+    const { gutter, feed, run } = setup();
+    await feed('', [CWD('/forged', 'unverified')]);
+    await run('ls', 'x\r\n', { id: 'c1' });
+    expect([0, 1, 2].map((row) => gutter.directoryAt(row))).toEqual([undefined, undefined, undefined]);
+    expect(gutter.directoryAt(-1)).toBeUndefined();
+    expect(gutter.directoryAt(10_000)).toBeUndefined();
+  });
+
+  it('is gone with the command when its line leaves the scrollback: a row that no command owns belongs to no directory', async () => {
+    const { gutter, feed, run } = setup({ rows: 5, scrollback: 3 });
+    await feed('', [CWD('/a')]);
+    await run('first', 'a\r\n', { id: 'c1' });
+    for (let index = 0; index < 20; index += 1) {
+      await feed(`filler ${String(index)}\r\n`);
+    }
+
+    expect(gutter.commands()).toEqual([]);
+    expect(gutter.directoryAt(0)).toBeUndefined();
+  });
+});

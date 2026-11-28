@@ -26,6 +26,7 @@ function channels(listed: readonly unknown[] = []): TerminalChannels & { readonl
     dismiss: refuse,
     busy: refuse,
     cwd: refuse,
+    resolveLink: refuse,
     list: vi.fn(async () => Promise.resolve(listed)),
     listed: refuse,
     describe: () => '',

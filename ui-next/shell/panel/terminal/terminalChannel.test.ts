@@ -115,6 +115,7 @@ type Answers = {
   list: (capabilities: readonly string[]) => unknown;
   busy: unknown;
   cwd: unknown;
+  resolve: unknown;
 };
 
 type Rig = {
@@ -148,6 +149,7 @@ function rig(options: RigOptions = {}): Rig {
     list: (capabilities) => capabilities.map((cap) => ({ id: cap === CAP ? 't1' : cap === CAP_2 ? 't2' : 't3', shell: { name: 'zsh' } })),
     busy: { state: 'idle' },
     cwd: { path: '/home/u' },
+    resolve: { kind: 'unknown', reason: 'not-found' },
   };
   const call = async (name: string, ...args: unknown[]): Promise<unknown> => {
     calls.push([name, ...args]);
@@ -156,7 +158,7 @@ function rig(options: RigOptions = {}): Rig {
     }
 
     return Promise.resolve(
-      name === 'CreateTerminal' ? answers.create() : name === 'ListChannelTerminals' ? answers.list(args[0] as string[]) : name === 'ChannelTerminalBusy' ? answers.busy : name === 'ChannelTerminalCwd' ? answers.cwd : undefined,
+      name === 'CreateTerminal' ? answers.create() : name === 'ListChannelTerminals' ? answers.list(args[0] as string[]) : name === 'ChannelTerminalBusy' ? answers.busy : name === 'ChannelTerminalCwd' ? answers.cwd : name === 'ChannelTerminalResolveLink' ? answers.resolve : undefined,
     );
   };
 
@@ -166,6 +168,7 @@ function rig(options: RigOptions = {}): Rig {
     DismissChannelTerminal: async (cap) => call('DismissChannelTerminal', cap),
     ChannelTerminalBusy: async (cap) => call('ChannelTerminalBusy', cap),
     ChannelTerminalCwd: async (cap) => call('ChannelTerminalCwd', cap),
+    ChannelTerminalResolveLink: async (cap, rowDirectory, text) => call('ChannelTerminalResolveLink', cap, rowDirectory, text),
     ListChannelTerminals: async (caps) => call('ListChannelTerminals', caps),
   };
   const storage: CapabilityStorage = {
@@ -1016,6 +1019,30 @@ describe('the calls that name a terminal', () => {
     await expect(r.channels.cwd('t1')).rejects.toSatisfy((error: unknown) => r.channels.isGone(error));
     r.calls.length = 0;
     await r.channels.close('t1').catch(() => undefined);
+    expect(r.calls).toEqual([]);
+  });
+});
+
+describe('resolving a link (#696 step 4)', () => {
+  it('asks the host with the capability, the row\'s directory and the text, and answers what the host answers', async () => {
+    const r = rig({ saved: { t1: CAP } });
+    r.answers.resolve = { kind: 'file', path: '/work/src/a.go', line: 12, col: 3 };
+    await expect(r.channels.resolveLink('t1', '/work', 'src/a.go:12:3')).resolves.toEqual({ kind: 'file', path: '/work/src/a.go', line: 12, col: 3 });
+    expect(r.calls).toEqual([['ChannelTerminalResolveLink', CAP, '/work', 'src/a.go:12:3']]);
+  });
+
+  it('never gives the capability to the page: what it answers holds only what the host said', async () => {
+    const r = rig({ saved: { t1: CAP } });
+    r.answers.resolve = { kind: 'unknown', reason: 'outside' };
+    expect(JSON.stringify(await r.channels.resolveLink('t1', '', 'x'))).not.toContain(CAP);
+  });
+
+  it('forgets a capability the host refuses, as every call does, and names none for an id it holds none for', async () => {
+    const r = rig({ saved: { t1: CAP } });
+    r.answers.fails.ChannelTerminalResolveLink = notFound();
+    await expect(r.channels.resolveLink('t1', '', 'a.go')).rejects.toSatisfy((error: unknown) => r.channels.isGone(error));
+    r.calls.length = 0;
+    await expect(r.channels.resolveLink('t9', '', 'a.go')).rejects.toSatisfy((error: unknown) => r.channels.isGone(error));
     expect(r.calls).toEqual([]);
   });
 });

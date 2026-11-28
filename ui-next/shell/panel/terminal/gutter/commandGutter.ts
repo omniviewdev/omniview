@@ -63,6 +63,8 @@ export type CommandGutter = {
   readonly rerun: (command?: GutterCommand) => { readonly text: string; readonly enter: boolean; readonly earlier?: true } | undefined;
   /** A command runs now (the shell's own word). */
   readonly busy: () => boolean;
+  /** The directory of the command that printed a row of the buffer (0 is the oldest row), as the shell proved it: `undefined` for a row before any command, one whose command had no proven directory, and one outside the buffer. */
+  readonly directoryAt: (row: number) => string | undefined;
   readonly onEvent: (listener: (event: GutterEvent) => void) => () => void;
   readonly dispose: () => void;
 };
@@ -504,6 +506,7 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
     hasOutput,
     rerun,
     busy: () => running !== undefined,
+    directoryAt: () => undefined,
     onEvent: (listener) => {
       listeners.add(listener);
       return () => {

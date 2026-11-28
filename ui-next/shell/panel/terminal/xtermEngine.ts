@@ -749,6 +749,10 @@ export function createXtermEngine(options: EngineOptions): Engine {
       applyAttributes();
     },
 
+    setFileLinks: () => undefined,
+
+    fileCandidatesInView: () => [],
+
     viewLinks: () => {
       if (disposed) {
         return [];

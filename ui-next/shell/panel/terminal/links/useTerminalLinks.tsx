@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { Platform } from '../../../core/chords';
-import type { LinkHover } from '../engine';
+import type { LinkHover, ResolvedFile } from '../engine';
+import type { TerminalFeedHandle } from '../feed';
 import type { TerminalScreen } from '../screen';
 import type { TerminalSessions } from '../TerminalSessions';
 import { followsWith, followWords, hostOf } from './links';
@@ -15,18 +16,28 @@ import styles from './LinkTip.module.css';
 // the pointer leaving a link and then the same link, in one task, when it reads a row again with the pointer where it was (output on the row, a link that wraps onto the next row), so a leave forgets the dismissal only when the link is not
 // reported again before the task ends.
 
-export type TerminalLinksScreen = Pick<TerminalScreen, 'setLinks'>;
+export type TerminalLinksScreen = Pick<TerminalScreen, 'setLinks'> & Partial<Pick<TerminalScreen, 'setFileLinks' | 'directoryAt' | 'fileCandidatesInView'>>;
 
 export type TerminalLinksOptions = {
   /** The screen of the session. Before there is one (`undefined`) there are no links. */
   readonly screen: TerminalLinksScreen | undefined;
   readonly sessions: Pick<TerminalSessions, 'canOpenExternal' | 'canFollow' | 'openExternal'>;
   readonly platform: Platform;
+  /** The file links (#696 step 4): what resolves a candidate and says what runs (the session's feed), and how a path is copied until the editor opens files. Absent: no file links (a terminal of a plugin has no disk of this machine to look at). */
+  readonly files?: TerminalFileLinks | undefined;
+};
+
+export type TerminalFileLinks = {
+  readonly feed: Pick<TerminalFeedHandle, 'resolveLink' | 'busy'>;
+  /** Puts text on the clipboard: true when it did. */
+  readonly copyPath: (text: string) => Promise<boolean>;
 };
 
 export type TerminalLinks = {
   /** The tooltip of the link the pointer is on, and nothing (no element, no node) while it is on none. Draw it anywhere in the body: it is a popover, and the window's. */
   readonly element: ReactNode;
+  /** The file links in view, for the keyboard (`Open link` in the context menu): `warm` asks the host about the candidates of the lines in view, `inView` is what it found, as of the last `warm`. Absent: no file links. */
+  readonly files?: { readonly inView: () => readonly ResolvedFile[]; readonly warm: () => Promise<void> } | undefined;
 };
 
 type LinkTipProps = {

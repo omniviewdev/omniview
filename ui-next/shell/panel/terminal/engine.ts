@@ -100,6 +100,36 @@ export type LinkHover = {
   readonly y: number;
 };
 
+/** How long the pointer rests on a line before the host is asked about it (ms): a pointer that crosses lines asks about none of them. */
+export const FILE_LINK_SETTLE_MS = 100;
+
+/** What the host says a file link names: the real absolute path, whether it is a file or a directory, and the 1-based line and column the text gave (absent when it gave none). */
+export type ResolvedFile = {
+  readonly path: string;
+  readonly kind: 'file' | 'dir';
+  readonly line?: number | undefined;
+  readonly col?: number | undefined;
+};
+
+/** A file link the pointer is on: what the host resolved, and where its first cell is in the pixels of the viewport, for a tooltip. */
+export type FileLinkHover = ResolvedFile & { readonly x: number; readonly y: number };
+
+/**
+ * What the host does with the file links in the output (#696 step 4). The emulator finds the CANDIDATES (the matcher, over the logical line of the hovered row) and asks the host about them, and makes a link only for one the
+ * host resolved: a file that is not there is no link, and nothing is underlined for it. It asks only while the modifier is held and only for the line the pointer is on, after a short settle, and never on the alternate screen.
+ */
+export type FileLinkHandler = {
+  /** Whether the pointer event holds the platform's modifier (Command on a Mac, Control elsewhere). Candidates are looked at only while it does. */
+  readonly held: (event: Pick<MouseEvent, 'metaKey' | 'ctrlKey'>) => boolean;
+  /** What the candidates of one line name: `row` is the buffer row the logical line starts on (0 is the oldest row of the scrollback), `texts` the candidates as printed (at most 10). One answer for each, in order; `undefined` for a candidate that is no link. */
+  readonly resolve: (row: number, texts: readonly string[]) => Promise<ReadonlyArray<ResolvedFile | undefined>>;
+  readonly hover: (hover: FileLinkHover | undefined) => void;
+  readonly activate: (link: ResolvedFile, event: MouseEvent) => void;
+};
+
+/** The candidates of one line in view, for a person with no pointer: the buffer row the logical line starts on and its candidates as printed. */
+export type FileCandidates = { readonly row: number; readonly texts: readonly string[] };
+
 /**
  * What the host does with the links in the output: the web addresses the emulator finds in the text, and the hyperlinks a program writes (OSC 8, which the emulator offers for the schemes http and https only). The emulator
  * opens nothing itself and asks nothing: a click is given to `activate` as it came (the host tests the modifier, as VS Code and JetBrains ask for Command or Control, and the scheme), whichever kind of link it is on, and `hover`
@@ -213,6 +243,10 @@ export type Engine = {
    * then does nothing. The emulator's own way of opening a link (a question, then a window) is never used, with a handler or without.
    */
   readonly setLinks: (handler: LinkHandler | undefined) => void;
+  /** The file links of the output are asked of `handler` (see `FileLinkHandler`); `undefined` makes none. */
+  readonly setFileLinks: (handler: FileLinkHandler | undefined) => void;
+  /** The candidates of the logical lines in view, newest line first, at most 20 lines and 40 candidates in all: what a person with no pointer asks the host about (nothing on the alternate screen). */
+  readonly fileCandidatesInView: () => readonly FileCandidates[];
   /**
    * The targets of the links in view, for a person with no pointer (#696 step 1): the web addresses printed in the rows on screen and the targets of the hyperlinks a program wrote there (OSC 8), in reading order, each once, at most
    * 50, and for a hyperlink its target and never its text. Only what a click on the link would open: another scheme is not listed. Nothing on the alternate screen for what the main screen holds, and the other way round.

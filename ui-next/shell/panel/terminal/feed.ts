@@ -53,6 +53,18 @@ export type TerminalDirectory =
   | { readonly state: 'unknown'; readonly reason?: string | undefined };
 
 /**
+ * What the host says a candidate link of the output names on this machine (`ChannelTerminalResolveLink`, docs/ui-next/status/T1-go.md 2.9): a `file` or a `dir` with its real absolute `path` and the 1-based `line` and `col` the text
+ * gave, or `unknown` with the host's `reason`. The fact is the host's: the page never guesses that a file exists.
+ */
+export type TerminalLink = {
+  readonly kind: 'file' | 'dir' | 'unknown';
+  readonly path?: string | undefined;
+  readonly line?: number | undefined;
+  readonly col?: number | undefined;
+  readonly reason?: string | undefined;
+};
+
+/**
  * What a new terminal that stands in for an ended one is made from (`restart`): the producer's own facts, never the page's guess. `id` is the id the ended terminal had: the new one has another, and the host never meets this one again.
  * `command` is the shell that ran (the path the host resolved) and the arguments it was asked for, `cwd` the directory the host says it started in, and `env` what it was asked to add to its environment: each absent when it is not known.
  */
@@ -286,6 +298,11 @@ export type TerminalFeedHandle = {
    * leaves it out, and nothing is opened from it.
    */
   readonly directory?: (() => Promise<TerminalDirectory>) | undefined;
+  /**
+   * What a candidate link names on the host's disk (`ChannelTerminalResolveLink`): `text` is what a program printed and `rowDirectory` the directory of the command that printed the row (the shell's own proof), or empty for where
+   * the shell is now. Never throws: a question that could not be answered is `unknown`. A producer that has no disk to look at (a terminal of a plugin runs somewhere else) leaves it out, and the terminal has no file links.
+   */
+  readonly resolveLink?: ((rowDirectory: string, text: string) => Promise<TerminalLink>) | undefined;
   /**
    * What a restart of this terminal is made from, once the producer knows that the process is over for good (it ended by itself, was closed, was killed by a signal, its pty failed, or the host does not have it any more) and
    * `undefined` until then: a terminal that runs, one that never started, one whose connection was lost (it may still run), one another tab holds and one whose input could not be delivered are not over, and offer nothing. Pure: it

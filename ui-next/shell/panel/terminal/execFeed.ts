@@ -1,5 +1,5 @@
 import { CHANNEL_VERSION, MAX_INPUT_BYTES, MAX_KEPT_INPUT_BYTES, MAX_MARKS, type ChannelLaunch, type ChannelLink, type TerminalChannels } from './channel';
-import type { TerminalBusy, TerminalClosedBy, TerminalDirectory, TerminalExit, TerminalFeedCause, TerminalFeedHandle, TerminalFeedSnapshot, TerminalFeedStage, TerminalFinished, TerminalIntegration, TerminalIntegrationState, PlacedMark, TerminalMark, TerminalModes, TerminalOutput, TerminalReplay, TerminalRestart } from './feed';
+import type { TerminalBusy, TerminalClosedBy, TerminalDirectory, TerminalExit, TerminalFeedCause, TerminalFeedHandle, TerminalFeedSnapshot, TerminalFeedStage, TerminalFinished, TerminalIntegration, TerminalLink, TerminalIntegrationState, PlacedMark, TerminalMark, TerminalModes, TerminalOutput, TerminalReplay, TerminalRestart } from './feed';
 import { marksOf } from './marks';
 import { titleOf } from './title';
 import { createHeldOutput } from './heldOutput';
@@ -1721,6 +1721,8 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
         return channels.isGone(error) ? start : { state: 'unknown', reason: 'unanswered' };
       }
     },
+
+    resolveLink: async (): Promise<TerminalLink> => ({ kind: 'unknown', reason: 'stub' }),
 
     launch: () => {
       const asked = options.launch ?? attachTo?.launch;

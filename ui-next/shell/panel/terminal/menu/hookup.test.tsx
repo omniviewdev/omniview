@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen as page } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { createPanelStore, HOST } from '../../../core/panel';
 import type { EngineLoader } from '../engine';
-import type { TerminalDirectory, TerminalFeedSnapshot, TerminalTarget } from '../feed';
+import type { TerminalBusy, TerminalDirectory, TerminalFeedSnapshot, TerminalLink, TerminalTarget } from '../feed';
 import { createScreenReaderChoice } from '../screenReader';
 import { fakeEngineLoader, fakeTerminalFeed, type FakeEngineLoader, type FakeTerminalFeed } from '../testing';
 import { TerminalBody } from '../TerminalBody';
@@ -37,7 +37,7 @@ let counter = 0;
 let shown: HTMLStyleElement;
 
 function mount(
-  options: { readonly platform?: string; readonly links?: boolean; readonly state?: TerminalFeedSnapshot['state']; readonly real?: boolean; readonly here?: { readonly directory: boolean } } = {},
+  options: { readonly platform?: string; readonly links?: boolean; readonly state?: TerminalFeedSnapshot['state']; readonly real?: boolean; readonly here?: { readonly directory: boolean }; readonly resolveLink?: (rowDirectory: string, text: string) => Promise<TerminalLink> } = {},
 ): Mounted {
   counter = 0;
   const openExternal = vi.fn<(url: string) => void>();
@@ -48,6 +48,7 @@ function mount(
   sessions.attach();
   const feed = fakeTerminalFeed({
     state: options.state ?? 'running',
+    ...(options.resolveLink === undefined ? {} : { resolveLink: options.resolveLink, busy: async () => Promise.resolve<TerminalBusy>({ state: 'idle' }) }),
     ...(options.here?.directory === true ? { directory: async () => Promise.resolve<TerminalDirectory>({ state: 'known', path: '/usr', source: 'shell' }) } : {}),
   });
   const loader = fakeEngineLoader();
@@ -353,6 +354,28 @@ describe('the links in the body', () => {
     await flush();
     expect(loader.engines[0]?.links()).toBeUndefined();
     expect(page.queryByRole('tooltip')).toBeNull();
+  });
+});
+
+// THE FILE LINKS IN THE BODY (#696 step 4): the body gives the screen a handler only when the session's feed can resolve a link, and the handler asks that feed.
+describe('the file links in the body', () => {
+  it('asks the session\'s own feed to resolve a candidate, with an empty directory for a row no command owns, and copies the path with the platform\'s click', async () => {
+    const resolveLink = vi.fn(async (_directory: string, _text: string) => Promise.resolve<TerminalLink>({ kind: 'file', path: '/work/src/a.go', line: 12, col: 3 }));
+    const { loader } = mount({ platform: OTHER, resolveLink });
+    await flush();
+    const handler = loader.engines[0]?.fileLinks();
+    expect(handler).toBeDefined();
+    expect(await handler?.resolve(0, ['src/a.go:12:3'])).toEqual([{ path: '/work/src/a.go', kind: 'file', line: 12, col: 3 }]);
+    expect(resolveLink).toHaveBeenCalledExactlyOnceWith('', 'src/a.go:12:3');
+    handler?.activate({ path: '/work/src/a.go', kind: 'file', line: 12, col: 3 }, new MouseEvent('click', { ctrlKey: true }));
+    await flush();
+    expect(vi.mocked(navigator.clipboard.writeText)).toHaveBeenCalledExactlyOnceWith('/work/src/a.go:12:3');
+  });
+
+  it('makes no file links for a session whose feed has no disk to look at', async () => {
+    const { loader } = mount({ platform: OTHER });
+    await flush();
+    expect(loader.engines[0]?.fileLinks()).toBeUndefined();
   });
 });
 

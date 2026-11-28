@@ -686,3 +686,41 @@ describe('Open link', () => {
     expect(item('Open link')).toHaveAttribute('aria-disabled', 'true');
   });
 });
+
+// FILE LINKS IN OPEN LINK, on the real kit host (#696 step 4): the files the page has resolved for the lines in view are read when the menu opens, and the lines are asked about again for the next opening (the host answers from a
+// cache of 10 s): the menu is a snapshot, and the list is as of the last time the lines were asked.
+describe('Open link with file links', () => {
+  const FILE = { path: '/work/src/a.go', kind: 'file', line: 12, col: 3 } as const;
+  const mountFiles = (files: readonly (typeof FILE)[]) => {
+    const rig = mount();
+    const copy = vi.fn<(text: string) => void>();
+    const warm = vi.fn(async () => Promise.resolve());
+    const inView = vi.fn(() => files);
+    rig.rerender({ links: { open: vi.fn(), follows: () => true, files: { inView, warm, copy } } });
+    return { ...rig, copy, warm, inView };
+  };
+
+  it('reads what is in view when the menu opens, and asks the lines again for the next time: once for each opening', () => {
+    const { host, warm, inView } = mountFiles([FILE]);
+    expect(inView).not.toHaveBeenCalled();
+    rightClick(host());
+    expect(inView).toHaveBeenCalledTimes(1);
+    expect(warm).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens a submenu with the keyboard whose item copies the path: Copy path /work/src/a.go:12:3, chosen once', () => {
+    const { host, copy } = mountFiles([FILE]);
+    rightClick(host());
+    fireEvent.keyDown(item('Open link'), { key: 'ArrowRight' });
+    expect(names()).toContain('Copy path /work/src/a.go:12:3');
+    fireEvent.click(item('Copy path /work/src/a.go:12:3'));
+    expect(copy).toHaveBeenCalledExactlyOnceWith('/work/src/a.go:12:3');
+    expect(menu()).toBeNull();
+  });
+
+  it('has Open link available with files alone: no web address is in view', () => {
+    const { host } = mountFiles([FILE]);
+    rightClick(host());
+    expect(item('Open link')).not.toHaveAttribute('aria-disabled');
+  });
+});

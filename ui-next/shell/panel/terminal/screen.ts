@@ -1,5 +1,5 @@
 import type { Platform } from '../../core/chords';
-import { CURSOR_INIT, FULL_RESET, modesPrologue, type Engine, type EngineAppearance, type EngineLoader, type EngineOptions, type Finder, type LinkHandler } from './engine';
+import { CURSOR_INIT, FULL_RESET, modesPrologue, type Engine, type EngineAppearance, type EngineLoader, type EngineOptions, type Finder, type FileCandidates, type FileLinkHandler, type LinkHandler } from './engine';
 import type { PlacedMark, TerminalFeedHandle, TerminalFeedSnapshot, TerminalReplay, TerminalSize } from './feed';
 import { keyOf, sequenceOf } from './keys';
 import { optionIsMeta } from './layout';
@@ -180,6 +180,12 @@ export type TerminalScreen = {
   readonly decorateInput: (attributes: Readonly<Record<string, string>>) => void;
   /** The links in the output are given to `handler`; `undefined` makes none. What is asked before the emulator is made is given to it when it is. */
   readonly setLinks: (handler: LinkHandler | undefined) => void;
+  /** The file links in the output are asked of `handler`; `undefined` makes none. What is asked before the emulator is made is given to it when it is. */
+  readonly setFileLinks: (handler: FileLinkHandler | undefined) => void;
+  /** The candidates of the lines in view (`Engine.fileCandidatesInView`): none before the emulator is made. */
+  readonly fileCandidatesInView: () => readonly FileCandidates[];
+  /** The directory of the command that printed a row of the buffer, as the shell proved it (the marks): `undefined` for a row no proven command owns. */
+  readonly directoryAt: (row: number) => string | undefined;
   /** The targets of the links in view (`Engine.viewLinks`): none before the emulator is made. */
   readonly viewLinks: () => readonly string[];
   /** Selects the whole buffer, the screen and the scrollback (nothing before the emulator is made): the key does it too. */
@@ -1380,6 +1386,12 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
     },
 
     viewLinks: () => engine?.viewLinks() ?? [],
+
+    setFileLinks: () => undefined,
+
+    fileCandidatesInView: () => [],
+
+    directoryAt: () => undefined,
 
     copy,
 
