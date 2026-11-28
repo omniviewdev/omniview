@@ -183,7 +183,7 @@ describe('which pane is the active one', () => {
     const h = mount();
     expect(slots()[0]).not.toHaveAttribute('data-pane-active');
     split(h, 3);
-    const marked = (): (string | null)[] => slots().filter((slot) => slot.hasAttribute('data-pane-active')).map((slot) => slot.getAttribute('data-pane'));
+    const marked = (): Array<string | null> => slots().filter((slot) => slot.hasAttribute('data-pane-active')).map((slot) => slot.getAttribute('data-pane'));
     expect(marked()).toEqual(['p3']);
     fireEvent.pointerDown(slots()[0]);
     expect(marked()).toEqual(['p1']);
@@ -407,6 +407,7 @@ describe('the room for one more pane', () => {
       const element = document.querySelector('[data-fixture="room"]');
       return { fits: element?.getAttribute('data-fits') ?? null, extent: element?.getAttribute('data-extent') ?? null };
     };
+
     act(() => {
       resized?.();
     });

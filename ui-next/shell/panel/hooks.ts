@@ -136,6 +136,6 @@ export function usePaneActive(id: SessionId): boolean {
   return usePanelSelector((state) => {
     const tool = Object.hasOwn(state.sessions, id) ? state.sessions[id].tool : undefined;
     const group = tool !== undefined && Object.hasOwn(state.panes, tool) ? state.panes[tool] : undefined;
-    return group !== undefined && group.panes.some((pane) => pane.session === id && pane.id === group.active);
+    return group?.panes.some((pane) => pane.session === id && pane.id === group.active) === true;
   });
 }
