@@ -18,7 +18,7 @@ require (
 	github.com/hashicorp/yamux v0.1.2
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/nxadm/tail v1.4.11
-	github.com/omniviewdev/plugin-sdk v0.23.0
+	github.com/omniviewdev/plugin-sdk v0.24.0
 	github.com/omniviewdev/registry v0.3.1
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.1.0
@@ -46,6 +46,7 @@ require (
 	golang.org/x/net v0.62.0
 	golang.org/x/sync v0.24.0
 	golang.org/x/sys v0.49.0
+	golang.org/x/text v0.43.0
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20261104224025-d1e00e9f33ab
 	google.golang.org/grpc v1.85.0
 	google.golang.org/protobuf v1.36.12
@@ -114,7 +115,6 @@ require (
 	golang.org/x/exp v0.0.0-20261106192419-47ce03d25ef0 // indirect
 	golang.org/x/oauth2 v0.37.0 // indirect
 	golang.org/x/term v0.47.0 // indirect
-	golang.org/x/text v0.43.0
 	golang.org/x/time v0.16.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20261104224025-d1e00e9f33ab // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
