@@ -178,6 +178,93 @@ describe('a group of panes', () => {
   });
 });
 
+/** The deck's children that are a body or a sash, in the document's order: what the Tab key walks. */
+const walk = (): Array<string | null> => [...deck().children].flatMap((child) => (child instanceof HTMLElement && child.hasAttribute('data-session-id') ? [child.getAttribute('data-session-id')] : child.getAttribute('data-shell-part') === 'paneSash' ? ['sash'] : []));
+
+describe('the document\'s order is the visual order (WCAG 2.4.3)', () => {
+  it('has each sash just before the pane after it: pane 1, sash, pane 2, sash, pane 3, also after a split in the middle', () => {
+    const h = mount();
+    split(h, 3);
+    const [a, b, c] = h.store.getSnapshot().order;
+    expect(walk().filter((one) => one !== null && !slots().some((slot) => slot.hidden && slot.getAttribute('data-session-id') === one))).toEqual([a, 'sash', b, 'sash', c]);
+    act(() => {
+      h.store.focusPane('terminal', 'p1');
+    });
+    act(() => {
+      h.store.splitPane('terminal', { plugin: 'host', title: 'fish', state: 'running' }, { extent: DECK });
+    });
+    const order = h.store.getSnapshot().order;
+    expect(walk()).toEqual([order[0], 'sash', order[3], 'sash', order[1], 'sash', order[2]]);
+  });
+
+  it('inserts the new pane and moves no pane that is there: the nodes are the same, in the same order, and none is removed', () => {
+    const h = mount();
+    split(h, 3);
+    const before = slots();
+    const seen: Array<{ readonly added: number; readonly removed: number }> = [];
+    const watcher = new MutationObserver((records) => {
+      for (const record of records) {
+        seen.push({ added: record.addedNodes.length, removed: record.removedNodes.length });
+      }
+    });
+    watcher.observe(deck(), { childList: true });
+    act(() => {
+      h.store.focusPane('terminal', 'p1');
+    });
+    act(() => {
+      h.store.splitPane('terminal', { plugin: 'host', title: 'fish', state: 'running' }, { extent: DECK });
+    });
+    const records = watcher.takeRecords();
+    watcher.disconnect();
+    const all = [...seen, ...records.map((record) => ({ added: record.addedNodes.length, removed: record.removedNodes.length }))];
+    expect(all.reduce((total, one) => total + one.removed, 0), 'no node of the deck was removed (a move is a removal and an insertion)').toBe(0);
+    expect(before.every((slot) => slot.isConnected)).toBe(true);
+    expect(slots().filter((slot) => before.includes(slot))).toEqual(before);
+  });
+});
+
+describe('a sash follows its place, not the place it was made in', () => {
+  const ratios = (h: ReturnType<typeof mount>): readonly number[] => h.store.getSnapshot().panes.terminal?.ratios ?? [];
+
+  it('after a split in the middle each sash moves the two panes beside it', async () => {
+    const h = mount();
+    split(h, 3);
+    act(() => {
+      h.store.focusPane('terminal', 'p1');
+    });
+    act(() => {
+      h.store.splitPane('terminal', { plugin: 'host', title: 'fish', state: 'running' }, { extent: DECK });
+    });
+    const before = ratios(h);
+    act(() => {
+      sashAt(1).focus();
+    });
+    await h.user.keyboard('{ArrowRight}');
+    const after = ratios(h);
+    expect(after[0]).toBe(before[0]);
+    expect(after[1]).toBeGreaterThan(before[1]);
+    expect(after[2]).toBeLessThan(before[2]);
+    expect(after[3]).toBe(before[3]);
+  });
+
+  it('after a middle pane closes the last sash still moves the last two panes', async () => {
+    const h = mount();
+    split(h, 4);
+    act(() => {
+      h.store.closeSession(h.store.getSnapshot().order[1]);
+    });
+    const before = ratios(h);
+    act(() => {
+      sashAt(1).focus();
+    });
+    await h.user.keyboard('{ArrowRight}');
+    const after = ratios(h);
+    expect(after[0]).toBe(before[0]);
+    expect(after[1]).toBeGreaterThan(before[1]);
+    expect(after[2]).toBeLessThan(before[2]);
+  });
+});
+
 describe('which pane is the active one', () => {
   it('is marked on its body alone, follows a click, and no body of a tool with one session is marked', () => {
     const h = mount();
