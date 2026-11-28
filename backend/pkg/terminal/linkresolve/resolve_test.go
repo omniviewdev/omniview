@@ -470,3 +470,23 @@ func TestACachedAnswerIsCheckedAgainstTheDirectoriesAgain(t *testing.T) {
 	require.NoError(t, os.Symlink(filepath.Join(parent, "moved"), ws))
 	assert.Equal(t, found(filepath.Join(parent, "moved"), "a.go", 0, 0), r.Resolve(in), "the directory is now somewhere else: the answer is not the old spelling")
 }
+
+func TestACachedAnswerThroughADirectorySwappedForALinkOutIsNotGivenAgain(t *testing.T) {
+	for _, outsideHas := range []bool{true, false} {
+		parent := tree(t, "ws/sub/f.go", "outside/keep")
+		ws := filepath.Join(parent, "ws")
+		outside := filepath.Join(parent, "outside")
+		if outsideHas {
+			require.NoError(t, os.WriteFile(filepath.Join(outside, "f.go"), []byte("secret"), 0o600))
+		}
+		r, _ := resolver(t, linkresolve.Config{})
+		in := linkresolve.Input{Dir: ws, Text: "sub/f.go"}
+		assert.Equal(t, found(ws, "sub/f.go", 0, 0), r.Resolve(in))
+		assert.Equal(t, found(ws, "sub/f.go", 0, 0), r.Resolve(in), "the control: unchanged, the cache is used")
+		require.NoError(t, os.RemoveAll(filepath.Join(ws, "sub")))
+		require.NoError(t, os.Symlink(outside, filepath.Join(ws, "sub")))
+		fresh := linkresolve.New(linkresolve.Config{}).Resolve(in)
+		assert.Equal(t, unknown(linkresolve.ReasonOutside), fresh)
+		assert.Equal(t, fresh, r.Resolve(in), "outsideHas=%v: a hit says what a fresh resolver says, so a file outside and a missing one are not told apart", outsideHas)
+	}
+}
