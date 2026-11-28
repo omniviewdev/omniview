@@ -195,7 +195,8 @@ func TestAFileDeletedAfterTheAnswerIsNoLongerThereWhenAskedAgain(t *testing.T) {
 	assert.Equal(t, found(ws, "a.go", 3, 0), r.Resolve(in))
 	first := seen.count()
 	assert.Equal(t, found(ws, "a.go", 3, 0), r.Resolve(in), "the control: still there, from the cache")
-	assert.Equal(t, 1, seen.count()-first, "a cache hit asks the file system once, for the file")
+	hitPaths := seen.paths()[first:]
+	assert.Equal(t, filepath.Join(ws, "a.go"), hitPaths[len(hitPaths)-1], "a cache hit ends by looking at the file")
 	require.NoError(t, os.Remove(filepath.Join(ws, "a.go")))
 	assert.Equal(t, unknown(linkresolve.ReasonGone), r.Resolve(in), "deleted: the typed answer")
 	assert.Equal(t, unknown(linkresolve.ReasonNotFound), r.Resolve(in), "and then it is simply not there")
@@ -203,7 +204,8 @@ func TestAFileDeletedAfterTheAnswerIsNoLongerThereWhenAskedAgain(t *testing.T) {
 }
 
 func TestTheCacheExpiresAfterItsTTLAndIsBounded(t *testing.T) {
-	names := make([]string, 0, 300)
+	names := make([]string, 0, 301)
+	names = append(names, "sub/zz.go")
 	for i := 0; i < 300; i++ {
 		names = append(names, "f"+strconv.Itoa(i)+".go")
 	}
@@ -213,7 +215,7 @@ func TestTheCacheExpiresAfterItsTTLAndIsBounded(t *testing.T) {
 	clock := func() time.Time { mu.Lock(); defer mu.Unlock(); return now }
 	r, seen := resolver(t, linkresolve.Config{CacheSize: 32, CacheTTL: 10 * time.Second, Now: clock})
 
-	in := linkresolve.Input{Dir: ws, Text: "f0.go"}
+	in := linkresolve.Input{Dir: ws, Text: "zz.go"} // found by the scan: the work the cache saves
 	r.Resolve(in)
 	first := seen.count()
 	r.Resolve(in)
@@ -381,4 +383,90 @@ func BenchmarkTheCacheHitAgainstTheMiss(b *testing.B) {
 			r.Resolve(linkresolve.Input{Dir: root, Text: "other" + strconv.Itoa(i%2)})
 		}
 	})
+}
+
+func TestNothingOutsideTheDirectoriesIsLookedAtAndAMissingFileIsNotToldFromAnExistingOne(t *testing.T) {
+	parent := tree(t, "ws/in.go", "outside/there.go", "outside/sub/deep.go")
+	ws := filepath.Join(parent, "ws")
+	outside := filepath.Join(parent, "outside")
+	require.NoError(t, os.Symlink(filepath.Join(outside, "sub"), filepath.Join(ws, "out-dir")))
+	require.NoError(t, os.Symlink("../outside/there.go", filepath.Join(ws, "rel-out")))
+	r, seen := resolver(t, linkresolve.Config{})
+	in := func(text string) linkresolve.Input { return linkresolve.Input{Dir: ws, Text: text} }
+	texts := [][2]string{
+		{filepath.Join(outside, "there.go"), filepath.Join(outside, "missing.go")},
+		{"../outside/there.go", "../outside/missing.go"},
+		{"out-dir/deep.go", "out-dir/missing.go"},
+		{"rel-out", "../nowhere/at/all"},
+		{"/net/evil.example/x", "/net/evil.example/y"},
+	}
+	for _, pair := range texts {
+		existing, missing := r.Resolve(in(pair[0])), r.Resolve(in(pair[1]))
+		assert.Equal(t, linkresolve.KindUnknown, existing.Kind, pair[0])
+		assert.Equal(t, existing, missing, "%s and %s: an existing and a missing path outside say the same", pair[0], pair[1])
+	}
+	for _, p := range seen.paths() {
+		assert.False(t, strings.HasPrefix(p, outside+"/") || p == outside || strings.HasPrefix(p, "/net"), "looked at %s, which is outside", p)
+	}
+	// the control: the inside is looked at
+	assert.Equal(t, found(ws, "in.go", 0, 0), r.Resolve(in("in.go")))
+	assert.Equal(t, unknown(linkresolve.ReasonNotFound), r.Resolve(in("missing.go")), "inside, a missing file is not-found")
+}
+
+func TestADirectorySwappedForAPipeIsNotOpenedByTheScan(t *testing.T) {
+	ws := tree(t, "sub/x.go", "other/y.go")
+	r, seen := resolver(t, linkresolve.Config{})
+	var once sync.Once
+	seen.before = func(p string) {
+		if p == filepath.Join(ws, "sub") {
+			once.Do(func() {
+				require.NoError(t, os.RemoveAll(p))
+				require.NoError(t, syscall.Mkfifo(p, 0o600))
+			})
+		}
+	}
+	got := within(t, "swapped", func() linkresolve.Result { return r.Resolve(linkresolve.Input{Dir: ws, Text: "zzz/nothing.go"}) })
+	assert.Equal(t, unknown(linkresolve.ReasonNotFound), got)
+	// the control: the scan still reads directories that are directories
+	assert.Equal(t, found(ws, "other/y.go", 0, 0), r.Resolve(linkresolve.Input{Dir: ws, Text: "other/y.go"}))
+	// and a link to a directory is not entered by the reader itself
+	require.NoError(t, os.Symlink(ws, filepath.Join(ws, "again")))
+	_, err := linkresolve.OSFS{}.ReadDir(filepath.Join(ws, "again"), 10)
+	require.Error(t, err)
+	_, err = linkresolve.OSFS{}.ReadDir(filepath.Join(ws, "sub"), 10)
+	require.Error(t, err, "a pipe is not read as a directory")
+	entries, err := linkresolve.OSFS{}.ReadDir(ws, 10)
+	require.NoError(t, err)
+	assert.NotEmpty(t, entries)
+}
+
+func TestTheDeniedDirectoriesAreDeniedInAnyCase(t *testing.T) {
+	ws := tree(t, "ok.go")
+	r, seen := resolver(t, linkresolve.Config{})
+	for _, text := range []string{"/DEV/null", "/Proc/self/cwd", "/SYS/kernel"} {
+		assert.Equal(t, unknown(linkresolve.ReasonDenied), r.Resolve(linkresolve.Input{Dir: ws, Text: text}), text)
+	}
+	assert.Zero(t, seen.count()-countOf(seen, ws), "nothing but the directory itself was looked at")
+	assert.Equal(t, found(ws, "ok.go", 0, 0), r.Resolve(linkresolve.Input{Dir: ws, Text: "ok.go"}), "the control")
+}
+
+func countOf(f *seenFS, under string) int {
+	n := 0
+	for _, p := range f.paths() {
+		if p == under || strings.HasPrefix(p, under+"/") || strings.HasPrefix(under, p+"/") || p == "/" {
+			n++
+		}
+	}
+	return n
+}
+
+func TestACachedAnswerIsCheckedAgainstTheDirectoriesAgain(t *testing.T) {
+	parent := tree(t, "ws/a.go", "moved/a.go")
+	ws := filepath.Join(parent, "ws")
+	r, _ := resolver(t, linkresolve.Config{})
+	in := linkresolve.Input{Dir: ws, Text: "a.go"}
+	assert.Equal(t, found(ws, "a.go", 0, 0), r.Resolve(in))
+	require.NoError(t, os.RemoveAll(ws))
+	require.NoError(t, os.Symlink(filepath.Join(parent, "moved"), ws))
+	assert.Equal(t, found(filepath.Join(parent, "moved"), "a.go", 0, 0), r.Resolve(in), "the directory is now somewhere else: the answer is not the old spelling")
 }

@@ -22,6 +22,8 @@ type seenFS struct {
 	seen    []string
 	entries int
 	hold    func(path string) <-chan struct{}
+	// before runs ahead of every ReadDir: a test swaps the directory for something else here.
+	before func(path string)
 }
 
 func (f *seenFS) note(p string) {
@@ -53,6 +55,9 @@ func (f *seenFS) Readlink(p string) (string, error) {
 
 func (f *seenFS) ReadDir(p string, n int) ([]fs.DirEntry, error) {
 	f.note(p)
+	if f.before != nil {
+		f.before(p)
+	}
 	f.wait(p)
 	out, err := linkresolve.OSFS{}.ReadDir(p, n)
 	f.mu.Lock()
