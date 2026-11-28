@@ -694,7 +694,7 @@ describe('the file links', () => {
       expect(rig.resolveLink.mock.calls).toEqual([['', 'a.go:1']]);
     });
 
-    it.each([
+    it.each<[string, TerminalBusy]>([
       ['a program holds the foreground (ssh, a container exec)', { state: 'busy', name: 'ssh' }],
       ['the host cannot say what runs', { state: 'unknown' }],
     ])('asks the host nothing while %s: the answer would be about this machine\'s disk, and there are no links', async (_what, state) => {

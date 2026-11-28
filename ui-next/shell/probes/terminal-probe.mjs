@@ -67,6 +67,7 @@ import { createReattachSections, REATTACH_CONTROLS, REATTACH_PARTS } from './ter
 import { APPLY_CONTROLS, APPLY_PARTS, createApplySections } from './terminal-apply.mjs';
 import { createSettingsSections, SETTINGS_CONTROLS, SETTINGS_PARTS } from './terminal-settings.mjs';
 import { createPanesSections, PANES_CONTROLS, PANES_PARTS } from './terminal-panes.mjs';
+import { createFilelinksSections, FILELINKS_CONTROLS, FILELINKS_PARTS } from './terminal-filelinks.mjs';
 import { createUrlsSections, URLS_CONTROLS, URLS_PARTS } from './terminal-urls.mjs';
 import { createWhereSections, WHERE_CONTROLS, WHERE_PARTS } from './terminal-where.mjs';
 
@@ -204,6 +205,7 @@ const CONTROLS = {
   ...GUTTER_CONTROLS,
   ...WHERE_CONTROLS,
   ...URLS_CONTROLS,
+  ...FILELINKS_CONTROLS,
   ...SETTINGS_CONTROLS,
   ...PANES_CONTROLS,
   ...APPLY_CONTROLS,
@@ -1818,7 +1820,7 @@ async function screenreaderCost(ctx) {
   await page.context().close();
 }
 
-const SECTIONS = { geometry, words, title, ended, start: refusals, keys, close, resize, size, bundle, paint, axe, screenreader, 'screenreader-cost': screenreaderCost, hidden, idle, commits, flood, latency, memory, order, ...createReattachSections({ check, note, report, runAxe }), ...createFindSections({ check, note, report, runAxe }), ...createGutterSections({ check, note, report, runAxe }), ...createWhereSections({ check, note, report, runAxe }), ...createUrlsSections({ check, note, runAxe }), ...createSettingsSections({ check, note, report }), ...createPanesSections({ check, note, report, runAxe }), ...createApplySections({ check, note, report }) };
+const SECTIONS = { geometry, words, title, ended, start: refusals, keys, close, resize, size, bundle, paint, axe, screenreader, 'screenreader-cost': screenreaderCost, hidden, idle, commits, flood, latency, memory, order, ...createReattachSections({ check, note, report, runAxe }), ...createFindSections({ check, note, report, runAxe }), ...createGutterSections({ check, note, report, runAxe }), ...createWhereSections({ check, note, report, runAxe }), ...createUrlsSections({ check, note, runAxe }), ...createFilelinksSections({ check, note, runAxe }), ...createSettingsSections({ check, note, report }), ...createPanesSections({ check, note, report, runAxe }), ...createApplySections({ check, note, report }) };
 /** The two parts the probe is run in, by the units of CI: the sections of the page (what a person sees and does) and those of the data path (what flows, and what it costs). Every section is in one and only one. */
 const PARTS = {
   view: ['geometry', 'words', 'title', 'ended', 'start', 'keys', 'close', 'resize', 'size', 'bundle', 'paint', 'axe', 'screenreader', 'screenreader-cost'],
@@ -1828,6 +1830,7 @@ const PARTS = {
   ...GUTTER_PARTS,
   ...WHERE_PARTS,
   ...URLS_PARTS,
+  ...FILELINKS_PARTS,
   ...SETTINGS_PARTS,
   ...PANES_PARTS,
   ...APPLY_PARTS,

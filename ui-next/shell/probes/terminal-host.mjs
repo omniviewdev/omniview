@@ -1062,10 +1062,14 @@ export function createHost(options = {}) {
         // What a compiler prints: a path that is in the fixture tree of the directory the shell is in, one that is not, and one in another directory (#696 step 4).
         out(pty, `${['build: src/a.go:12:3: error: undefined: x', 'miss: src/missing.go:7:1: warning', 'twin: src/b.go:4', 'quoted: "src/a.go", line 9', 'url: https://example.com/src/a.go:12 end'].join('\r\n')}\r\n`);
         break;
+      case 'short':
+        // Two paths, one in each directory of the fixture tree: a small output, so that two commands fit the panel's nine rows.
+        out(pty, 'short: src/a.go:12:3\r\nshort: src/b.go:4\r\n');
+        break;
       case 'many': {
-        // Thirty candidates on one line (more than the ten a line is asked about) and forty lines of one candidate each: only the line the pointer is on may be asked about.
+        // Thirty candidates on one line (more than the ten a line is asked about) and three lines of one candidate each (the panel shows about nine rows): only the line the pointer is on may be asked about.
         out(pty, `${Array.from({ length: 30 }, (_, index) => `f${String(index)}.go:1`).join(' ')}\r\n`);
-        out(pty, `${Array.from({ length: 12 }, (_, index) => `g${String(index)}.go:${String(index + 1)}`).join('\r\n')}\r\n`);
+        out(pty, `${Array.from({ length: 3 }, (_, index) => `g${String(index)}.go:${String(index + 1)}`).join('\r\n')}\r\n`);
         break;
       }
 

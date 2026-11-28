@@ -471,4 +471,24 @@ export const units = [
     plants: 'page',
     seconds: 150,
   },
+
+  // FILE LINKS through the host's resolver (#696 step 4): under the modifier a path the host resolved is a link with its resolved path in the tooltip, a missing path is none, a path resolves against the directory of the command that printed
+  // it, at most 10 candidates of the hovered line are asked about and no other line, a megabyte of `a:1` makes no link, nothing is asked while a program holds the foreground, the keyboard lists the files in view, and axe (the sections are
+  // in terminal-filelinks.mjs). WebKit and Chromium at both viewports. An ESTIMATE from the laptop, to be set from the first nightly figure.
+  {
+    id: 'terminal-filelinks',
+    name: 'Probe that a path the host resolved is a link under the modifier, against the right directory, and asked for in bounds',
+    script: 'ui-next/shell/probes/terminal-filelinks-probe.mjs',
+    env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/terminal-filelinks-probe.json' },
+    seconds: 240,
+  },
+  {
+    id: 'terminal-controls-filelinks',
+    name: 'Probe that the file links probe sees a link for a missing file, a page that asks for every line or with no cap, a link while a program holds the foreground, the wrong directory, a modifier that is always held, a copy that goes nowhere and a violation',
+    script: 'ui-next/shell/probes/terminal-probe.mjs',
+    env: { FONT_DELAY_MS: '40' },
+    controls: ['files-missing-link', 'files-all-lines', 'files-no-cap', 'files-foreign-link', 'files-wrong-directory', 'files-no-modifier', 'files-clipboard-dropped', 'files-tooltip-position-lost', 'files-tooltip-axe'],
+    plants: 'page',
+    seconds: 300,
+  },
 ];

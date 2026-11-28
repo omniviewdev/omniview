@@ -236,7 +236,12 @@ export function createFileLinkProvider(terminal: ProviderTerminal, handler: File
     changed(handler.held(event));
   };
 
-  const onLeave = (): void => {
+  const onLeave = (event: Event): void => {
+    // `mouseleave` does not bubble, but it is captured on its way to the element that was left: one for every row and every span the pointer crosses. Only the pointer leaving the screen itself ends the question.
+    if (event.target !== screen) {
+      return;
+    }
+
     stop(waiting);
     waiting = undefined;
     memo = undefined;

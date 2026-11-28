@@ -2761,6 +2761,19 @@ describe('the file links of a real emulator (#696 step 4)', () => {
     close();
   });
 
+  it('keeps the question while the pointer crosses rows and spans inside the screen: only leaving the screen cancels it (a `mouseleave` is captured for every element the pointer leaves)', async () => {
+    const { terminal, write, pointer, asked, timed, settle, press, close } = filed();
+    await write('see src/a.go:12:3 now\r\n');
+    timed();
+    pointer.over(8, 1);
+    const inner = terminal.element?.querySelector('.xterm-screen > *');
+    inner?.dispatchEvent(new MouseEvent('mouseleave'));
+    press('Meta');
+    await settle();
+    expect(asked).toHaveLength(1);
+    close();
+  });
+
   it('asks nothing on the alternate screen: a program that has the whole screen has no paths of a command', async () => {
     const { write, pointer, asked, timed, settle, close } = filed();
     await write('\u001b[?1049hsrc/a.go:12:3\r\n');

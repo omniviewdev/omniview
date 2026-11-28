@@ -452,6 +452,10 @@
     "probe": true,
     "controls": []
   },
+  "ui-next/shell/probes/terminal-filelinks-probe.mjs": {
+    "probe": true,
+    "controls": []
+  },
   "ui-next/shell/probes/terminal-find-a-probe.mjs": {
     "probe": true,
     "controls": []
