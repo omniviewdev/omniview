@@ -300,9 +300,12 @@ func TestCreateTerminalRefusesACallThatComesFromNoWindow(t *testing.T) {
 func TestCreateTerminalRefusesAWindowThatIsAlreadyRetired(t *testing.T) {
 	fx := newTerminalFixture(t)
 	page := fx.page(3)
-	fx.open(page, terminal.Options{})
+	info := fx.open(page, terminal.Options{})
 	fx.pages.set(page.client, false)
 	require.Eventually(t, func() bool { return len(fx.ctrl.terminalManager.ListSessions()) == 0 }, 20*time.Second, 5*time.Millisecond)
+	// The list leaves a session out as soon as it is ending, not when its shell is reaped: the test ends with no shell of its own left alive,
+	// so the next test counts the children of the process on a clean table.
+	require.Eventually(t, func() bool { return gone(info.PID) }, 20*time.Second, 5*time.Millisecond, "the shell of the retired page is gone")
 	_, err := fx.openAs(page, terminal.Options{Command: shell(t)})
 	require.ErrorIs(t, err, invocation.ErrWindowUnavailable, "a closed page is refused, not served a shell nobody can reach")
 	assert.Empty(t, fx.ctrl.terminalManager.ListSessions())
