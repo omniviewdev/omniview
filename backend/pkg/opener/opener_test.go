@@ -3,6 +3,7 @@ package opener
 import (
 	"encoding/json"
 	"errors"
+	"net"
 	"strings"
 	"testing"
 
@@ -198,4 +199,39 @@ func TestNoAnswerAndNoErrorHoldsTheAddress(t *testing.T) {
 	_, err = ok.OpenExternalURL("https://a.example/" + secret)
 	require.NoError(t, err)
 	assert.Contains(t, given, secret)
+}
+
+func machineWith(addresses ...string) func() ([]net.Addr, error) {
+	return func() ([]net.Addr, error) {
+		out := make([]net.Addr, 0, len(addresses))
+		for _, a := range addresses {
+			out = append(out, &net.IPNet{IP: net.ParseIP(a), Mask: net.CIDRMask(24, 32)})
+		}
+		return out, nil
+	}
+}
+
+// A server that listens on every interface (0.0.0.0 or ::) is reached by any address of this machine on its port, and by no address of another machine.
+func TestAServerOnEveryInterfaceIsReachedByEveryAddressOfThisMachine(t *testing.T) {
+	for _, own := range []string{"0.0.0.0:9000", "[::]:9000"} {
+		o, rec := newTest(own)
+		o.interfaces = machineWith("192.168.1.5", "10.0.0.7")
+		for _, raw := range []string{"http://192.168.1.5:9000/", "http://3232235781:9000/", "http://10.0.0.7:9000/", "http://[::ffff:192.168.1.5]:9000/", "http://localhost:9000/", "http://127.0.0.1:9000/"} {
+			refusal(t, o, rec, raw, ReasonOwnServer)
+		}
+		// the controls: another port, another machine
+		opens(t, o, rec, "http://192.168.1.5:9001/")
+		opens(t, o, rec, "http://192.168.1.6:9000/")
+		opens(t, o, rec, "http://example.com:9000/")
+	}
+	// a server on one interface is reached by that one only
+	o, rec := newTest("192.168.1.5:9000")
+	o.interfaces = machineWith("192.168.1.5", "10.0.0.7")
+	refusal(t, o, rec, "http://192.168.1.5:9000/", ReasonOwnServer)
+	opens(t, o, rec, "http://10.0.0.7:9000/")
+	// and an interface list that cannot be read refuses nothing more than the loopback
+	broken, brec := newTest("0.0.0.0:9000")
+	broken.interfaces = func() ([]net.Addr, error) { return nil, errors.New("no interfaces") }
+	refusal(t, broken, brec, "http://localhost:9000/", ReasonOwnServer)
+	opens(t, broken, brec, "http://192.168.1.5:9000/")
 }

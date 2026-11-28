@@ -68,17 +68,21 @@ func refused(reason Reason) Result { return Result{Opened: false, Reason: reason
 // Opener opens addresses. The zero value is not usable: use New.
 type Opener struct {
 	open func(string) error
+	// interfaces are the addresses of this machine's interfaces (net.InterfaceAddrs): a field so that a test can state a machine.
+	interfaces func() ([]net.Addr, error)
 
 	mu  sync.RWMutex
 	own func() []string
 }
 
 // New makes an opener that starts the platform's browser.
-func New() *Opener { return &Opener{open: platformOpen, mu: sync.RWMutex{}, own: nil} }
+func New() *Opener {
+	return &Opener{open: platformOpen, interfaces: net.InterfaceAddrs, mu: sync.RWMutex{}, own: nil}
+}
 
 // withOpen makes an opener that hands the checked address to open: the seam of the tests.
 func withOpen(open func(string) error) *Opener {
-	return &Opener{open: open, mu: sync.RWMutex{}, own: nil}
+	return &Opener{open: open, interfaces: net.InterfaceAddrs, mu: sync.RWMutex{}, own: nil}
 }
 
 // SetOwn says where the host's own servers listen, as `host:port` strings, asked each time an address is checked (a server may start and stop). A listener that is not
