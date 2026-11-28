@@ -2786,6 +2786,30 @@ describe('the file links of a real emulator (#696 step 4)', () => {
     close();
   });
 
+  // A question that waits for the key is a question the emulator has not had an answer to: it gives a link of a provider that was registered AFTER one that has not answered only when every provider registered before it has
+  // answered, so a web link must be reported whichever provider the emulator was given first.
+  it.each([['file links first', true], ['web links first', false]])('reports a web link on the row while the file question waits for the key (%s)', async (_order, fileFirst) => {
+    const { engine, write, pointer, handler, timed, settle, close } = filed();
+    const web: Array<LinkHover | undefined> = [];
+    const webHandler: LinkHandler = { activate: () => undefined, hover: (hover) => web.push(hover) };
+    engine.setFileLinks(undefined);
+    if (fileFirst) {
+      engine.setFileLinks(handler);
+      engine.setLinks(webHandler);
+    } else {
+      engine.setLinks(webHandler);
+      engine.setFileLinks(handler);
+    }
+
+    await write('see https://example.com/docs and src/a.go:12:3 now\r\n');
+    timed();
+    pointer.over(12, 1);
+    await settle();
+    expect(web.filter((one) => one !== undefined).at(-1)?.uri).toBe('https://example.com/docs');
+    expect(pointer.pointing()).toBe(true);
+    close();
+  });
+
   it('asks nothing on the alternate screen: a program that has the whole screen has no paths of a command', async () => {
     const { write, pointer, asked, timed, settle, close } = filed();
     await write('\u001b[?1049hsrc/a.go:12:3\r\n');

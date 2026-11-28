@@ -8,9 +8,10 @@ import { findFileLinks, FILE_LINK_LIMITS } from './fileLinks';
 // as the structure below, and is the only file that does.
 //
 //   - LAZY. The emulator asks for the links of the row the pointer is on, and only then; a row is looked at after the pointer has rested on it (`FILE_LINK_SETTLE_MS`), and a pointer that crosses lines asks about none of them.
-//   - UNDER THE MODIFIER. While the modifier is not held the question waits, unanswered, and nothing is read or asked; pressing it asks (a pointer that rests on a path and then meets the key is on a link); releasing it cancels a
-//     question that has not been asked. The emulator keeps the answer for a row until the pointer leaves it, so a question answered with "no link" because the key was up would have to be asked again by a move to another row: a question
-//     that waits is the way to the key.
+//   - UNDER THE MODIFIER. While the modifier is not held nothing is read or asked, and the emulator is told at once that the row has no links. Pressing the key (or moving with it held) asks after the settle; the emulator keeps the
+//     answer it was given for a row until the pointer leaves the row, so when the host has answered the provider makes the emulator ask the row again (two synthetic moves of the pointer: to the next row and back), and answers it
+//     from what the host said. Every answer to the emulator is immediate: a provider that left its question open would hold back the links of every provider after it (the emulator gives a provider's links only when all before it have
+//     answered, and its own provider of hyperlinks answers with an empty list, which counts as a link), so the web links of the row would not be reported while a file question waits for its key.
 //   - BOUNDED. A line over 2,000 characters has no file links and is read for a bounded number of rows (the rows 2,001 characters fill), at most 10 candidates of a line are asked about, and the work for a line does not depend on how
 //     long the line the row belongs to is.
 //   - NO URL. The matcher gives no candidate inside a printed web address (it is the web link's): the host is never asked to look at a URL.
@@ -98,13 +99,23 @@ export type FileLinkProvider = { readonly dispose: () => void };
 /** What the pointer of a link is told where it is: the emulator's own computation of a link's first cell in pixels, for the tooltip. */
 export type HoverPlace = (event: MouseEvent, path: string, range: Range) => FileLinkHover;
 
-type Waiting = { readonly row: number; readonly callback: (links: ProvidedLink[] | undefined) => void; timer: ReturnType<typeof setTimeout> | undefined };
+type Waiting = { readonly row: number; timer: ReturnType<typeof setTimeout> | undefined };
+
+/** What the host said of the line the pointer is on: the emulator draws the row again (a cursor, output, a scroll) and asks again, and the answer is the one it had, with no second question and no gap in the underline. */
+type Memo = { readonly first: number; readonly text: string; readonly candidates: readonly Candidate[]; readonly cells: readonly Cell[]; readonly answers: ReadonlyArray<ResolvedFile | undefined> };
 
 /** Registers the provider with the emulator, and listens to the modifier and the pointer until it is disposed. */
 export function createFileLinkProvider(terminal: ProviderTerminal, handler: FileLinkHandler, place: HoverPlace): FileLinkProvider {
   let held = false;
-  let waiting: Waiting | undefined;
   let live = true;
+  /** The row the emulator last asked about: where the pointer is. */
+  let current: number | undefined;
+  /** The question that waits for its settle or its answer. */
+  let waiting: Waiting | undefined;
+  let memo: Memo | undefined;
+  /** Where the pointer was and which keys it held, from the pointer's own events: what the two moves that make the emulator ask again are made from. */
+  let pointer: { readonly x: number; readonly y: number } | undefined;
+  let jiggling = false;
 
   const stop = (one: Waiting | undefined): void => {
     if (one?.timer !== undefined) {
@@ -113,14 +124,11 @@ export function createFileLinkProvider(terminal: ProviderTerminal, handler: File
     }
   };
 
-  /** What the host answered for the line the pointer is on: the emulator draws the row again (a cursor, output, a scroll) and asks again, and the answer is the one it had, with no second question and no gap in the underline. */
-  let memo: { readonly first: number; readonly text: string; readonly candidates: readonly Candidate[]; readonly cells: readonly Cell[]; readonly answers: ReadonlyArray<ResolvedFile | undefined> } | undefined;
-
-  const made = (candidates: readonly Candidate[], cells: readonly Cell[], answers: ReadonlyArray<ResolvedFile | undefined>): ProvidedLink[] => {
+  const made = (known: Memo): ProvidedLink[] => {
     const links: ProvidedLink[] = [];
-    candidates.forEach((candidate, index) => {
-      const resolved = answers[index];
-      const range = resolved === undefined ? undefined : rangeOf(cells, candidate);
+    known.candidates.forEach((candidate, index) => {
+      const resolved = known.answers[index];
+      const range = resolved === undefined ? undefined : rangeOf(known.cells, candidate);
       if (resolved === undefined || range === undefined) {
         return;
       }
@@ -148,11 +156,36 @@ export function createFileLinkProvider(terminal: ProviderTerminal, handler: File
     return links;
   };
 
-  const links = async (one: Waiting): Promise<void> => {
+  const screen = terminal.element?.querySelector('.xterm-screen') ?? undefined;
+
+  /** The pointer moves to the next row and back, as events of the screen: the emulator asks the row again, and the provider answers from what the host said. A pointer with no known place is not moved. */
+  const askAgain = (keys: Pick<MouseEventInit, 'metaKey' | 'ctrlKey'>): void => {
+    if (screen === undefined || pointer === undefined) {
+      return;
+    }
+
+    const rect = screen.getBoundingClientRect();
+    const cell = rect.height / Math.max(1, terminal.rows);
+    const other = pointer.y + cell < rect.bottom ? pointer.y + cell : pointer.y - cell;
+    const move = (y: number): void => {
+      screen.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, cancelable: true, clientX: pointer?.x ?? 0, clientY: y, ...keys }));
+    };
+
+    // The visit to the next row is told to nobody (`jiggling`); the move back is the emulator asking the row again, and it is answered.
+    jiggling = true;
+    try {
+      move(other);
+    } finally {
+      jiggling = false;
+    }
+
+    move(pointer.y);
+  };
+
+  const ask = async (one: Waiting): Promise<void> => {
     const line = logicalLine(terminal.buffer.active, terminal.cols, one.row, FILE_LINK_LIMITS.maxLineLength);
     const candidates = line.tooLong ? [] : candidatesOf(line.text);
     if (candidates.length === 0) {
-      one.callback(undefined);
       return;
     }
 
@@ -163,70 +196,102 @@ export function createFileLinkProvider(terminal: ProviderTerminal, handler: File
       answers = [];
     }
 
-    // A pointer that moved on, a handler that was taken away: the answer is for a row nobody is on, and the emulator must not be told of it (a reply for another row would land among the replies of the row it is on).
-    if (!live || waiting !== one) {
+    // A pointer that moved on, a handler that was taken away, a key that was let go: the answer is for a row nobody is on.
+    if (!live || waiting !== one || current !== one.row || !held) {
       return;
     }
 
+    waiting = undefined;
     memo = { first: line.first, text: line.text, candidates, cells: line.cells, answers };
-    const found = made(candidates, line.cells, answers);
-    one.callback(found.length === 0 ? undefined : found);
+    if (answers.some((answer) => answer !== undefined)) {
+      askAgain({ metaKey: lastKeys.metaKey, ctrlKey: lastKeys.ctrlKey });
+    }
   };
 
   const schedule = (): void => {
-    const one = waiting;
-    if (one === undefined || !held) {
+    if (!held || current === undefined || waiting?.row === current) {
       return;
     }
 
-    stop(one);
+    stop(waiting);
+    const one: Waiting = { row: current, timer: undefined };
+    waiting = one;
     one.timer = setTimeout(() => {
       one.timer = undefined;
-      if (waiting === one && held) {
-        void links(one);
+      if (waiting === one && held && live) {
+        void ask(one);
       }
     }, FILE_LINK_SETTLE_MS);
   };
 
   const registration = terminal.registerLinkProvider({
     provideLinks: (line, callback) => {
-      stop(waiting);
-      waiting = undefined;
-      if (terminal.buffer.active.type === 'alternate') {
+      if (jiggling) {
+        // The row the pointer visits on its way to be asked again: it has no links, and the answer for the row it came from is kept.
         callback(undefined);
         return;
       }
 
-      const again = memo === undefined ? undefined : logicalLine(terminal.buffer.active, terminal.cols, line - 1, FILE_LINK_LIMITS.maxLineLength);
-      if (memo !== undefined && held && again !== undefined && !again.tooLong && again.first === memo.first && again.text === memo.text) {
-        const found = made(memo.candidates, again.cells, memo.answers);
+      if (terminal.buffer.active.type === 'alternate') {
+        current = undefined;
+        stop(waiting);
+        waiting = undefined;
+        callback(undefined);
+        return;
+      }
+
+      const row = line - 1;
+      if (current !== row) {
+        stop(waiting);
+        waiting = undefined;
+      }
+
+      current = row;
+      const same = held && memo !== undefined ? logicalLine(terminal.buffer.active, terminal.cols, row, FILE_LINK_LIMITS.maxLineLength) : undefined;
+      if (memo !== undefined && same !== undefined && !same.tooLong && same.first === memo.first && same.text === memo.text) {
+        const found = made({ ...memo, cells: same.cells });
         callback(found.length === 0 ? undefined : found);
         return;
       }
 
-      if (again !== undefined && (again.first !== memo?.first || again.text !== memo.text)) {
-        memo = undefined;
+      if (memo !== undefined) {
+        const now = logicalLine(terminal.buffer.active, terminal.cols, row, FILE_LINK_LIMITS.maxLineLength);
+        if (now.first !== memo.first || now.text !== memo.text) {
+          memo = undefined;
+        } else if (!held) {
+          // The same line without the modifier: no links, and the answer is kept for the key.
+          callback(undefined);
+          return;
+        }
       }
 
-      waiting = { row: line - 1, callback, timer: undefined };
+      callback(undefined);
       schedule();
     },
   });
 
   // The modifier, as the pointer and the keys say it. The pointer's own events come first (capture, at the screen), so the held state is the pointer's when the emulator asks about a row.
-  const screen = terminal.element?.querySelector('.xterm-screen') ?? undefined;
-  const changed = (next: boolean): void => {
+  const lastKeys = { metaKey: false, ctrlKey: false };
+  const changed = (next: boolean, keys: Pick<MouseEventInit, 'metaKey' | 'ctrlKey'>): void => {
     const was = held;
     held = next;
+    lastKeys.metaKey = keys.metaKey === true;
+    lastKeys.ctrlKey = keys.ctrlKey === true;
     if (next && !was) {
       schedule();
     } else if (!next && was) {
       stop(waiting);
+      waiting = undefined;
+      memo = undefined;
     }
   };
 
   const onMove = (event: MouseEvent): void => {
-    changed(handler.held(event));
+    if (!jiggling) {
+      pointer = { x: event.clientX, y: event.clientY };
+    }
+
+    changed(handler.held(event), event);
   };
 
   const onLeave = (event: Event): void => {
@@ -237,15 +302,17 @@ export function createFileLinkProvider(terminal: ProviderTerminal, handler: File
 
     stop(waiting);
     waiting = undefined;
+    current = undefined;
     memo = undefined;
+    pointer = undefined;
   };
 
   const onKey = (event: KeyboardEvent): void => {
-    changed(handler.held(event));
+    changed(handler.held(event), event);
   };
 
   const onBlur = (): void => {
-    changed(false);
+    changed(false, {});
   };
 
   screen?.addEventListener('mousemove', onMove as EventListener, true);
