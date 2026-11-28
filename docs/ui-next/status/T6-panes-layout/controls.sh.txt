@@ -52,7 +52,7 @@ CONTROLS = [
 SOLE = {
   'split-asks-the-host-before-the-room', 'split-button-enabled-with-no-directory', 'split-button-enabled-with-no-room', 'sash-minimum-lost', 'sash-double-click-does-nothing', 'sash-escape-keeps-the-drag',
   'sash-keys-ignore-the-axis', 'sash-measured-at-the-press-only', 'sash-orientation-always-vertical', 'the-resize-of-the-deck-is-not-fitted',
-  'the-room-for-one-more-is-always-yes', 'the-split-length-forgets-the-new-sash', 'the-active-pane-is-not-marked',
+  'the-room-for-one-more-is-always-yes', 'the-split-length-forgets-the-new-sash', 'the-active-pane-is-not-marked', 'a-sash-keeps-the-place-it-was-made-in',
 }
 
 TITLES = {}  # 'file > full name' -> the test's own title: vitest matches a name pattern against the title and its describes joined in a way a full name is not, so a skip uses the title alone
