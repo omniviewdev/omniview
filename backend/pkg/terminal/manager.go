@@ -86,6 +86,9 @@ type Manager struct {
 	// flowStall is how long a pause on the transport's credit waits before the watchdog steps
 	// (flowControl); a field so that a test can state it. SetFlowStall sets it before sessions start.
 	flowStall time.Duration
+	// closeWait is how long a close waits for the sessions to be gone (the const closeWait): a field, so that a
+	// test can state a short one. Nothing else changes it, and a test sets it before it starts a terminal.
+	closeWait time.Duration
 	// replayBytes is how much of a terminal's output its replay ring keeps (ReplayBytes): a field, so that a test
 	// can state it.
 	replayBytes int
@@ -142,7 +145,7 @@ func NewManager(ctx context.Context, log logging.Logger, sink Sink) *Manager {
 	detachments, _ := sink.(DetachmentSink)
 	m := &Manager{
 		base: shellenv.LaunchEnvironment, resolve: shellenv.Resolve, probe: shellenv.Probe, integrationOn: func() (bool, error) { return true, nil }, bashVersion: probeBashVersion,
-		ctx: ctx, log: log.Named("TerminalManager"), sink: sink, reported: reported, closing: atomic.Bool{}, launching: sync.WaitGroup{}, flowStall: FlowStall,
+		ctx: ctx, log: log.Named("TerminalManager"), sink: sink, reported: reported, closing: atomic.Bool{}, launching: sync.WaitGroup{}, flowStall: FlowStall, closeWait: closeWait,
 		replayBytes: ReplayBytes, channel: defaultChannelLimits(), offsets: offsets, detachments: detachments,
 		mu: sync.RWMutex{}, sessions: make(map[string]*session), starting: make(map[string]struct{}), ended: nil, tombs: nil, tombTimer: nil, clock: wallClock{},
 	}
@@ -506,7 +509,9 @@ func (m *Manager) reserve(requested string, owner Owner) (string, error) {
 }
 
 // startDirectory is where a shell starts: the directory the caller named, which has to be an absolute
-// path to a directory that exists, or the user's home.
+// path to a directory that exists, or the user's home. The path comes back as it was validated, byte for
+// byte: a cleaned form is another path when a component is a link (`/work/link/..` is the parent of what the
+// link points at, and its cleaned form is `/work`).
 func startDirectory(requested string) (string, error) {
 	if requested == "" {
 		home, err := os.UserHomeDir()
@@ -522,7 +527,7 @@ func startDirectory(requested string) (string, error) {
 	if err != nil || !info.IsDir() {
 		return "", invalidError("cwd must be a directory that exists; " + strconv.Quote(requested) + " is not one.")
 	}
-	return filepath.Clean(requested), nil
+	return requested, nil
 }
 
 // launch starts the process on a pty that already has its size.
@@ -996,16 +1001,32 @@ func (m *Manager) newCredit(id string) *flowControl {
 	})
 }
 
+// Credit is the right to credit the output of one session: the one that was running under the id when the sink
+// asked for it. It is bound to that session itself, not to its id, so a late report of a session that ended
+// never reaches a new session that took the id. The zero Credit credits nothing.
+type Credit struct{ flow *flowControl }
+
 // Delivered tells the host that the transport has taken n bytes of the session's output on their way to the
-// client. A sink that implements DeliveryReporter calls it, possibly from another goroutine and later than
-// Output returned; it credits the session unless the client has taken over the credit (Ack).
-func (m *Manager) Delivered(sessionID string, n int) {
+// client. It may be called from another goroutine and later than Output returned, and after the session ended
+// (it then changes nothing); it credits the session unless the client has taken over the credit (Ack).
+func (c Credit) Delivered(n int) {
+	if c.flow != nil && n > 0 {
+		c.flow.delivered(n)
+	}
+}
+
+// DeliveryCredit is what a sink that implements DeliveryReporter asks for, from inside Output, to report the
+// delivery of what Output was handed: the Credit of the session that is running under sessionID now. Output is
+// called for a session before its Closed, and the id is free only after that, so inside Output the id is that of
+// the session whose output it is. A session that is not running has a Credit that credits nothing.
+func (m *Manager) DeliveryCredit(sessionID string) Credit {
 	m.mu.RLock()
 	s := m.sessions[sessionID]
 	m.mu.RUnlock()
-	if s != nil && n > 0 {
-		s.flow.delivered(n)
+	if s == nil {
+		return Credit{flow: nil}
 	}
+	return Credit{flow: s.flow}
 }
 
 // Busy says whether a program other than the shell holds the terminal's foreground: the foreground
@@ -1149,8 +1170,9 @@ func (m *Manager) DetachSession(sessionID string) (*sdkexec.Session, error) {
 	return s.snapshot(), nil
 }
 
-// CloseSession ends a session at its caller's request. When it returns the session is gone: the shell
-// is reaped, no event follows the CLOSE and the id is free.
+// CloseSession ends a session at its caller's request. When it returns nil the session is gone: the shell
+// is reaped, no event follows the CLOSE and the id is free. When the wait for that ended first (a sink that
+// holds the last output) it answers CLOSE_TIMEOUT: the session is still ending, and its CLOSE may still come.
 func (m *Manager) CloseSession(sessionID string) error {
 	s, err := m.live(sessionID)
 	if err != nil {
@@ -1161,7 +1183,9 @@ func (m *Manager) CloseSession(sessionID string) error {
 		return err
 	}
 	s.beginClose(ClosedByRequest)
-	m.awaitGone([]*session{s})
+	if m.awaitGone([]*session{s}) != nil {
+		return closeTimeoutError(sessionID, m.closeWait)
+	}
 	return nil
 }
 
@@ -1210,7 +1234,7 @@ func (m *Manager) awaitLaunches() {
 		m.launching.Wait()
 		close(handed)
 	}()
-	deadline := time.NewTimer(closeWait)
+	deadline := time.NewTimer(m.closeWait)
 	defer deadline.Stop()
 	select {
 	case <-handed:
@@ -1224,18 +1248,20 @@ func (m *Manager) shutdownWhenDone() {
 	m.Shutdown()
 }
 
-// awaitGone waits, for at most closeWait in all, until the sessions are gone.
-func (m *Manager) awaitGone(sessions []*session) {
-	deadline := time.NewTimer(closeWait)
+// awaitGone waits, for at most closeWait in all, until the sessions are gone. It returns the first session that
+// was not gone when the wait ended, or nil when all were.
+func (m *Manager) awaitGone(sessions []*session) *session {
+	deadline := time.NewTimer(m.closeWait)
 	defer deadline.Stop()
 	for _, s := range sessions {
 		select {
 		case <-s.done:
 		case <-deadline.C:
 			m.log.Warnw(m.ctx, "a terminal session was still ending after a close", "session", s.id)
-			return
+			return s
 		}
 	}
+	return nil
 }
 
 // forwardSignals listens for host-process signals once and forwards them to all active terminal child

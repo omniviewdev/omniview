@@ -2,6 +2,7 @@ package exec
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -799,6 +800,17 @@ func (c *controller) closeRefusedSession(
 	}
 }
 
+// closeTerminal closes a local terminal. A close that gave up waiting for the session (a sink that holds its last
+// output) is logged here and answered to the caller as it is, typed: the session is ending and its CLOSE may
+// still come, so the host keeps its record of it until the CLOSE does.
+func (c *controller) closeTerminal(ctx context.Context, sessionID string) error {
+	err := c.terminalManager.CloseSession(sessionID)
+	if errors.Is(err, terminal.ErrCloseTimeout) {
+		c.logger.Warnw(ctx, "a terminal was still ending when its close stopped waiting", "sessionID", sessionID)
+	}
+	return err
+}
+
 func (c *controller) ListSessions() (_ []*exec.Session, err error) {
 	ctx, span := tracer.Start(context.Background(), "exec.ListSessions")
 	defer finishOp(span, &err)
@@ -982,14 +994,14 @@ func (c *controller) CloseSession(
 		// CLOSE took the id out) and the terminal manager keeps it: closing it dismisses it. An id that is neither is
 		// not found.
 		if c.terminalManager != nil {
-			return c.terminalManager.CloseSession(sessionID)
+			return c.closeTerminal(ctx, sessionID)
 		}
 		return apperror.SessionNotFound(sessionID)
 	}
 	span.SetAttributes(attribute.String("plugin_id", index.pluginID),
 		attribute.String("connection_id", index.connectionID))
 	if index.local {
-		return c.terminalManager.CloseSession(sessionID)
+		return c.closeTerminal(ctx, sessionID)
 	}
 	if index.ended {
 		// It ended by itself and no window attached: there is nothing to close. The output the plugin kept is for an attach

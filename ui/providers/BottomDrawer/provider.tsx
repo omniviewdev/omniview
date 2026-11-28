@@ -15,6 +15,7 @@ import {
   type UpdateTab,
   type UpdateTabOpts,
   BottomDrawerContext,
+  parseAppError,
   useNotifications,
 } from '@omniviewdev/runtime';
 import { ExecClient } from '@omniviewdev/runtime/api';
@@ -54,6 +55,9 @@ import {
   BottomDrawerWindowContext,
   DEFAULT_DRAWER_EXPANDED_HEIGHT,
 } from './windowContext';
+
+/** A close the host answered with its timeout (backend/pkg/terminal `CLOSE_TIMEOUT`): the session is ending and its end may still come, which is no failure to log. */
+const isClosing = (error: unknown): boolean => parseAppError(error).type === 'omniview:terminal/close-timeout';
 
 type BottomDrawerProviderProps = {
   children: ReactNode;
@@ -328,7 +332,7 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
     // if terminal with a real backend session, close it
     if (isTerminalSessionTab(tab)) {
       ExecClient.CloseSession(tab.id).catch((err: unknown) => {
-        if (err instanceof Error) {
+        if (err instanceof Error && !isClosing(err)) {
           log.error(err, { event: 'terminate_session', sessionId: tab.id });
         }
       });
@@ -346,11 +350,13 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
       return;
     }
 
-    // close all the selected sessions
-    Promise.all(closing.filter(isTerminalSessionTab).map(async (tab) => ExecClient.CloseSession(tab.id)))
-      .catch((err: unknown) => {
-        if (err instanceof Error) {
-          log.error(err, { event: 'terminate_sessions' });
+    // close all the selected sessions: each real failure is reported, and a close that timed out (the session is ending) is not one
+    void Promise.allSettled(closing.filter(isTerminalSessionTab).map(async (tab) => ExecClient.CloseSession(tab.id)))
+      .then((results) => {
+        for (const result of results) {
+          if (result.status === 'rejected' && result.reason instanceof Error && !isClosing(result.reason)) {
+            log.error(result.reason, { event: 'terminate_sessions' });
+          }
         }
       });
 

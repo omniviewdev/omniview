@@ -3,6 +3,7 @@ package exec
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
 
 	"github.com/google/uuid"
@@ -91,9 +92,11 @@ func (s localSink) OutputAt(sessionID string, offset uint64, data []byte) {
 }
 
 func (s localSink) emitOutput(event, sessionID string, offset uint64, positioned bool, data []byte) {
+	// Bound to the session whose output this is, now: the report comes later, and the id may belong to another session then.
+	credit := s.c.terminalManager.DeliveryCredit(sessionID)
 	out := &terminalOutput{
 		data: data, offset: offset, positioned: positioned,
-		delivered: func() { s.c.terminalManager.Delivered(sessionID, len(data)) }, once: sync.Once{},
+		delivered: func() { credit.Delivered(len(data)) }, once: sync.Once{},
 	}
 	if s.c.events == nil {
 		s.c.logger.Errorw(context.Background(), "event emitter is nil, cannot dispatch output")
@@ -340,7 +343,11 @@ func (c *controller) ServeTerminalChannel(ch terminal.Channel) { c.terminalManag
 func (c *controller) CloseChannelTerminal(capability string) (err error) {
 	_, span := tracer.Start(context.Background(), "exec.CloseChannelTerminal")
 	defer finishOp(span, &err)
-	return c.terminalManager.CloseChannel(capability)
+	err = c.terminalManager.CloseChannel(capability)
+	if errors.Is(err, terminal.ErrCloseTimeout) {
+		c.logger.Warnw(context.Background(), "a channel terminal was still ending when its close stopped waiting")
+	}
+	return err
 }
 
 // ChannelTerminalBusy says whether something other than the shell holds the foreground of a channel terminal.

@@ -133,6 +133,9 @@ type RigOptions = { readonly saved?: Record<string, string>; readonly writeFails
 
 const notFound = (): Error => Object.assign(new Error('not found'), { type: 'omniview:session/not-found', title: 'Not found', status: 404, detail: 'The terminal was not found.' });
 
+const closeTimeout = (): Error =>
+  Object.assign(new Error('close timed out'), { type: 'omniview:terminal/close-timeout', title: 'Terminal close timed out', status: 504, code: 'CLOSE_TIMEOUT', detail: 'The terminal was ordered to close and was still ending.' });
+
 function rig(options: RigOptions = {}): Rig {
   const sockets: FakeSocket[] = [];
   const opened: string[] = [];
@@ -942,6 +945,24 @@ describe('the calls that name a terminal', () => {
     await expect(r.channels.close('t1')).rejects.toSatisfy((error: unknown) => r.channels.isGone(error));
     expect(r.calls).toHaveLength(1);
     expect(JSON.parse(r.writes.at(-1) ?? 'null')).toEqual({});
+  });
+
+  it('a close answered close-timeout is a terminal that is closing and still going: it resolves, forgets the capability and says nothing', async () => {
+    const r = rig({ saved: { t1: CAP } });
+    r.answers.fails.CloseChannelTerminal = closeTimeout();
+    await expect(r.channels.close('t1')).resolves.toBeUndefined();
+    expect(JSON.parse(r.writes.at(-1) ?? 'null')).toEqual({});
+    await expect(r.channels.close('t1')).rejects.toSatisfy((error: unknown) => r.channels.isGone(error));
+    expect(r.calls).toEqual([['CloseChannelTerminal', CAP]]);
+    expect(r.warnings).toEqual([]);
+  });
+
+  it('a dismiss answered close-timeout is not a close: it is rejected and the capability is kept', async () => {
+    const r = rig({ saved: { t1: CAP } });
+    r.answers.fails.DismissChannelTerminal = closeTimeout();
+    await expect(r.channels.dismiss('t1')).rejects.toThrow();
+    await r.channels.dismiss('t1').catch(() => undefined);
+    expect(r.calls).toHaveLength(2);
   });
 
   it('dismiss asks the host with the capability, then forgets it', async () => {

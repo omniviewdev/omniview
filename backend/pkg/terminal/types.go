@@ -370,13 +370,15 @@ type Commands struct {
 
 // Sink receives a session's events. All calls for one session come from one goroutine at a time and
 // in order: every Output of a session precedes its one Closed. Calls for different sessions may be
-// concurrent. A Sink must not call back into the Manager for the same session, except Ack and Delivered.
+// concurrent. A Sink must not call back into the Manager for the same session, except Ack and DeliveryCredit.
 //
 // A Sink that returns from Output once the transport has taken the bytes (a blocking write, a bounded
 // queue) needs nothing more: the manager credits what Output returned from. A Sink whose Output returns
 // at once, whatever the client is doing (an unbounded queue, as Wails' server mode has), implements
-// DeliveryReporter and tells the manager when the transport really took the bytes, through
-// Manager.Delivered: the credit comes back only as fast as the client's socket drains.
+// DeliveryReporter and tells the manager when the transport really took the bytes: it asks for the session's
+// Credit (Manager.DeliveryCredit) inside Output and calls Credit.Delivered later, from any goroutine. The Credit
+// is bound to the session, so a report that comes after the session ended and its id was reused credits nothing.
+// The credit comes back only as fast as the client's socket drains.
 type Sink interface {
 	// Output delivers bytes the shell wrote. The slice belongs to the receiver. The bytes are the
 	// shell's, untouched: a multi-byte character may be cut between two calls.
@@ -385,7 +387,7 @@ type Sink interface {
 	Closed(sessionID string, end End)
 }
 
-// DeliveryReporter marks a Sink that reports, through Manager.Delivered, when the transport has taken
+// DeliveryReporter marks a Sink that reports, through Credit.Delivered, when the transport has taken
 // output on its way to the client. Without the mark the manager takes the return of Output for delivery.
 type DeliveryReporter interface {
 	ReportsDelivery()
