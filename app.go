@@ -191,7 +191,12 @@ func ownServerSources(diagnostics, profiler func() string, vite func() []string)
 }
 
 // profilerAddress is where the host profiler serves pprof while it runs, as host:port from its status; empty when it is off or failed to start.
-func profilerAddress(running bool, address string) string { return address }
+func profilerAddress(running bool, address string) string {
+	if !running {
+		return ""
+	}
+	return address
+}
 
 // wailsMCPAddress is where Wails' own MCP server listens in the -tags mcp development builds (pkg/application/mcp_enabled.go): WAILS_MCP_HOST over 127.0.0.1 and
 // WAILS_MCP_PORT over 9099. It is not known for port 0 (the system picks one), and the server is behind a bearer token as well.

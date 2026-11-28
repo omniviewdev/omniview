@@ -350,7 +350,34 @@ func (o *Opener) isOwn(local bool, ip netip.Addr, port int) bool {
 		if local {
 			return true
 		}
-		if addr, parseErr := netip.ParseAddr(host); parseErr == nil && ip.IsValid() && addr.Unmap() == ip {
+		addr, parseErr := netip.ParseAddr(host)
+		if parseErr != nil || !ip.IsValid() {
+			continue
+		}
+		addr = addr.Unmap()
+		// a server on every interface (0.0.0.0, ::) is reached by any address of this machine
+		if addr == ip || (addr.IsUnspecified() && o.isInterfaceAddress(ip)) {
+			return true
+		}
+	}
+	return false
+}
+
+// isInterfaceAddress is whether the address is one of this machine's interfaces now.
+func (o *Opener) isInterfaceAddress(ip netip.Addr) bool {
+	addresses, err := o.interfaces()
+	if err != nil {
+		return false
+	}
+	for _, address := range addresses {
+		var raw net.IP
+		switch a := address.(type) {
+		case *net.IPNet:
+			raw = a.IP
+		case *net.IPAddr:
+			raw = a.IP
+		}
+		if found, ok := netip.AddrFromSlice(raw); ok && found.Unmap() == ip {
 			return true
 		}
 	}
