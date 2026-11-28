@@ -11578,7 +11578,7 @@ async function checkTerminalFindMenu(page, base, engine) {
 
     return /\nMOUSE_DONE_2\n/.test(await plainTranscriptOf(base, id));
   }, 30_000);
-  note('context menu', `a right click opened it (Copy, Paste, Select all, Clear, Find), Select all and Copy put ${String(menuCopied.length)} characters on the clipboard, Paste ran its text, Find opened the bar, Shift+F10 and the Menu key opened it and Escape gave the keyboard back; with mouse reporting on a right click at column 10, row 3 reached the program as ${JSON.stringify(reportedAt)} and opened no menu, and with Shift it did`);
+  note('context menu', `a right click opened it (Copy, Paste, Select all, Clear, Find, Open link), Select all and Copy put ${String(menuCopied.length)} characters on the clipboard, Paste ran its text, Find opened the bar, Shift+F10 and the Menu key opened it and Escape gave the keyboard back; with mouse reporting on a right click at column 10, row 3 reached the program as ${JSON.stringify(reportedAt)} and opened no menu, and with Shift it did`);
 
   // Clear in the menu empties the emulator's buffer; the shell goes on.
   const beforeClear = lineIn(flooded, '999999');
