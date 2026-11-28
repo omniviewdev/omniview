@@ -1,7 +1,7 @@
 import type { MenuAction, MenuItem } from '@omniviewdev/kit';
 import { describe, expect, it, vi } from 'vitest';
 import { NO_SELECTION } from '../TerminalToolbar';
-import { NO_DIRECTORY, NO_INPUT, terminalMenu, type TerminalMenuActions } from './terminalMenu';
+import { NO_DIRECTORY, NO_INPUT, NO_LINKS, terminalMenu, type TerminalMenuActions } from './terminalMenu';
 
 // The terminal's context menu as data: the items of the kit's menu model, for what the terminal is now (a selection, an input that takes what is pasted). Pure: the hook gives them their actions and the kit's host draws them. What is
 // checked here is the list, the words, the reasons, and that no item draws a shortcut.
@@ -200,5 +200,86 @@ describe('the commands of the shell', () => {
     const ids = terminalMenu(actions, { selected: true, input: true, here: true, commands: { count: 1, output: true, rerun: undefined } }).map((item) => item.id);
     expect(ids.at(-1)).toBe('new-here');
     expect(ids.indexOf('rerun-command')).toBeLessThan(ids.indexOf('terminals'));
+  });
+});
+
+// OPEN LINK (#696 step 1: VS Code's "Open Detected Link"): the keyboard path to the links in view. The menu opens from the keyboard (Shift+F10, the Menu key), the submenu opens with the arrow, and each item is a link, named by its
+// TARGET: what the item says is what it opens. A hyperlink's text is never the label.
+describe('Open link', () => {
+  const DOCS = 'https://example.com/docs';
+  const withLinks = (links: readonly string[], actions = { ...fakes(), openLink: vi.fn() }) => ({ actions, items: terminalMenu(actions, { selected: true, input: true, links }) });
+  const submenu = (items: readonly MenuItem[]) => {
+    const found = items.find((item) => item.id === 'open-link');
+    if (found?.kind !== 'submenu') {
+      throw new Error(`no submenu "open-link" in ${JSON.stringify(items.map((item) => item.id))}`);
+    }
+
+    return found;
+  };
+
+  it('is not in the menu of a window that cannot open an address: no action, no item', () => {
+    expect(menu().map((item) => item.id)).not.toContain('open-link');
+  });
+
+  it('is a submenu after Find, named for what it does', () => {
+    const { items } = withLinks([DOCS]);
+    expect(items.map((item) => item.id)).toEqual(['copy', 'paste', 'select-all', 'tools', 'clear', 'find', 'open-link']);
+    expect(submenu(items).label).toBe('Open link');
+  });
+
+  it('has an item for each link in view, named by its target, in the order they are on the screen', () => {
+    const { items } = withLinks([DOCS, 'https://b.example/login']);
+    expect(submenu(items).items.map((item) => [item.kind, 'label' in item ? item.label : undefined])).toEqual([['action', DOCS], ['action', 'https://b.example/login']]);
+  });
+
+  it('says why it is not available when no link is in view, in words of its own', () => {
+    expect(NO_LINKS).not.toBe('');
+    expect(submenu(withLinks([]).items).disabled).toBe(NO_LINKS);
+    expect(submenu(withLinks([DOCS]).items).disabled).toBeFalsy();
+  });
+
+  it('opens the link of the item chosen, once, with its target, and nothing else', () => {
+    const { actions, items } = withLinks([DOCS, 'https://b.example/login']);
+    const [, second] = submenu(items).items;
+    if (second?.kind !== 'action') {
+      throw new Error('no second item');
+    }
+
+    second.onSelect();
+    expect(actions.openLink).toHaveBeenCalledExactlyOnceWith('https://b.example/login');
+    for (const [name, call] of Object.entries(actions)) {
+      expect(call, name).toHaveBeenCalledTimes(name === 'openLink' ? 1 : 0);
+    }
+  });
+
+  it('draws no shortcut and no glyph on an item: the target is all that it says', () => {
+    const { items } = withLinks([DOCS]);
+    expect(submenu(items).items.flatMap((item) => ('shortcut' in item && item.shortcut !== undefined ? [item.id] : []))).toEqual([]);
+  });
+
+  it('comes before New terminal here, which stays the last item', () => {
+    const actions = { ...fakes(), openLink: vi.fn(), newHere: vi.fn() };
+    const ids = terminalMenu(actions, { selected: true, input: true, here: true, links: [DOCS] }).map((item) => item.id);
+    expect(ids.at(-1)).toBe('new-here');
+    expect(ids.indexOf('open-link')).toBeLessThan(ids.indexOf('terminals'));
+  });
+});
+
+describe('Open link names the address as the browser reads it', () => {
+  it('has the host right after the scheme, in punycode for an international name', () => {
+    const actions = { ...fakes(), openLink: vi.fn() };
+    const items = terminalMenu(actions, { selected: true, input: true, links: ['https://\u0430pple.com/x'] });
+    const found = items.find((item) => item.id === 'open-link');
+    if (found?.kind !== 'submenu') {
+      throw new Error('no submenu');
+    }
+
+    expect(found.items.map((item) => ('label' in item ? item.label : undefined))).toEqual(['https://xn--pple-43d.com/x']);
+    const [first] = found.items;
+    if (first?.kind === 'action') {
+      first.onSelect();
+    }
+
+    expect(actions.openLink).toHaveBeenCalledExactlyOnceWith('https://\u0430pple.com/x');
   });
 });

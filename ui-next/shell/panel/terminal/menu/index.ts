@@ -3,4 +3,4 @@
 export { useTerminalLinks } from '../links/useTerminalLinks';
 export type { TerminalLinks, TerminalLinksOptions, TerminalLinksScreen } from '../links/useTerminalLinks';
 export { useTerminalMenu } from './useTerminalMenu';
-export type { TerminalMenu, TerminalMenuHost, TerminalMenuOptions, TerminalMenuScreen } from './useTerminalMenu';
+export type { TerminalMenu, TerminalMenuHost, TerminalMenuLinks, TerminalMenuOptions, TerminalMenuScreen } from './useTerminalMenu';

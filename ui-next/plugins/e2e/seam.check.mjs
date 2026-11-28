@@ -11446,13 +11446,13 @@ async function checkTerminalFindMenu(page, base, engine) {
   await rightClick(0.97, 0.5);
   const menuOpened = await holdsWithin(menuIsOpen, 10_000);
   assert.ok(menuOpened, `${engine}: a right click on the screen opens the context menu`);
-  // The command items are in the menu only while the terminal has commands (the shell's integration made some): the list is the base items, then none or all five of them, then New terminal here.
+  // The command items are in the menu only while the terminal has commands (the shell's integration made some): the list is the base items, then none or all five of them, then New terminal here (Open link follows Find: the links in view, #696).
   const offered = await menuItems();
   const COMMAND_ITEMS = ['Previous command', 'Next command', 'Select command output', 'Copy command output', 'Run command again'];
   const baseItems = offered.filter((label) => !COMMAND_ITEMS.includes(label));
   const commandItems = offered.filter((label) => COMMAND_ITEMS.includes(label));
-  assert.deepEqual(baseItems, ['Copy', 'Paste', 'Select all', 'Clear', 'Find', 'New terminal here'], `${engine}: the context menu offers Copy, Paste, Select all, Clear, Find and New terminal here, in that order (it offers ${JSON.stringify(offered)})`);
-  assert.ok(commandItems.length === 0 || (JSON.stringify(commandItems) === JSON.stringify(COMMAND_ITEMS) && offered.indexOf('Previous command') === 5 && offered.at(-1) === 'New terminal here'), `${engine}: the command items are all five or none, after Find and before New terminal here (it offers ${JSON.stringify(offered)})`);
+  assert.deepEqual(baseItems, ['Copy', 'Paste', 'Select all', 'Clear', 'Find', 'Open link', 'New terminal here'], `${engine}: the context menu offers Copy, Paste, Select all, Clear, Find, Open link and New terminal here, in that order (it offers ${JSON.stringify(offered)})`);
+  assert.ok(commandItems.length === 0 || (JSON.stringify(commandItems) === JSON.stringify(COMMAND_ITEMS) && offered.indexOf('Previous command') === 6 && offered.at(-1) === 'New terminal here'), `${engine}: the command items are all five or none, after Open link and before New terminal here (it offers ${JSON.stringify(offered)})`);
   assert.equal(await item('Copy').getAttribute('aria-disabled'), 'true', `${engine}: Copy is not available with nothing selected`);
   assert.match((await item('Copy').getAttribute('aria-description')) ?? '', /Select text in the terminal first/, `${engine}: Copy says why it is not available`);
   await page.keyboard.press('Escape');
@@ -11578,7 +11578,7 @@ async function checkTerminalFindMenu(page, base, engine) {
 
     return /\nMOUSE_DONE_2\n/.test(await plainTranscriptOf(base, id));
   }, 30_000);
-  note('context menu', `a right click opened it (Copy, Paste, Select all, Clear, Find), Select all and Copy put ${String(menuCopied.length)} characters on the clipboard, Paste ran its text, Find opened the bar, Shift+F10 and the Menu key opened it and Escape gave the keyboard back; with mouse reporting on a right click at column 10, row 3 reached the program as ${JSON.stringify(reportedAt)} and opened no menu, and with Shift it did`);
+  note('context menu', `a right click opened it (Copy, Paste, Select all, Clear, Find, Open link), Select all and Copy put ${String(menuCopied.length)} characters on the clipboard, Paste ran its text, Find opened the bar, Shift+F10 and the Menu key opened it and Escape gave the keyboard back; with mouse reporting on a right click at column 10, row 3 reached the program as ${JSON.stringify(reportedAt)} and opened no menu, and with Shift it did`);
 
   // Clear in the menu empties the emulator's buffer; the shell goes on.
   const beforeClear = lineIn(flooded, '999999');

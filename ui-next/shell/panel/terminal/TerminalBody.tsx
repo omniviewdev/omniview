@@ -1,5 +1,5 @@
 import { Button } from '@omniviewdev/kit';
-import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { platformOf } from '../../core/chords';
 import type { Session, SessionId } from '../../core/panel';
 import { copyToClipboard } from '../logs/clipboard';
@@ -439,7 +439,9 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader, pr
       },
       available: feed.directory !== undefined,
     };
-  const menu = useTerminalMenu({ sessionId: session.id, screen, status, openFind: find.open, copy, here });
+  // "Open link": the keyboard's way to the links in view, only where the window can open an address (a link that does nothing is not drawn).
+  const menuLinks = useMemo(() => (sessions.canOpenExternal() ? { open: sessions.openExternal, follows: sessions.canFollow } : undefined), [sessions]);
+  const menu = useTerminalMenu({ sessionId: session.id, screen, status, openFind: find.open, copy, here, links: menuLinks });
   const links = useTerminalLinks({ screen, sessions, platform });
   // The marks of the shell's integration: the tooltip of a command's mark, and what a jump or a selection did said in the live region.
   const gutter = useCommandGutter({ screen, say });

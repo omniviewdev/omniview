@@ -2356,6 +2356,194 @@ describe('the links of a real emulator', () => {
     });
   });
 
+  // The links in view, for a person who has no pointer (#696 step 1: VS Code's "Open Detected Link"): the web addresses printed in the rows on screen and the targets of the hyperlinks a program wrote there, in reading order, each
+  // once, with the target (what a click opens) and never the text. It is the real emulator's own parse that finds them, so a hyperlink is found by its OSC 8 sequence, and the emulator's own handling of it is left as it was.
+  describe('and the links in view', () => {
+    const DOCS = 'https://example.com/docs';
+
+    it('lists a printed address and a hyperlink, in the order they are on the screen, and for the hyperlink its target and not its text', async () => {
+      const { engine, write, close } = linked();
+      await write(`first https://example.com/one\r\nsecond ${hyperlink('https://b.example/login', 'https://a.example')} end\r\nthird http://localhost:3000/x.\r\n`);
+      expect(engine.viewLinks()).toEqual(['https://example.com/one', 'https://b.example/login', 'http://localhost:3000/x']);
+      close();
+    });
+
+    it('lists an address once however many times it is printed, and does not list the text of a hyperlink that is not a link', async () => {
+      const { engine, write, close } = linked();
+      await write(`${DOCS} ${DOCS}\r\n${hyperlink(DOCS, 'docs')} ${hyperlink(DOCS, 'docs again')}\r\n`);
+      expect(engine.viewLinks()).toEqual([DOCS]);
+      close();
+    });
+
+    it.each(['javascript:alert(1)', 'file:///etc/passwd', 'ftp://example.com/file', 'data:text/html,hi', 'vscode://file/etc/passwd'])('does not list a hyperlink to %s: the emulator does not hand such a link over, and neither does this', async (uri) => {
+      const { engine, write, close } = linked();
+      await write(`see ${hyperlink(uri, 'the docs')} now\r\n`);
+      expect(engine.viewLinks()).toEqual([]);
+      close();
+    });
+
+    it('lists an address that wraps onto the next row, whole', async () => {
+      const { engine, write, close } = linked();
+      const long = `https://example.com/${'a'.repeat(100)}`;
+      await write(`${long}\r\n`);
+      expect(engine.viewLinks()).toEqual([long]);
+      close();
+    });
+
+    it('lists only what is in view: a link that has scrolled out is not, and one scrolled back into view is', async () => {
+      const { engine, terminal, write, close } = linked();
+      await write(`${hyperlink('https://old.example/', 'old')} https://old.example/printed\r\n${'filler\r\n'.repeat(60)}https://new.example/\r\n`);
+      expect(engine.viewLinks()).toEqual(['https://new.example/']);
+      terminal.scrollToTop();
+      expect(engine.viewLinks()).toEqual(['https://old.example/', 'https://old.example/printed']);
+      close();
+    });
+
+    it('lists none on the alternate screen for what the main screen holds, and its own there, and the main screen\'s again when it is left', async () => {
+      const { engine, write, close } = linked();
+      await write('https://main.example/\r\n');
+      await write('\u001b[?1049h');
+      expect(engine.viewLinks()).toEqual([]);
+      await write(`${hyperlink('https://alt.example/', 'alt')}\r\n`);
+      expect(engine.viewLinks()).toEqual(['https://alt.example/']);
+      await write('\u001b[?1049l');
+      expect(engine.viewLinks()).toEqual(['https://main.example/']);
+      close();
+    });
+
+    it('is bounded: 5,000 hyperlinks in a flood leave a list of at most 50 of the newest in view, and the emulator answers', async () => {
+      const { engine, write, close } = linked();
+      let flood = '';
+      for (let index = 0; index < 5000; index += 1) {
+        flood += `${hyperlink(`https://flood.example/${String(index)}`, 'x')}\r\n`;
+      }
+
+      await write(flood);
+      const links = engine.viewLinks();
+      expect(links.length).toBeGreaterThan(0);
+      expect(links.length).toBeLessThanOrEqual(50);
+      expect(links.at(-1)).toBe('https://flood.example/4999');
+      close();
+    });
+
+    it('ignores a target over 2,083 characters, the emulator\'s own limit for one, and a printed address on a line over 2,000', async () => {
+      const { engine, write, close } = linked();
+      await write(`${hyperlink(`https://b.example/${'a'.repeat(2100)}`, 'long')}\r\n`);
+      expect(engine.viewLinks()).toEqual([]);
+      close();
+    });
+
+    it('lists no phantom link for a hyperlink sequence with no semicolon, which the emulator ignores: the addresses printed after it are still listed', async () => {
+      const { engine, write, close } = linked();
+      await write('\u001b]8;https://ghost.example/\u0007ghost text https://after.example/ end\r\n');
+      expect(engine.viewLinks()).toEqual(['https://after.example/']);
+      close();
+    });
+
+    it('says at most 50 links when more are in view, the first 50 in reading order', async () => {
+      const { engine, write, close } = linked();
+      const all = Array.from({ length: 60 }, (_, index) => `https://many.example/${String(index)}`);
+      for (let line = 0; line < 20; line += 1) {
+        await write(`${all.slice(line * 3, line * 3 + 3).join(' ')}\r\n`);
+      }
+
+      expect(engine.viewLinks()).toEqual(all.slice(0, 50));
+      close();
+    });
+
+    it('remembers only the newest 128 hyperlinks: older ones that are still in the scrollback are not listed', async () => {
+      const { engine, terminal, write, close } = linked();
+      let flood = '';
+      for (let line = 0; line < 110; line += 1) {
+        flood += `${[0, 1, 2].map((part) => hyperlink(`https://old.example/${String(line)}-${String(part)}`, 'x')).join(' ')}\r\n`;
+      }
+
+      await write(flood);
+      terminal.scrollToTop();
+      expect(engine.viewLinks()).toEqual([]);
+      terminal.scrollToBottom();
+      expect(engine.viewLinks().length).toBeGreaterThan(0);
+      close();
+    });
+
+    it('lists the hyperlinks of the screen it is on: one written on the main screen is not in view on the alternate screen, and is again when it is left', async () => {
+      const { engine, write, close } = linked();
+      await write(`${hyperlink('https://main.example/', 'main')}\r\n`);
+      await write('\u001b[?1049h');
+      expect(engine.viewLinks()).toEqual([]);
+      await write(`${hyperlink('https://alt.example/', 'alt')}\r\n`);
+      expect(engine.viewLinks()).toEqual(['https://alt.example/']);
+      await write('\u001b[?1049l');
+      expect(engine.viewLinks()).toEqual(['https://main.example/']);
+      close();
+    });
+
+    it('puts the text of a hyperlink with its own target after wide characters: the cells are counted, not the characters', async () => {
+      const { engine, write, close } = linked();
+      await write(`\u6f22\u5b57\u6f22\u5b57\u6f22\u5b57 ${hyperlink('https://b.example/login', 'https://a.example')} end\r\n`);
+      expect(engine.viewLinks()).toEqual(['https://b.example/login']);
+      close();
+    });
+
+    it('is told of no hover on a hyperlink whose target is over 2,083 characters', async () => {
+      const { write, pointer, hovers, clicks, close } = linked();
+      await write(`see ${hyperlink(`https://b.example/${'a'.repeat(100_000)}`, 'the docs')} now\r\n`);
+      pointer.over(6, 1);
+      pointer.click(6, 1);
+      expect(hovers).toEqual([]);
+      expect(clicks).toEqual([]);
+      close();
+    });
+
+    it('lists no hyperlink after a full reset (ESC c): the screen is empty, and the replay that follows is the only source of links', async () => {
+      const { engine, write, close } = linked();
+      await write(`${hyperlink('https://stale.example/', 'old')}\r\n`);
+      expect(engine.viewLinks()).toEqual(['https://stale.example/']);
+      await write('\u001bc');
+      expect(engine.viewLinks()).toEqual([]);
+      await write(`${hyperlink('https://replayed.example/', 'new')}\r\n`);
+      expect(engine.viewLinks()).toEqual(['https://replayed.example/']);
+      close();
+    });
+
+    it('lists no hyperlink of the screen after ED 2 clears it, as clear does, and keeps one written after', async () => {
+      const { engine, write, close } = linked();
+      await write(`${hyperlink('https://stale.example/', 'old')}\r\n`);
+      await write('\u001b[H\u001b[2J');
+      expect(engine.viewLinks()).toEqual([]);
+      await write(`${hyperlink('https://fresh.example/', 'new')}\r\n`);
+      expect(engine.viewLinks()).toEqual(['https://fresh.example/']);
+      close();
+    });
+
+    it('keeps the hyperlinks of the screen when only the scrollback is erased (ED 3), and drops the scrolled-off ones', async () => {
+      const { engine, terminal, write, close } = linked();
+      await write(`${hyperlink('https://old.example/', 'old')}\r\n${'filler\r\n'.repeat(40)}${hyperlink('https://screen.example/', 'screen')}\r\n`);
+      await write('\u001b[3J');
+      expect(engine.viewLinks()).toEqual(['https://screen.example/']);
+      terminal.scrollToTop();
+      expect(engine.viewLinks()).toEqual(['https://screen.example/']);
+      close();
+    });
+
+    it('does not take the hyperlink from the emulator: a click on it still reaches the handler with its target, once', async () => {
+      const { write, pointer, clicks, close } = linked();
+      await write(`see ${hyperlink(DOCS, 'the docs')} now\r\n`);
+      pointer.over(6, 1);
+      const up = pointer.click(6, 1);
+      expect(clicks).toEqual([[DOCS, up]]);
+      close();
+    });
+
+    it('is empty after the engine is disposed, and when nothing was written', async () => {
+      const { engine, write, close } = linked();
+      expect(engine.viewLinks()).toEqual([]);
+      await write(`${DOCS}\r\n`);
+      close();
+      expect(engine.viewLinks()).toEqual([]);
+    });
+  });
+
   it('lets go of its links with the emulator', async () => {
     const { disposals, close } = linked();
     close();

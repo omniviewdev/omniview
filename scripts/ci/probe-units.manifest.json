@@ -677,6 +677,10 @@
     "probe": true,
     "controls": []
   },
+  "ui-next/shell/probes/terminal-urls-probe.mjs": {
+    "probe": true,
+    "controls": []
+  },
   "ui-next/shell/probes/terminal-where-probe.mjs": {
     "probe": true,
     "controls": []

@@ -634,3 +634,55 @@ describe('focus', () => {
     expect(document.activeElement).toBe(input());
   });
 });
+
+// OPEN LINK (#696 step 1): the links in view, read when the menu opens, in a submenu named by their targets, followed through the registry's own call; a link the registry will not follow is not in it.
+describe('Open link', () => {
+  const DOCS = 'https://example.com/docs';
+  const mountWith = (view: readonly string[], follows: (uri: string) => boolean = () => true) => {
+    const rig = mount();
+    const open = vi.fn<(uri: string) => void>();
+    const viewLinks = vi.fn(() => view);
+    const withLinks = { ...rig.fake.screen, viewLinks };
+    const fake = { ...rig.fake, screen: withLinks };
+    rig.rerender({ fake, links: { open, follows } });
+    return { ...rig, open, viewLinks };
+  };
+
+  it('is not in the menu when the window gave no way to open an address', () => {
+    const { host } = mount();
+    rightClick(host());
+    expect(names()).not.toContain('Open link');
+  });
+
+  it('reads the links in view when the menu opens, and not before', () => {
+    const { host, viewLinks } = mountWith([DOCS]);
+    expect(viewLinks).not.toHaveBeenCalled();
+    rightClick(host());
+    expect(viewLinks).toHaveBeenCalledTimes(1);
+    expect(names()).toContain('Open link');
+  });
+
+  it('opens a submenu with a keyboard arrow whose items are the targets, and a chosen one is opened through the registry, once', () => {
+    const { host, open } = mountWith([DOCS, 'https://b.example/login']);
+    rightClick(host());
+    fireEvent.keyDown(item('Open link'), { key: 'ArrowRight' });
+    expect(names()).toContain('https://b.example/login');
+    fireEvent.click(item('https://b.example/login'));
+    expect(open).toHaveBeenCalledExactlyOnceWith('https://b.example/login');
+    expect(menu()).toBeNull();
+  });
+
+  it('leaves out a link the registry will not follow: the host\'s own server is not offered', () => {
+    const { host } = mountWith([DOCS, 'http://localhost:34115/api'], (uri) => !uri.includes(':34115'));
+    rightClick(host());
+    fireEvent.keyDown(item('Open link'), { key: 'ArrowRight' });
+    expect(names()).toContain(DOCS);
+    expect(names()).not.toContain('http://localhost:34115/api');
+  });
+
+  it('is unavailable, with its reason, when no link is in view', () => {
+    const { host } = mountWith([]);
+    rightClick(host());
+    expect(item('Open link')).toHaveAttribute('aria-disabled', 'true');
+  });
+});

@@ -955,7 +955,7 @@ export function createFindSections({ check, note, report, runAxe }) {
       const known = await page.evaluate(() => window.__known);
       // The items draw no shortcut: the kit names an item by its label alone, and a drawn shortcut makes the name differ from what is drawn (axe: label-content-name-mismatch), so the terminal's menu has none until the kit names the two together.
       const at = await screenPoint(page);
-      const labels = ['Copy', 'Paste', 'Select all', 'Clear', 'Find', 'New terminal here'];
+      const labels = ['Copy', 'Paste', 'Select all', 'Clear', 'Find', 'Open link', 'New terminal here'];
       const problems = [];
       const expect = (name, ok, got) => {
         if (!ok) problems.push({ name, got });
@@ -970,7 +970,7 @@ export function createFindSections({ check, note, report, runAxe }) {
       expect('its items', JSON.stringify(again?.items?.map((item) => item.label)) === JSON.stringify(labels), again?.items?.map((item) => item.label));
       expect('two separators', again?.separators === 2, again?.separators);
       expect('Copy is unavailable without a selection', again?.items?.find((item) => item.label === 'Copy')?.disabled === true, again?.items);
-      expect('the others are available', again?.items?.filter((item) => item.label !== 'Copy').every((item) => !item.disabled) === true, again?.items);
+      expect('the others are available, and Open link is not while no link is in view', again?.items?.filter((item) => item.label !== 'Copy' && item.label !== 'Open link').every((item) => !item.disabled) === true && again?.items?.find((item) => item.label === 'Open link')?.disabled === true, again?.items);
       expect('the menu is named', again?.label === 'Terminal actions', again?.label);
       const drawn = (again?.items ?? []).filter((item) => item.text !== item.label || /⌘|Ctrl|Shift|Alt/.test(item.description)).map((item) => ({ label: item.label, text: item.text, description: item.description }));
       expect('no item draws a shortcut', drawn.length === 0, drawn);

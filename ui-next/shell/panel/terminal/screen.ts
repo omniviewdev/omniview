@@ -180,6 +180,8 @@ export type TerminalScreen = {
   readonly decorateInput: (attributes: Readonly<Record<string, string>>) => void;
   /** The links in the output are given to `handler`; `undefined` makes none. What is asked before the emulator is made is given to it when it is. */
   readonly setLinks: (handler: LinkHandler | undefined) => void;
+  /** The targets of the links in view (`Engine.viewLinks`): none before the emulator is made. */
+  readonly viewLinks: () => readonly string[];
   /** Selects the whole buffer, the screen and the scrollback (nothing before the emulator is made): the key does it too. */
   readonly selectAll: () => void;
   /**
@@ -1376,6 +1378,8 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
       linkHandler = handler;
       engine?.setLinks(handler);
     },
+
+    viewLinks: () => engine?.viewLinks() ?? [],
 
     copy,
 

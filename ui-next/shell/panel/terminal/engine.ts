@@ -214,6 +214,11 @@ export type Engine = {
    */
   readonly setLinks: (handler: LinkHandler | undefined) => void;
   /**
+   * The targets of the links in view, for a person with no pointer (#696 step 1): the web addresses printed in the rows on screen and the targets of the hyperlinks a program wrote there (OSC 8), in reading order, each once, at most
+   * 50, and for a hyperlink its target and never its text. Only what a click on the link would open: another scheme is not listed. Nothing on the alternate screen for what the main screen holds, and the other way round.
+   */
+  readonly viewLinks: () => readonly string[];
+  /**
    * A marker on the cursor's line, for the place the parse stands. It is right only INSIDE the callback of a write (`write`'s `done`), which runs when the bytes before it are parsed: a marker made while a write is still
    * waiting reads the line the cursor was on before it (xterm.js #5214). Nothing on the alternate screen (`undefined`: a program that has the whole screen has no command lines, and a marker made there is the other buffer's),
    * and nothing once the emulator is disposed.
